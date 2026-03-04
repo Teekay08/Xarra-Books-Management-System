@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 48356 //T)",
+      "Bash(taskkill //F //PID 71528 //T)",
+      "Bash(taskkill //F //PID 49740 //T)",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(curl -s http://localhost:3001/api/v1/ping)",
+      "Bash(kill %1)"
+    ]
+  }
+}
