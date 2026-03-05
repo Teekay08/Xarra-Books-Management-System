@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router';
+import { NavLink, useNavigate } from 'react-router';
+import { useSession, signOut } from '../lib/auth-client';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: '📊' },
@@ -12,6 +13,14 @@ const navigation = [
 ];
 
 export function Sidebar() {
+  const { data: session } = useSession();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await signOut();
+    navigate('/login');
+  }
+
   return (
     <aside className="w-64 bg-gray-900 text-gray-100 flex flex-col">
       <div className="p-6 border-b border-gray-800">
@@ -36,7 +45,23 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="p-4 border-t border-gray-800 text-xs text-gray-600">
+      {session?.user && (
+        <div className="p-4 border-t border-gray-800">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-200 truncate">{session.user.name}</p>
+              <p className="text-xs text-gray-500 truncate">{session.user.role}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-xs text-gray-500 hover:text-gray-300 shrink-0 ml-2"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="px-4 pb-3 text-xs text-gray-600">
         v0.1.0 — MVP
       </div>
     </aside>

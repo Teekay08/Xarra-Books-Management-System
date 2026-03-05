@@ -10,7 +10,15 @@
       "Bash(kill %1)",
       "Bash(npm install -w apps/api zod)",
       "Bash(npm install -D eslint @eslint/js typescript-eslint prettier eslint-config-prettier)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "WebFetch(domain:better-auth.com)",
+      "WebFetch(domain:www.better-auth.com)",
+      "Bash(npm install -w apps/api better-auth)",
+      "Bash(node -e \"const m = require\\(''better-auth/adapters/drizzle''\\); console.log\\(Object.keys\\(m\\)\\)\")",
+      "Bash(npm ls better-auth)",
+      "Bash(node -e \":*)",
+      "Bash(npm install -w apps/api @better-auth/drizzle-adapter)",
+      "Bash(npm install -w apps/web better-auth)"
     ]
   }
 }
