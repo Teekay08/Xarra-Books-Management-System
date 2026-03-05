@@ -20,6 +20,9 @@ import { InvoiceCreate } from './pages/finance/InvoiceCreate';
 import { InvoiceDetail } from './pages/finance/InvoiceDetail';
 import { PaymentList } from './pages/finance/PaymentList';
 import { PaymentCreate } from './pages/finance/PaymentCreate';
+import { ConsignmentList } from './pages/consignments/ConsignmentList';
+import { ConsignmentCreate } from './pages/consignments/ConsignmentCreate';
+import { ConsignmentDetail } from './pages/consignments/ConsignmentDetail';
 
 export function App() {
   return (
@@ -67,6 +70,11 @@ export function App() {
           {/* Payments */}
           <Route path="payments" element={<PaymentList />} />
           <Route path="payments/new" element={<PaymentCreate />} />
+
+          {/* Consignments */}
+          <Route path="consignments" element={<ConsignmentList />} />
+          <Route path="consignments/new" element={<ConsignmentCreate />} />
+          <Route path="consignments/:id" element={<ConsignmentDetail />} />
         </Route>
       </Routes>
     </BrowserRouter>

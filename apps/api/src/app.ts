@@ -11,6 +11,7 @@ import { inventoryRoutes } from './modules/inventory/routes.js';
 import { dashboardRoutes } from './modules/dashboard/routes.js';
 import { financeRoutes } from './modules/finance/routes.js';
 import { royaltyRoutes } from './modules/royalties/routes.js';
+import { consignmentRoutes } from './modules/consignments/routes.js';
 import { config } from './config.js';
 
 export async function buildApp() {
@@ -72,6 +73,7 @@ export async function buildApp() {
     api.register(dashboardRoutes, { prefix: '/dashboard' });
     api.register(financeRoutes, { prefix: '/finance' });
     api.register(royaltyRoutes, { prefix: '/royalties' });
+    api.register(consignmentRoutes, { prefix: '/consignments' });
   }, { prefix: '/api/v1' });
 
   return app;
