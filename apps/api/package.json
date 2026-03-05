@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "migrate-data": "tsx src/scripts/migrate-data.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.5.3",

@@ -1,0 +1,5 @@
+name,discountPct,sorDays,paymentTermsDays,contactName,contactEmail,contactPhone,remittanceEmail,notes
+"Bargain Books","50.00","90","30","Sarah Jones","sarah@bargainbooks.co.za","+27 11 555 0001","accounts@bargainbooks.co.za",""
+"Exclusive Books","45.00","60","30","Mike van der Berg","mike@exclusivebooks.co.za","+27 11 555 0002","finance@exclusivebooks.co.za",""
+"Takealot","35.00","","30","","seller-support@takealot.com","","",""
+"Xarra Website","0.00","","","","","","","Direct sales — no discount"

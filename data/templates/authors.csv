@@ -1,0 +1,3 @@
+legalName,penName,type,email,phone,addressLine1,city,province,postalCode,taxNumber,notes
+"Thandi Mokoena","","HYBRID","thandi@example.com","+27 82 123 4567","123 Main Road","Midrand","Gauteng","1685","1234567890","Sample author"
+"John Smith","J.S. Writer","TRADITIONAL","john@example.com","+27 83 987 6543","45 Oak Avenue","Cape Town","Western Cape","8001","0987654321",""
