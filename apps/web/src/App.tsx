@@ -15,6 +15,11 @@ import { PartnerForm } from './pages/partners/PartnerForm';
 import { InventoryDashboard } from './pages/inventory/InventoryDashboard';
 import { StockAdjustment } from './pages/inventory/StockAdjustment';
 import { MovementHistory } from './pages/inventory/MovementHistory';
+import { InvoiceList } from './pages/finance/InvoiceList';
+import { InvoiceCreate } from './pages/finance/InvoiceCreate';
+import { InvoiceDetail } from './pages/finance/InvoiceDetail';
+import { PaymentList } from './pages/finance/PaymentList';
+import { PaymentCreate } from './pages/finance/PaymentCreate';
 
 export function App() {
   return (
@@ -53,6 +58,15 @@ export function App() {
           <Route path="inventory/receive" element={<StockAdjustment mode="receive" />} />
           <Route path="inventory/adjust" element={<StockAdjustment mode="adjust" />} />
           <Route path="inventory/:titleId/movements" element={<MovementHistory />} />
+
+          {/* Invoices */}
+          <Route path="invoices" element={<InvoiceList />} />
+          <Route path="invoices/new" element={<InvoiceCreate />} />
+          <Route path="invoices/:id" element={<InvoiceDetail />} />
+
+          {/* Payments */}
+          <Route path="payments" element={<PaymentList />} />
+          <Route path="payments/new" element={<PaymentCreate />} />
         </Route>
       </Routes>
     </BrowserRouter>

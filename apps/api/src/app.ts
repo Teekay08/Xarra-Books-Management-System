@@ -9,6 +9,8 @@ import { titleRoutes } from './modules/titles/routes.js';
 import { partnerRoutes } from './modules/partners/routes.js';
 import { inventoryRoutes } from './modules/inventory/routes.js';
 import { dashboardRoutes } from './modules/dashboard/routes.js';
+import { financeRoutes } from './modules/finance/routes.js';
+import { royaltyRoutes } from './modules/royalties/routes.js';
 import { config } from './config.js';
 
 export async function buildApp() {
@@ -68,6 +70,8 @@ export async function buildApp() {
     api.register(partnerRoutes, { prefix: '/partners' });
     api.register(inventoryRoutes, { prefix: '/inventory' });
     api.register(dashboardRoutes, { prefix: '/dashboard' });
+    api.register(financeRoutes, { prefix: '/finance' });
+    api.register(royaltyRoutes, { prefix: '/royalties' });
   }, { prefix: '/api/v1' });
 
   return app;
