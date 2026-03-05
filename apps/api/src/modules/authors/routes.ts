@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc, asc } from 'drizzle-orm';
-import { authors, authorContracts, users } from '@xarra/db';
+import { authors, authorContracts, user as authUsers } from '@xarra/db';
 import { createAuthorSchema, updateAuthorSchema, createAuthorContractSchema, paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 
@@ -102,6 +102,7 @@ export async function authorRoutes(app: FastifyInstance) {
       royaltyRateEbook: String(body.royaltyRateEbook),
       advanceAmount: String(body.advanceAmount),
       triggerValue: body.triggerValue ? String(body.triggerValue) : undefined,
+      minimumPayment: body.minimumPayment != null ? String(body.minimumPayment) : undefined,
       startDate: new Date(body.startDate),
       endDate: body.endDate ? new Date(body.endDate) : undefined,
     }).returning();
@@ -121,9 +122,10 @@ export async function authorRoutes(app: FastifyInstance) {
     if (author.portalUserId) return reply.badRequest('Author already has portal access');
 
     // Create user via Better Auth sign-up
-    const response = await fetch(`${process.env.BETTER_AUTH_URL}/api/auth/sign-up/email`, {
+    const origin = process.env.BETTER_AUTH_URL || `http://localhost:${process.env.PORT || 3002}`;
+    const response = await fetch(`${origin}/api/auth/sign-up/email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: origin },
       body: JSON.stringify({ email, name, password }),
     });
 
@@ -134,8 +136,11 @@ export async function authorRoutes(app: FastifyInstance) {
 
     const { user: newUser } = await response.json() as { user: { id: string } };
 
-    // Set user role to AUTHOR in our users table
-    await app.db.update(users).set({ role: 'AUTHOR' }).where(eq(users.id, newUser.id));
+    // Set user role to AUTHOR in Better Auth user table
+    await app.db
+      .update(authUsers)
+      .set({ role: 'author', updatedAt: new Date() })
+      .where(eq(authUsers.id, newUser.id));
 
     // Link portal user to author
     const [updated] = await app.db

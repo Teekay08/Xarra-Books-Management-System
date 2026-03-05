@@ -31,7 +31,17 @@ export default fp(async (fastify) => {
 
         const response = await auth.handler(req);
         reply.status(response.status);
-        response.headers.forEach((value, key) => reply.header(key, value));
+
+        // Forward headers, handling Set-Cookie specially to avoid
+        // comma-joining multiple cookies (which corrupts them)
+        response.headers.forEach((value, key) => {
+          if (key.toLowerCase() === 'set-cookie') return; // handled below
+          reply.header(key, value);
+        });
+        const cookies = response.headers.getSetCookie?.() ?? [];
+        for (const cookie of cookies) {
+          reply.header('set-cookie', cookie);
+        }
 
         const text = await response.text();
         reply.send(text || null);

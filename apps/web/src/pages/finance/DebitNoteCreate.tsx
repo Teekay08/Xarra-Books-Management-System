@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { VAT_RATE, roundAmount } from '@xarra/shared';
 import { v4 as uuidv4 } from 'uuid';
 
 interface LineItem {
@@ -56,7 +57,7 @@ export function DebitNoteCreate() {
     const discount = lineTotal * (l.discountPct / 100);
     return s + lineTotal - discount;
   }, 0);
-  const vat = subtotal * 0.15;
+  const vat = roundAmount(subtotal * VAT_RATE);
   const total = subtotal + vat;
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {

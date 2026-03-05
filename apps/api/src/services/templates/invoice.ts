@@ -47,6 +47,9 @@ interface InvoiceData {
   number: string;
   invoiceDate: string;
   dueDate: string;
+  purchaseOrderNumber?: string | null;
+  customerReference?: string | null;
+  amountPaid?: string | number | null;
   company?: CompanyInfo;
   recipient: RecipientInfo;
   lines: InvoiceLine[];
@@ -54,6 +57,7 @@ interface InvoiceData {
   vatAmount: string;
   total: string;
   notes?: string | null;
+  paymentTermsText?: string | null;
 }
 
 function formatCurrency(value: string | number): string {
@@ -151,6 +155,8 @@ export function renderInvoiceHtml(data: InvoiceData): string {
         <strong>${data.number}</strong><br>
         Date: ${formatDate(data.invoiceDate)}<br>
         Due: ${formatDate(data.dueDate)}
+        ${data.purchaseOrderNumber ? `<br>PO: ${data.purchaseOrderNumber}` : ''}
+        ${data.customerReference ? `<br>Ref: ${data.customerReference}` : ''}
       </div>
     </div>
   </div>
@@ -196,9 +202,21 @@ export function renderInvoiceHtml(data: InvoiceData): string {
       <td>Total</td>
       <td style="text-align:right">${formatCurrency(data.total)}</td>
     </tr>
+    ${data.amountPaid && Number(data.amountPaid) > 0 ? `
+    <tr>
+      <td>Amount Paid</td>
+      <td style="text-align:right;color:#166534">(${formatCurrency(data.amountPaid)})</td>
+    </tr>
+    <tr class="grand-total">
+      <td>Balance Due</td>
+      <td style="text-align:right">${formatCurrency(Number(data.total) - Number(data.amountPaid))}</td>
+    </tr>
+    ` : ''}
   </table>
 
   ${data.notes ? `<div class="notes"><strong>Notes:</strong> ${data.notes}</div>` : ''}
+
+  ${data.paymentTermsText ? `<div class="notes"><strong>Payment Terms:</strong> ${data.paymentTermsText}</div>` : ''}
 
   ${bankDetailsHtml}
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { VAT_RATE, roundAmount } from '@xarra/shared';
 
 interface Partner { id: string; name: string; discountPct: string }
 interface Title { id: string; title: string; rrpZar: string }
@@ -99,8 +100,8 @@ export function QuotationCreate() {
     const line = l.quantity * l.unitPrice;
     return sum + line - line * (l.discountPct / 100);
   }, 0);
-  const subtotal = taxInclusive ? lineGross / 1.15 : lineGross;
-  const vat = taxInclusive ? lineGross - subtotal : lineGross * 0.15;
+  const subtotal = roundAmount(taxInclusive ? lineGross / (1 + VAT_RATE) : lineGross);
+  const vat = roundAmount(taxInclusive ? lineGross - subtotal : lineGross * VAT_RATE);
 
   const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm';
   const today = new Date().toISOString().split('T')[0];
@@ -185,7 +186,7 @@ export function QuotationCreate() {
         <div className="flex justify-end">
           <div className="w-64 space-y-1 text-sm">
             <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-mono">R {subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">VAT (15%)</span><span className="font-mono">R {vat.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">VAT ({VAT_RATE * 100}%)</span><span className="font-mono">R {vat.toFixed(2)}</span></div>
             <div className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span className="font-mono">R {(taxInclusive ? lineGross : subtotal + vat).toFixed(2)}</span></div>
           </div>
         </div>

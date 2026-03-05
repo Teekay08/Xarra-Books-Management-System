@@ -6,6 +6,15 @@ export type AuthorType = (typeof AUTHOR_TYPES)[number];
 export const ROYALTY_TRIGGER_TYPES = ['DATE', 'UNITS', 'REVENUE'] as const;
 export type RoyaltyTriggerType = (typeof ROYALTY_TRIGGER_TYPES)[number];
 
+export const PAYMENT_FREQUENCIES = ['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL'] as const;
+export type PaymentFrequency = (typeof PAYMENT_FREQUENCIES)[number];
+
+export const ROYALTY_STATUSES = ['CALCULATED', 'APPROVED', 'PAID', 'VOIDED'] as const;
+export type RoyaltyStatus = (typeof ROYALTY_STATUSES)[number];
+
+export const AUTHOR_PAYMENT_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'REVERSED'] as const;
+export type AuthorPaymentStatus = (typeof AUTHOR_PAYMENT_STATUSES)[number];
+
 export const TITLE_FORMATS = ['PRINT', 'EBOOK', 'PDF'] as const;
 export type TitleFormat = (typeof TITLE_FORMATS)[number];
 
@@ -52,6 +61,10 @@ export const DOCUMENT_PREFIXES = {
   CREDIT_NOTE: 'CN',
   DEBIT_NOTE: 'DN',
   PRO_FORMA: 'PF',
+  PURCHASE_ORDER: 'PO',
+  CASH_SALE: 'CS',
+  EXPENSE_CLAIM: 'EC',
+  REQUISITION: 'REQ',
   STATEMENT: 'SOA',
   RECEIPT: 'RCP',
   AUTHOR_INVOICE: 'AINV',
@@ -67,6 +80,11 @@ export const DOCUMENT_PREFIXES = {
 export const VAT_RATE = 0.15; // South Africa VAT rate
 export const DEFAULT_CURRENCY = 'ZAR';
 
+/** Round to 2 decimal places — use for all monetary calculations */
+export function roundAmount(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
 export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;
 export type DiscountType = (typeof DISCOUNT_TYPES)[number];
 
@@ -81,6 +99,18 @@ export type RemittanceStatus = (typeof REMITTANCE_STATUSES)[number];
 
 export const QUOTATION_STATUSES = ['DRAFT', 'SENT', 'ACCEPTED', 'EXPIRED', 'CONVERTED'] as const;
 export type QuotationStatus = (typeof QUOTATION_STATUSES)[number];
+
+export const PURCHASE_ORDER_STATUSES = ['DRAFT', 'ISSUED', 'RECEIVED', 'PARTIAL', 'CLOSED', 'CANCELLED'] as const;
+export type PurchaseOrderStatus = (typeof PURCHASE_ORDER_STATUSES)[number];
+
+export const CASH_SALE_PAYMENT_METHODS = ['CASH', 'CARD', 'EFT', 'MOBILE'] as const;
+export type CashSalePaymentMethod = (typeof CASH_SALE_PAYMENT_METHODS)[number];
+
+export const EXPENSE_CLAIM_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'PAID'] as const;
+export type ExpenseClaimStatus = (typeof EXPENSE_CLAIM_STATUSES)[number];
+
+export const REQUISITION_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'ORDERED'] as const;
+export type RequisitionStatus = (typeof REQUISITION_STATUSES)[number];
 
 export const DEFAULT_EXPENSE_CATEGORIES = [
   'Office Supplies', 'Printing & Production', 'Shipping & Courier',

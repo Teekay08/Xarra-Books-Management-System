@@ -15,6 +15,14 @@ interface InvoiceLine {
   lineTax: string;
 }
 
+interface PaymentRecord {
+  paymentId: string;
+  amount: string;
+  paymentDate: string;
+  bankReference: string | null;
+  paymentMethod: string | null;
+}
+
 interface Invoice {
   id: string;
   number: string;
@@ -25,12 +33,20 @@ interface Invoice {
   total: string;
   status: string;
   notes: string | null;
+  purchaseOrderNumber: string | null;
+  customerReference: string | null;
+  paymentTermsText: string | null;
+  sentAt: string | null;
+  sentTo: string | null;
   issuedAt: string | null;
   voidedAt: string | null;
   voidedReason: string | null;
+  amountPaid: string;
+  amountDue: string;
   partner: { name: string; contactName: string | null; contactEmail: string | null };
   lines: InvoiceLine[];
   creditNotes?: { id: string; number: string; total: string; reason: string }[];
+  paymentHistory?: PaymentRecord[];
 }
 
 const statusColors: Record<string, string> = {
@@ -42,10 +58,19 @@ const statusColors: Record<string, string> = {
   VOIDED: 'bg-red-50 text-red-400',
 };
 
+function formatR(val: string | number) {
+  return `R ${Number(val).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function InvoiceDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [showActions, setShowActions] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCreditNoteModal, setShowCreditNoteModal] = useState(false);
+  const [cnError, setCnError] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -59,15 +84,52 @@ export function InvoiceDetail() {
 
   const voidMutation = useMutation({
     mutationFn: (reason: string) =>
-      api(`/finance/invoices/${id}/void`, {
-        method: 'POST',
-        body: JSON.stringify({ reason }),
-      }),
+      api(`/finance/invoices/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoice', id] }),
   });
 
-  const [showCreditNoteModal, setShowCreditNoteModal] = useState(false);
-  const [cnError, setCnError] = useState('');
+  const markSentMutation = useMutation({
+    mutationFn: () => api(`/finance/invoices/${id}/mark-sent`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      setShowActions(false);
+    },
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: () => api<{ data: { id: string } }>(`/finance/invoices/${id}/duplicate`, { method: 'POST' }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      navigate(`/finance/invoices/${res.data.id}`);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api(`/finance/invoices/${id}`, { method: 'DELETE' }),
+    onSuccess: () => navigate('/finance/invoices'),
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: (body: { recipientEmail: string; subject?: string; message?: string }) =>
+      api(`/finance/invoices/${id}/send`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      setShowSendModal(false);
+    },
+  });
+
+  const paymentMutation = useMutation({
+    mutationFn: (body: { partnerId: string; amount: number; paymentDate: string; paymentMethod: string; bankReference?: string; invoiceAllocations: { invoiceId: string; amount: number }[] }) =>
+      api('/finance/payments', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'X-Idempotency-Key': crypto.randomUUID() },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      setShowPaymentModal(false);
+    },
+  });
 
   const creditNoteMutation = useMutation({
     mutationFn: (body: { reason: string; lines: { invoiceLineId: string; quantity: number }[] }) =>
@@ -86,6 +148,8 @@ export function InvoiceDetail() {
   if (!data?.data) return <div className="py-12 text-center text-gray-400">Invoice not found</div>;
 
   const inv = data.data;
+  const amountDue = Number(inv.amountDue ?? inv.total);
+  const amountPaid = Number(inv.amountPaid ?? 0);
 
   return (
     <div>
@@ -93,50 +157,121 @@ export function InvoiceDetail() {
         title={inv.number}
         subtitle={inv.partner.name}
         action={
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             {inv.status === 'DRAFT' && (
-              <button
-                onClick={() => issueMutation.mutate()}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                Issue Invoice
-              </button>
+              <>
+                <button onClick={() => navigate(`/finance/invoices/${id}/edit`)}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  Edit
+                </button>
+                <button onClick={() => issueMutation.mutate()}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                  Issue Invoice
+                </button>
+              </>
             )}
-            <a
-              href={`/api/v1/finance/invoices/${id}/pdf`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              Download PDF
+
+            <a href={`/api/v1/finance/invoices/${id}/pdf`} target="_blank" rel="noopener noreferrer"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              PDF
             </a>
-            {inv.status !== 'VOIDED' && inv.status !== 'DRAFT' && (
-              <button
-                onClick={() => setShowCreditNoteModal(true)}
-                className="rounded-md border border-amber-300 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50"
-              >
-                Credit Note
+
+            {/* More actions dropdown */}
+            <div className="relative">
+              <button onClick={() => setShowActions(!showActions)}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01" />
+                </svg>
               </button>
-            )}
-            {inv.status !== 'VOIDED' && (
-              <button
-                onClick={() => {
-                  const reason = prompt('Reason for voiding this invoice:');
-                  if (reason) voidMutation.mutate(reason);
-                }}
-                className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
-              >
-                Void
-              </button>
-            )}
+
+              {showActions && (
+                <div className="absolute right-0 mt-1 w-48 rounded-md bg-white shadow-lg border border-gray-200 z-50"
+                  onMouseLeave={() => setShowActions(false)}>
+                  {inv.status !== 'VOIDED' && (
+                    <button onClick={() => { setShowSendModal(true); setShowActions(false); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      Send via Email
+                    </button>
+                  )}
+                  {!inv.sentAt && inv.status !== 'VOIDED' && (
+                    <button onClick={() => markSentMutation.mutate()}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      Mark as Sent
+                    </button>
+                  )}
+                  {inv.status !== 'VOIDED' && inv.status !== 'DRAFT' && amountDue > 0 && (
+                    <button onClick={() => { setShowPaymentModal(true); setShowActions(false); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      Record Payment
+                    </button>
+                  )}
+                  {inv.status !== 'VOIDED' && inv.status !== 'DRAFT' && (
+                    <button onClick={() => { setShowCreditNoteModal(true); setShowActions(false); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      Credit Note
+                    </button>
+                  )}
+                  <button onClick={() => { duplicateMutation.mutate(); setShowActions(false); }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Duplicate
+                  </button>
+                  <button onClick={() => window.open(`/api/v1/finance/invoices/${id}/pdf`, '_blank')}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Print
+                  </button>
+                  {inv.status !== 'VOIDED' && inv.status !== 'DRAFT' && (
+                    <button onClick={() => {
+                      const reason = prompt('Reason for voiding this invoice:');
+                      if (reason) { voidMutation.mutate(reason); setShowActions(false); }
+                    }}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                      Void Invoice
+                    </button>
+                  )}
+                  {inv.status === 'DRAFT' && (
+                    <button onClick={() => {
+                      if (confirm('Delete this draft invoice? This cannot be undone.')) {
+                        deleteMutation.mutate(); setShowActions(false);
+                      }
+                    }}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                      Delete
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         }
       />
 
+      {/* Amount Due Banner */}
+      {amountDue > 0 && inv.status !== 'VOIDED' && inv.status !== 'DRAFT' && (
+        <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-amber-800 font-medium">Amount Due</p>
+            <p className="text-2xl font-bold text-amber-900">{formatR(amountDue)}</p>
+          </div>
+          <button onClick={() => setShowPaymentModal(true)}
+            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800">
+            Record Payment
+          </button>
+        </div>
+      )}
+
+      {inv.status === 'PAID' && (
+        <div className="mb-6 rounded-lg bg-green-50 border border-green-200 p-4">
+          <p className="text-sm text-green-800 font-medium">Fully Paid</p>
+          <p className="text-2xl font-bold text-green-900">{formatR(inv.total)}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          {/* Invoice meta */}
           <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <div className="grid grid-cols-4 gap-4 mb-6 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 text-sm">
               <div>
                 <span className="text-xs text-gray-500 block">Status</span>
                 <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium mt-1 ${statusColors[inv.status] ?? ''}`}>
@@ -155,8 +290,28 @@ export function InvoiceDetail() {
                 <span className="text-xs text-gray-500 block">Partner</span>
                 <span>{inv.partner.name}</span>
               </div>
+              {inv.purchaseOrderNumber && (
+                <div>
+                  <span className="text-xs text-gray-500 block">PO Number</span>
+                  <span>{inv.purchaseOrderNumber}</span>
+                </div>
+              )}
+              {inv.customerReference && (
+                <div>
+                  <span className="text-xs text-gray-500 block">Customer Ref</span>
+                  <span>{inv.customerReference}</span>
+                </div>
+              )}
+              {inv.sentAt && (
+                <div>
+                  <span className="text-xs text-gray-500 block">Sent</span>
+                  <span>{new Date(inv.sentAt).toLocaleDateString('en-ZA')}</span>
+                  {inv.sentTo && <span className="text-xs text-gray-400 block">{inv.sentTo}</span>}
+                </div>
+              )}
             </div>
 
+            {/* Line items table */}
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-gray-500">
@@ -174,32 +329,46 @@ export function InvoiceDetail() {
                     <td className="py-2">{line.lineNumber}</td>
                     <td className="py-2">{line.description}</td>
                     <td className="py-2 text-right font-mono">{line.quantity}</td>
-                    <td className="py-2 text-right font-mono">R {Number(line.unitPrice).toFixed(2)}</td>
+                    <td className="py-2 text-right font-mono">{formatR(line.unitPrice)}</td>
                     <td className="py-2 text-right">{Number(line.discountPct)}%</td>
-                    <td className="py-2 text-right font-mono">R {Number(line.lineTotal).toFixed(2)}</td>
+                    <td className="py-2 text-right font-mono">{formatR(line.lineTotal)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
+            {/* Totals */}
             <div className="flex justify-end mt-4">
-              <div className="w-64 space-y-1 text-sm">
+              <div className="w-72 space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Subtotal</span>
-                  <span className="font-mono">R {Number(inv.subtotal).toFixed(2)}</span>
+                  <span className="font-mono">{formatR(inv.subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">VAT (15%)</span>
-                  <span className="font-mono">R {Number(inv.vatAmount).toFixed(2)}</span>
+                  <span className="font-mono">{formatR(inv.vatAmount)}</span>
                 </div>
                 <div className="flex justify-between border-t pt-1 font-bold text-base">
                   <span>Total</span>
-                  <span className="font-mono">R {Number(inv.total).toFixed(2)}</span>
+                  <span className="font-mono">{formatR(inv.total)}</span>
                 </div>
+                {amountPaid > 0 && (
+                  <>
+                    <div className="flex justify-between text-green-700">
+                      <span>Amount Paid</span>
+                      <span className="font-mono">({formatR(amountPaid)})</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1 font-bold text-base">
+                      <span>Balance Due</span>
+                      <span className="font-mono">{formatR(amountDue)}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
+          {/* Voided notice */}
           {inv.voidedReason && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4">
               <p className="text-sm font-medium text-red-700">Voided</p>
@@ -207,6 +376,26 @@ export function InvoiceDetail() {
             </div>
           )}
 
+          {/* Payment History */}
+          {inv.paymentHistory && inv.paymentHistory.length > 0 && (
+            <div className="rounded-lg border border-gray-200 bg-white p-5">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Payment History</h3>
+              <div className="divide-y">
+                {inv.paymentHistory.map((p, i) => (
+                  <div key={i} className="py-2 flex justify-between text-sm">
+                    <div>
+                      <span className="text-gray-600">{new Date(p.paymentDate).toLocaleDateString('en-ZA')}</span>
+                      <span className="text-gray-400 ml-2">{p.paymentMethod ?? 'EFT'}</span>
+                      {p.bankReference && <span className="text-gray-400 ml-2">Ref: {p.bankReference}</span>}
+                    </div>
+                    <span className="font-mono text-green-700">{formatR(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Credit Notes */}
           {inv.creditNotes && inv.creditNotes.length > 0 && (
             <div className="rounded-lg border border-gray-200 bg-white p-5">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Credit Notes</h3>
@@ -217,7 +406,7 @@ export function InvoiceDetail() {
                       <span className="font-mono">{cn.number}</span>
                       <span className="text-gray-500 ml-2">{cn.reason}</span>
                     </div>
-                    <span className="font-mono text-red-600">-R {Number(cn.total).toFixed(2)}</span>
+                    <span className="font-mono text-red-600">-{formatR(cn.total)}</span>
                   </div>
                 ))}
               </div>
@@ -225,14 +414,58 @@ export function InvoiceDetail() {
           )}
         </div>
 
-        {inv.notes && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
-            <p className="text-sm text-gray-600 whitespace-pre-wrap">{inv.notes}</p>
-          </div>
-        )}
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {inv.notes && (
+            <div className="rounded-lg border border-gray-200 bg-white p-5">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">{inv.notes}</p>
+            </div>
+          )}
+
+          {inv.paymentTermsText && (
+            <div className="rounded-lg border border-gray-200 bg-white p-5">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Payment Terms</h3>
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">{inv.paymentTermsText}</p>
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Send Email Modal */}
+      {showSendModal && (
+        <SendEmailModal
+          defaultEmail={inv.partner.contactEmail ?? ''}
+          invoiceNumber={inv.number}
+          isPending={sendMutation.isPending}
+          error={sendMutation.isError ? (sendMutation.error as Error).message : ''}
+          onClose={() => setShowSendModal(false)}
+          onSend={(email, subject, message) => sendMutation.mutate({ recipientEmail: email, subject, message })}
+        />
+      )}
+
+      {/* Record Payment Modal */}
+      {showPaymentModal && (
+        <RecordPaymentModal
+          invoiceId={inv.id}
+          partnerId={(inv as any).partnerId ?? ''}
+          amountDue={amountDue}
+          isPending={paymentMutation.isPending}
+          onClose={() => setShowPaymentModal(false)}
+          onSubmit={(amount, method, ref, date) => {
+            paymentMutation.mutate({
+              partnerId: (inv as any).partnerId,
+              amount,
+              paymentDate: date,
+              paymentMethod: method,
+              bankReference: ref || undefined,
+              invoiceAllocations: [{ invoiceId: inv.id, amount }],
+            });
+          }}
+        />
+      )}
+
+      {/* Credit Note Modal */}
       {showCreditNoteModal && (
         <CreditNoteModal
           lines={inv.lines}
@@ -245,6 +478,106 @@ export function InvoiceDetail() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function SendEmailModal({ defaultEmail, invoiceNumber, isPending, error, onClose, onSend }: {
+  defaultEmail: string;
+  invoiceNumber: string;
+  isPending: boolean;
+  error: string;
+  onClose: () => void;
+  onSend: (email: string, subject: string, message: string) => void;
+}) {
+  const [email, setEmail] = useState(defaultEmail);
+  const [subject, setSubject] = useState(`Invoice ${invoiceNumber} from Xarra Books`);
+  const [message, setMessage] = useState('');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-900">Send Invoice via Email</h3>
+        {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Email *</label>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+          <input value={subject} onChange={(e) => setSubject(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Message (optional)</label>
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="Optional message to include..." />
+        </div>
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button onClick={() => email && onSend(email, subject, message)} disabled={!email || isPending}
+            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+            {isPending ? 'Sending...' : 'Send'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecordPaymentModal({ invoiceId, partnerId, amountDue, isPending, onClose, onSubmit }: {
+  invoiceId: string;
+  partnerId: string;
+  amountDue: number;
+  isPending: boolean;
+  onClose: () => void;
+  onSubmit: (amount: number, method: string, ref: string, date: string) => void;
+}) {
+  const [amount, setAmount] = useState(amountDue.toFixed(2));
+  const [method, setMethod] = useState('BANK_TRANSFER');
+  const [ref, setRef] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-900">Record Payment</h3>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" step="0.01" min="0.01"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+          <select value={method} onChange={(e) => setMethod(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+            <option value="BANK_TRANSFER">Bank Transfer / EFT</option>
+            <option value="CASH">Cash</option>
+            <option value="CARD">Card</option>
+            <option value="CHEQUE">Cheque</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Bank Reference</label>
+          <input value={ref} onChange={(e) => setRef(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Payment Date *</label>
+          <input value={date} onChange={(e) => setDate(e.target.value)} type="date"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        </div>
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button onClick={() => onSubmit(Number(amount), method, ref, date)} disabled={!amount || isPending}
+            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+            {isPending ? 'Recording...' : 'Record Payment'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -274,13 +607,11 @@ function CreditNoteModal({ lines, error, isPending, onClose, onSubmit }: {
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <h3 className="text-lg font-semibold text-gray-900">Create Credit Note</h3>
           {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
             <input value={reason} onChange={(e) => setReason(e.target.value)} required
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. Damaged goods returned" />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Select line items to credit</label>
             <div className="border rounded-md divide-y">
@@ -298,7 +629,6 @@ function CreditNoteModal({ lines, error, isPending, onClose, onSubmit }: {
               ))}
             </div>
           </div>
-
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose}
               className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>

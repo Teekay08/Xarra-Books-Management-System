@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker exec xarra-postgres psql -U xarra -d xarra -c \"UPDATE \"\"user\"\" SET role = ''admin'' WHERE email = ''admin@xarrabooks.com'';\")",
+      "Bash(node -e \"fetch\\(''http://localhost:3002/health''\\).then\\(r=>r.json\\(\\)\\).then\\(d=>console.log\\(JSON.stringify\\(d\\)\\)\\).catch\\(e=>console.error\\(e.message\\)\\)\")",
+      "Bash(taskkill //PID 73132 //F)",
+      "Bash(node -e \":*)",
+      "Bash(xargs grep -l \"statement\\\\|Statement\")",
+      "Bash(xargs grep -l \"author.*portal\\\\|AUTHOR\")",
+      "Bash(npm install @fastify/multipart @fastify/static)"
+    ]
+  }
+}

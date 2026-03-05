@@ -28,6 +28,9 @@ import { expenseRoutes } from './modules/expenses/routes.js';
 import { reportRoutes } from './modules/reports/routes.js';
 import { userRoutes } from './modules/users/routes.js';
 import { returnRoutes } from './modules/returns/routes.js';
+import { auditRoutes } from './modules/audit/routes.js';
+import { salesRoutes } from './modules/sales/routes.js';
+import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
 export async function buildApp() {
@@ -66,6 +69,9 @@ export async function buildApp() {
 
   // Authentication (Better Auth)
   await app.register(authPlugin);
+
+  // Audit trail (auto-log all mutations)
+  auditPlugin(app);
 
   // Background jobs (non-blocking)
   const sorQueue = createSorExpiryQueue(config.redis.url);
@@ -144,6 +150,8 @@ export async function buildApp() {
     api.register(reportRoutes, { prefix: '/reports' });
     api.register(userRoutes, { prefix: '/users' });
     api.register(returnRoutes, { prefix: '/returns' });
+    api.register(auditRoutes, { prefix: '/audit' });
+    api.register(salesRoutes, { prefix: '/sales' });
   }, { prefix: '/api/v1' });
 
   return app;

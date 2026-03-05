@@ -1,9 +1,27 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
-import { users } from '@xarra/db';
+import { user as authUsers } from '@xarra/db';
 import { paginationSchema } from '@xarra/shared';
 import { requireRole } from '../../middleware/require-auth.js';
 import { z } from 'zod';
+
+const uiToAuthRole = {
+  ADMIN: 'admin',
+  FINANCE: 'finance',
+  OPERATIONS: 'operations',
+  EDITORIAL: 'editorial',
+  AUTHOR: 'author',
+  REPORTS_ONLY: 'reportsOnly',
+} as const;
+
+const authToUiRole = {
+  admin: 'ADMIN',
+  finance: 'FINANCE',
+  operations: 'OPERATIONS',
+  editorial: 'EDITORIAL',
+  author: 'AUTHOR',
+  reportsOnly: 'REPORTS_ONLY',
+} as const;
 
 const createUserSchema = z.object({
   name: z.string().min(1),
@@ -26,22 +44,25 @@ export async function userRoutes(app: FastifyInstance) {
     const offset = (page - 1) * limit;
 
     const where = search
-      ? sql`(${users.name} ILIKE ${'%' + search + '%'} OR ${users.email} ILIKE ${'%' + search + '%'})`
+      ? sql`(${authUsers.name} ILIKE ${'%' + search + '%'} OR ${authUsers.email} ILIKE ${'%' + search + '%'})`
       : undefined;
 
     const [items, countResult] = await Promise.all([
-      app.db.query.users.findMany({
+      app.db.query.user.findMany({
         where: where ? () => where : undefined,
         orderBy: (u, { asc }) => [asc(u.name)],
         limit,
         offset,
-        columns: { passwordHash: false },
       }),
-      app.db.select({ count: sql<number>`count(*)` }).from(users).where(where),
+      app.db.select({ count: sql<number>`count(*)` }).from(authUsers).where(where),
     ]);
 
     return {
-      data: items,
+      data: items.map((item) => ({
+        ...item,
+        role: authToUiRole[(item.role as keyof typeof authToUiRole) ?? 'operations'] ?? 'OPERATIONS',
+        isActive: item.isActive ?? true,
+      })),
       pagination: {
         page, limit,
         total: Number(countResult[0].count),
@@ -55,9 +76,10 @@ export async function userRoutes(app: FastifyInstance) {
     const body = createUserSchema.parse(request.body);
 
     // Create user via Better Auth sign-up
-    const response = await fetch(`${process.env.BETTER_AUTH_URL}/api/auth/sign-up/email`, {
+    const origin = process.env.BETTER_AUTH_URL || `http://localhost:${process.env.PORT || 3002}`;
+    const response = await fetch(`${origin}/api/auth/sign-up/email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: origin },
       body: JSON.stringify({ email: body.email, name: body.name, password: body.password }),
     });
 
@@ -69,14 +91,24 @@ export async function userRoutes(app: FastifyInstance) {
     const { user: newUser } = await response.json() as { user: { id: string } };
 
     // Set role
-    await app.db.update(users).set({ role: body.role }).where(eq(users.id, newUser.id));
+    await app.db
+      .update(authUsers)
+      .set({ role: uiToAuthRole[body.role], updatedAt: new Date() })
+      .where(eq(authUsers.id, newUser.id));
 
-    const user = await app.db.query.users.findFirst({
-      where: eq(users.id, newUser.id),
-      columns: { passwordHash: false },
+    const createdUser = await app.db.query.user.findFirst({
+      where: eq(authUsers.id, newUser.id),
     });
 
-    return reply.status(201).send({ data: user });
+    return reply.status(201).send({
+      data: createdUser
+        ? {
+          ...createdUser,
+          role: authToUiRole[(createdUser.role as keyof typeof authToUiRole) ?? 'operations'] ?? 'OPERATIONS',
+          isActive: createdUser.isActive ?? true,
+        }
+        : null,
+    });
   });
 
   // Update user (admin only)
@@ -84,34 +116,46 @@ export async function userRoutes(app: FastifyInstance) {
     const body = updateUserSchema.parse(request.body);
 
     const [updated] = await app.db
-      .update(users)
-      .set({ ...body, updatedAt: new Date() })
-      .where(eq(users.id, request.params.id))
+      .update(authUsers)
+      .set({
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.role !== undefined ? { role: uiToAuthRole[body.role] } : {}),
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(authUsers.id, request.params.id))
       .returning({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        role: users.role,
-        isActive: users.isActive,
-        updatedAt: users.updatedAt,
+        id: authUsers.id,
+        name: authUsers.name,
+        email: authUsers.email,
+        role: authUsers.role,
+        isActive: authUsers.isActive,
+        updatedAt: authUsers.updatedAt,
       });
 
     if (!updated) return reply.notFound('User not found');
-    return { data: updated };
+    return {
+      data: {
+        ...updated,
+        role: authToUiRole[(updated.role as keyof typeof authToUiRole) ?? 'operations'] ?? 'OPERATIONS',
+        isActive: updated.isActive ?? true,
+      },
+    };
   });
 
   // Resend verification email (admin only)
   app.post<{ Params: { id: string } }>('/:id/send-verification', { preHandler: requireRole('admin') }, async (request, reply) => {
-    const targetUser = await app.db.query.users.findFirst({
-      where: eq(users.id, request.params.id),
+    const targetUser = await app.db.query.user.findFirst({
+      where: eq(authUsers.id, request.params.id),
       columns: { id: true, email: true },
     });
     if (!targetUser) return reply.notFound('User not found');
 
     // Trigger verification via Better Auth
-    const response = await fetch(`${process.env.BETTER_AUTH_URL}/api/auth/send-verification-email`, {
+    const origin = process.env.BETTER_AUTH_URL || `http://localhost:${process.env.PORT || 3002}`;
+    const response = await fetch(`${origin}/api/auth/send-verification-email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: origin },
       body: JSON.stringify({ email: targetUser.email }),
     });
 

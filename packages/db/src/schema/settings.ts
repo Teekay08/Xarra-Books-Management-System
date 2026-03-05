@@ -1,6 +1,8 @@
 import { pgTable, uuid, varchar, text, timestamp, jsonb, boolean, index } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
 import { invoices } from './finance';
 import { channelPartners } from './channels';
+import { users } from './users';
 
 export const companySettings = pgTable('company_settings', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -52,3 +54,23 @@ export const invoiceReminders = pgTable('invoice_reminders', {
   index('idx_invoice_reminders_invoice_id').on(t.invoiceId),
   index('idx_invoice_reminders_type').on(t.invoiceId, t.reminderType),
 ]);
+
+// Track sent documents (invoices, quotations, POs, etc.)
+export const documentEmails = pgTable('document_emails', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  documentType: varchar('document_type', { length: 30 }).notNull(), // INVOICE, QUOTATION, PURCHASE_ORDER, CREDIT_NOTE, DEBIT_NOTE, STATEMENT
+  documentId: uuid('document_id').notNull(),
+  sentTo: varchar('sent_to', { length: 255 }).notNull(),
+  sentBy: uuid('sent_by').references(() => users.id),
+  subject: varchar('subject', { length: 500 }).notNull(),
+  message: text('message'),
+  status: varchar('status', { length: 20 }).notNull().default('SENT'), // SENT, FAILED
+  errorMessage: text('error_message'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_document_emails_doc').on(t.documentType, t.documentId),
+]);
+
+export const documentEmailsRelations = relations(documentEmails, ({ one }) => ({
+  sentByUser: one(users, { fields: [documentEmails.sentBy], references: [users.id] }),
+}));

@@ -5,17 +5,20 @@ import {
   payments, paymentAllocations, channelPartners,
   partnerBranches, remittances, remittanceInvoices, companySettings,
   quotations, quotationLines,
+  purchaseOrders, purchaseOrderLines,
 } from '@xarra/db';
-import { createInvoiceSchema, recordPaymentSchema, paginationSchema, createRemittanceSchema, createDebitNoteSchema } from '@xarra/shared';
-import { VAT_RATE } from '@xarra/shared';
-import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { createInvoiceSchema, recordPaymentSchema, paginationSchema, createRemittanceSchema, createDebitNoteSchema, sendDocumentSchema, createPurchaseOrderSchema } from '@xarra/shared';
+import { VAT_RATE, roundAmount } from '@xarra/shared';
+import { requireAuth, requireRole, requirePermission } from '../../middleware/require-auth.js';
 import { requireIdempotencyKey, getIdempotencyKey } from '../../middleware/idempotency.js';
-import { nextInvoiceNumber, nextCreditNoteNumber, nextDebitNoteNumber, nextQuotationNumber } from './invoice-number.js';
+import { nextInvoiceNumber, nextCreditNoteNumber, nextDebitNoteNumber, nextQuotationNumber, nextPurchaseOrderNumber } from './invoice-number.js';
 import { generatePdf } from '../../services/pdf.js';
 import { renderInvoiceHtml } from '../../services/templates/invoice.js';
 import { renderDebitNoteHtml } from '../../services/templates/debit-note.js';
 import { renderQuotationHtml } from '../../services/templates/quotation.js';
 import { renderReceiptHtml } from '../../services/templates/receipt.js';
+import { renderPurchaseOrderHtml } from '../../services/templates/purchase-order.js';
+import { sendDocumentEmail } from '../../services/document-email.js';
 
 export async function financeRoutes(app: FastifyInstance) {
   // ==========================================
@@ -53,14 +56,33 @@ export async function financeRoutes(app: FastifyInstance) {
     };
   });
 
-  // Get single invoice with lines
+  // Get single invoice with lines, payments, and computed amounts
   app.get<{ Params: { id: string } }>('/invoices/:id', { preHandler: requireAuth }, async (request, reply) => {
     const invoice = await app.db.query.invoices.findFirst({
       where: eq(invoices.id, request.params.id),
       with: { partner: true, lines: true, creditNotes: true },
     });
     if (!invoice) return reply.notFound('Invoice not found');
-    return { data: invoice };
+
+    // Compute amount paid from payment allocations
+    const paidResult = await app.db.execute<{ total: string }>(sql`
+      SELECT COALESCE(SUM(amount::numeric), 0) AS total
+      FROM payment_allocations
+      WHERE invoice_id = ${request.params.id}
+    `);
+    const amountPaid = Number(paidResult[0]?.total ?? 0);
+    const amountDue = Math.max(0, Number(invoice.total) - amountPaid);
+
+    // Get payment allocations with payment details
+    const allocations = await app.db.execute<{ paymentId: string; amount: string; paymentDate: string; bankReference: string | null; paymentMethod: string | null }>(sql`
+      SELECT pa.payment_id as "paymentId", pa.amount, p.payment_date as "paymentDate", p.bank_reference as "bankReference", p.payment_method as "paymentMethod"
+      FROM payment_allocations pa
+      JOIN payments p ON p.id = pa.payment_id
+      WHERE pa.invoice_id = ${request.params.id}
+      ORDER BY p.payment_date DESC
+    `);
+
+    return { data: { ...invoice, amountPaid: String(amountPaid.toFixed(2)), amountDue: String(amountDue.toFixed(2)), paymentHistory: allocations } };
   });
 
   // Create invoice
@@ -89,17 +111,19 @@ export async function financeRoutes(app: FastifyInstance) {
     let subtotal = 0;
     let totalVat = 0;
     const lineData = body.lines.map((line, i) => {
-      const lineSubtotal = line.quantity * line.unitPrice;
+      const lineSubtotal = roundAmount(line.quantity * line.unitPrice);
       const discountType = line.discountType ?? 'PERCENT';
-      const discount = discountType === 'FIXED'
-        ? line.discountPct * line.quantity
-        : lineSubtotal * (line.discountPct / 100);
-      const lineTotal = lineSubtotal - discount;
+      const discount = roundAmount(
+        discountType === 'FIXED'
+          ? Math.min(line.discountPct, lineSubtotal) // FIXED: discount amount capped at line subtotal
+          : lineSubtotal * (line.discountPct / 100)
+      );
+      const lineTotal = roundAmount(lineSubtotal - discount);
       // Tax-inclusive: extract VAT from the price. Tax-exclusive: add VAT on top.
-      const lineTax = isTaxInclusive
+      const lineTax = roundAmount(isTaxInclusive
         ? lineTotal - (lineTotal / (1 + VAT_RATE))
-        : lineTotal * VAT_RATE;
-      const lineExVat = isTaxInclusive ? lineTotal - lineTax : lineTotal;
+        : lineTotal * VAT_RATE);
+      const lineExVat = roundAmount(isTaxInclusive ? lineTotal - lineTax : lineTotal);
       subtotal += lineExVat;
       totalVat += lineTax;
       return {
@@ -115,8 +139,10 @@ export async function financeRoutes(app: FastifyInstance) {
       };
     });
 
+    subtotal = roundAmount(subtotal);
+    totalVat = roundAmount(totalVat);
     const vatAmount = totalVat;
-    const total = subtotal + vatAmount;
+    const total = roundAmount(subtotal + vatAmount);
 
     // Generate invoice number
     const number = await nextInvoiceNumber(app.db as any);
@@ -144,6 +170,9 @@ export async function financeRoutes(app: FastifyInstance) {
         taxInclusive: isTaxInclusive,
         status: 'DRAFT',
         dueDate,
+        purchaseOrderNumber: body.purchaseOrderNumber,
+        customerReference: body.customerReference,
+        paymentTermsText: body.paymentTermsText,
         notes: body.notes,
         idempotencyKey,
         createdBy: userId,
@@ -201,6 +230,266 @@ export async function financeRoutes(app: FastifyInstance) {
     return { data: updated };
   });
 
+  // Edit DRAFT invoice
+  app.patch<{ Params: { id: string } }>('/invoices/:id', {
+    preHandler: requirePermission('invoices', 'update'),
+  }, async (request, reply) => {
+    const invoice = await app.db.query.invoices.findFirst({
+      where: eq(invoices.id, request.params.id),
+    });
+    if (!invoice) return reply.notFound('Invoice not found');
+    if (invoice.status !== 'DRAFT') return reply.badRequest('Only DRAFT invoices can be edited');
+
+    const body = request.body as {
+      partnerId?: string;
+      branchId?: string | null;
+      invoiceDate?: string;
+      dueDate?: string;
+      purchaseOrderNumber?: string | null;
+      customerReference?: string | null;
+      paymentTermsText?: string | null;
+      taxInclusive?: boolean;
+      notes?: string | null;
+      lines?: { titleId?: string; description: string; quantity: number; unitPrice: number; discountPct: number; discountType?: string }[];
+    };
+
+    const updates: Record<string, any> = { updatedAt: new Date() };
+    if (body.partnerId !== undefined) updates.partnerId = body.partnerId;
+    if (body.branchId !== undefined) updates.branchId = body.branchId;
+    if (body.invoiceDate !== undefined) updates.invoiceDate = new Date(body.invoiceDate);
+    if (body.dueDate !== undefined) updates.dueDate = new Date(body.dueDate);
+    if (body.purchaseOrderNumber !== undefined) updates.purchaseOrderNumber = body.purchaseOrderNumber;
+    if (body.customerReference !== undefined) updates.customerReference = body.customerReference;
+    if (body.paymentTermsText !== undefined) updates.paymentTermsText = body.paymentTermsText;
+    if (body.notes !== undefined) updates.notes = body.notes;
+
+    // If lines are provided, recalculate totals
+    if (body.lines) {
+      const isTaxInclusive = body.taxInclusive ?? invoice.taxInclusive ?? false;
+      let subtotal = 0;
+      let totalVat = 0;
+      const lineData = body.lines.map((line, i) => {
+        const lineSubtotal = roundAmount(line.quantity * line.unitPrice);
+        const discountType = line.discountType ?? 'PERCENT';
+        const discount = roundAmount(
+          discountType === 'FIXED'
+            ? Math.min(line.discountPct, lineSubtotal)
+            : lineSubtotal * (line.discountPct / 100)
+        );
+        const lineTotal = roundAmount(lineSubtotal - discount);
+        const lineTax = roundAmount(isTaxInclusive
+          ? lineTotal - (lineTotal / (1 + VAT_RATE))
+          : lineTotal * VAT_RATE);
+        const lineExVat = roundAmount(isTaxInclusive ? lineTotal - lineTax : lineTotal);
+        subtotal += lineExVat;
+        totalVat += lineTax;
+        return {
+          lineNumber: i + 1,
+          titleId: line.titleId,
+          description: line.description ?? `${line.quantity} x units`,
+          quantity: String(line.quantity),
+          unitPrice: String(line.unitPrice),
+          discountPct: String(line.discountPct),
+          discountType,
+          lineTotal: String(lineTotal),
+          lineTax: String(lineTax),
+        };
+      });
+
+      subtotal = roundAmount(subtotal);
+      totalVat = roundAmount(totalVat);
+      updates.subtotal = String(subtotal);
+      updates.vatAmount = String(totalVat);
+      updates.total = String(roundAmount(subtotal + totalVat));
+      if (body.taxInclusive !== undefined) updates.taxInclusive = body.taxInclusive;
+
+      // Replace lines in transaction
+      const result = await app.db.transaction(async (tx) => {
+        await tx.delete(invoiceLines).where(eq(invoiceLines.invoiceId, request.params.id));
+        const [updated] = await tx.update(invoices).set(updates).where(eq(invoices.id, request.params.id)).returning();
+        const lines = await tx.insert(invoiceLines).values(
+          lineData.map((l) => ({ ...l, invoiceId: request.params.id }))
+        ).returning();
+        return { ...updated, lines };
+      });
+
+      return { data: result };
+    }
+
+    const [updated] = await app.db.update(invoices).set(updates).where(eq(invoices.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Duplicate invoice as new DRAFT
+  app.post<{ Params: { id: string } }>('/invoices/:id/duplicate', {
+    preHandler: requirePermission('invoices', 'create'),
+  }, async (request, reply) => {
+    const invoice = await app.db.query.invoices.findFirst({
+      where: eq(invoices.id, request.params.id),
+      with: { lines: true },
+    });
+    if (!invoice) return reply.notFound('Invoice not found');
+
+    const number = await nextInvoiceNumber(app.db as any);
+    const userId = request.session?.user?.id;
+
+    const result = await app.db.transaction(async (tx) => {
+      const [newInv] = await tx.insert(invoices).values({
+        number,
+        partnerId: invoice.partnerId,
+        branchId: invoice.branchId,
+        invoiceDate: new Date(),
+        subtotal: invoice.subtotal,
+        vatAmount: invoice.vatAmount,
+        total: invoice.total,
+        taxInclusive: invoice.taxInclusive,
+        status: 'DRAFT',
+        dueDate: new Date(Date.now() + 30 * 86400000),
+        purchaseOrderNumber: invoice.purchaseOrderNumber,
+        customerReference: invoice.customerReference,
+        paymentTermsText: invoice.paymentTermsText,
+        notes: invoice.notes,
+        createdBy: userId,
+      }).returning();
+
+      if (invoice.lines.length > 0) {
+        await tx.insert(invoiceLines).values(
+          invoice.lines.map((l) => ({
+            invoiceId: newInv.id,
+            titleId: l.titleId,
+            lineNumber: l.lineNumber,
+            description: l.description,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            discountPct: l.discountPct,
+            discountType: l.discountType,
+            lineTotal: l.lineTotal,
+            lineTax: l.lineTax,
+          }))
+        );
+      }
+
+      return newInv;
+    });
+
+    return reply.status(201).send({ data: result });
+  });
+
+  // Send invoice via email
+  app.post<{ Params: { id: string } }>('/invoices/:id/send', {
+    preHandler: requirePermission('invoices', 'create'),
+  }, async (request, reply) => {
+    const body = sendDocumentSchema.parse(request.body);
+    const userId = request.session?.user?.id;
+
+    const invoice = await app.db.query.invoices.findFirst({
+      where: eq(invoices.id, request.params.id),
+      with: { partner: { with: { branches: true } }, lines: true },
+    });
+    if (!invoice) return reply.notFound('Invoice not found');
+
+    const settings = await app.db.query.companySettings.findFirst();
+    let branch = null;
+    if (invoice.branchId) {
+      branch = await app.db.query.partnerBranches.findFirst({
+        where: eq(partnerBranches.id, invoice.branchId),
+      });
+    }
+
+    const html = renderInvoiceHtml({
+      number: invoice.number,
+      invoiceDate: invoice.invoiceDate.toISOString(),
+      dueDate: invoice.dueDate?.toISOString() ?? invoice.invoiceDate.toISOString(),
+      purchaseOrderNumber: invoice.purchaseOrderNumber,
+      customerReference: invoice.customerReference,
+      company: settings ? {
+        name: settings.companyName, tradingAs: settings.tradingAs, vatNumber: settings.vatNumber,
+        registrationNumber: settings.registrationNumber, addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2, city: settings.city, province: settings.province,
+        postalCode: settings.postalCode, phone: settings.phone, email: settings.email,
+        logoUrl: settings.logoUrl, bankDetails: settings.bankDetails ?? undefined,
+      } : undefined,
+      recipient: {
+        name: invoice.partner.name, branchName: branch?.name,
+        contactName: invoice.partner.contactName, contactEmail: invoice.partner.contactEmail,
+        addressLine1: invoice.partner.addressLine1, addressLine2: invoice.partner.addressLine2,
+        city: invoice.partner.city, province: invoice.partner.province,
+        postalCode: invoice.partner.postalCode, vatNumber: invoice.partner.vatNumber,
+      },
+      lines: invoice.lines,
+      subtotal: invoice.subtotal, vatAmount: invoice.vatAmount, total: invoice.total,
+      notes: invoice.notes, paymentTermsText: invoice.paymentTermsText,
+    });
+
+    const result = await sendDocumentEmail({
+      app,
+      documentType: 'INVOICE',
+      documentId: request.params.id,
+      recipientEmail: body.recipientEmail,
+      subject: body.subject ?? `Invoice ${invoice.number} from Xarra Books`,
+      message: body.message,
+      html,
+      documentNumber: invoice.number,
+      sentBy: userId,
+    });
+
+    if (result.success) {
+      // Update invoice sentAt and sentTo, and auto-issue if DRAFT
+      const updateData: Record<string, any> = {
+        sentAt: new Date(),
+        sentTo: body.recipientEmail,
+        updatedAt: new Date(),
+      };
+      if (invoice.status === 'DRAFT') {
+        updateData.status = 'ISSUED';
+        updateData.issuedAt = new Date();
+      }
+      await app.db.update(invoices).set(updateData).where(eq(invoices.id, request.params.id));
+    }
+
+    return { data: result };
+  });
+
+  // Mark invoice as sent (without email)
+  app.post<{ Params: { id: string } }>('/invoices/:id/mark-sent', {
+    preHandler: requirePermission('invoices', 'update'),
+  }, async (request, reply) => {
+    const invoice = await app.db.query.invoices.findFirst({
+      where: eq(invoices.id, request.params.id),
+    });
+    if (!invoice) return reply.notFound('Invoice not found');
+
+    const updateData: Record<string, any> = {
+      sentAt: new Date(),
+      updatedAt: new Date(),
+    };
+    if (invoice.status === 'DRAFT') {
+      updateData.status = 'ISSUED';
+      updateData.issuedAt = new Date();
+    }
+
+    const [updated] = await app.db.update(invoices).set(updateData).where(eq(invoices.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Delete DRAFT invoice
+  app.delete<{ Params: { id: string } }>('/invoices/:id', {
+    preHandler: requirePermission('invoices', 'delete'),
+  }, async (request, reply) => {
+    const invoice = await app.db.query.invoices.findFirst({
+      where: eq(invoices.id, request.params.id),
+    });
+    if (!invoice) return reply.notFound('Invoice not found');
+    if (invoice.status !== 'DRAFT') return reply.badRequest('Only DRAFT invoices can be deleted');
+
+    await app.db.transaction(async (tx) => {
+      await tx.delete(invoiceLines).where(eq(invoiceLines.invoiceId, request.params.id));
+      await tx.delete(invoices).where(eq(invoices.id, request.params.id));
+    });
+
+    return { success: true };
+  });
+
   // Generate invoice PDF
   app.get<{ Params: { id: string } }>('/invoices/:id/pdf', {
     preHandler: requireAuth,
@@ -222,10 +511,21 @@ export async function financeRoutes(app: FastifyInstance) {
       });
     }
 
+    // Compute amount paid for PDF
+    const paidResult = await app.db.execute<{ total: string }>(sql`
+      SELECT COALESCE(SUM(amount::numeric), 0) AS total
+      FROM payment_allocations
+      WHERE invoice_id = ${request.params.id}
+    `);
+    const amountPaid = Number(paidResult[0]?.total ?? 0);
+
     const html = renderInvoiceHtml({
       number: invoice.number,
       invoiceDate: invoice.invoiceDate.toISOString(),
       dueDate: invoice.dueDate?.toISOString() ?? invoice.invoiceDate.toISOString(),
+      purchaseOrderNumber: invoice.purchaseOrderNumber,
+      customerReference: invoice.customerReference,
+      amountPaid: amountPaid > 0 ? amountPaid : undefined,
       company: settings ? {
         name: settings.companyName,
         tradingAs: settings.tradingAs,
@@ -258,6 +558,7 @@ export async function financeRoutes(app: FastifyInstance) {
       vatAmount: invoice.vatAmount,
       total: invoice.total,
       notes: invoice.notes,
+      paymentTermsText: invoice.paymentTermsText,
     });
 
     const pdf = await generatePdf(html);
@@ -286,14 +587,34 @@ export async function financeRoutes(app: FastifyInstance) {
     if (!invoice) return reply.notFound('Invoice not found');
     if (invoice.status === 'VOIDED') return reply.badRequest('Cannot credit a voided invoice');
 
+    // Inherit tax mode from the original invoice
+    const isTaxInclusive = invoice.taxInclusive ?? false;
     let subtotal = 0;
+    let totalVat = 0;
     for (const line of lines) {
-      const lineSubtotal = line.quantity * line.unitPrice;
-      const discount = lineSubtotal * (line.discountPct / 100);
-      subtotal += lineSubtotal - discount;
+      const lineSubtotal = roundAmount(line.quantity * line.unitPrice);
+      const discount = roundAmount(lineSubtotal * (line.discountPct / 100));
+      const lineTotal = roundAmount(lineSubtotal - discount);
+      const lineTax = roundAmount(isTaxInclusive
+        ? lineTotal - (lineTotal / (1 + VAT_RATE))
+        : lineTotal * VAT_RATE);
+      const lineExVat = roundAmount(isTaxInclusive ? lineTotal - lineTax : lineTotal);
+      subtotal += lineExVat;
+      totalVat += lineTax;
     }
-    const vatAmount = subtotal * VAT_RATE;
-    const total = subtotal + vatAmount;
+    subtotal = roundAmount(subtotal);
+    totalVat = roundAmount(totalVat);
+    const vatAmount = totalVat;
+    const total = roundAmount(subtotal + vatAmount);
+
+    // Validate credit note doesn't exceed invoice total
+    const existingCredits = await app.db.select({
+      total: sql<string>`COALESCE(SUM(total::numeric), 0)`,
+    }).from(creditNotes).where(sql`${creditNotes.invoiceId} = ${request.params.invoiceId} AND ${creditNotes.voidedAt} IS NULL`);
+    const priorCredits = Number(existingCredits[0]?.total ?? 0);
+    if (roundAmount(priorCredits + total) > Number(invoice.total)) {
+      return reply.badRequest('Credit note total would exceed the invoice total');
+    }
 
     const number = await nextCreditNoteNumber(app.db as any);
     const userId = request.session?.user?.id;
@@ -606,13 +927,19 @@ export async function financeRoutes(app: FastifyInstance) {
     const userId = request.session?.user?.id;
 
     let subtotal = 0;
+    let totalVat = 0;
     for (const line of body.lines) {
-      const lineSubtotal = line.quantity * line.unitPrice;
-      const discount = lineSubtotal * (line.discountPct / 100);
-      subtotal += lineSubtotal - discount;
+      const lineSubtotal = roundAmount(line.quantity * line.unitPrice);
+      const discount = roundAmount(lineSubtotal * (line.discountPct / 100));
+      const lineTotal = roundAmount(lineSubtotal - discount);
+      const lineTax = roundAmount(lineTotal * VAT_RATE);
+      subtotal += roundAmount(lineTotal);
+      totalVat += lineTax;
     }
-    const vatAmount = subtotal * VAT_RATE;
-    const total = subtotal + vatAmount;
+    subtotal = roundAmount(subtotal);
+    totalVat = roundAmount(totalVat);
+    const vatAmount = totalVat;
+    const total = roundAmount(subtotal + vatAmount);
 
     const number = await nextDebitNoteNumber(app.db as any);
 
@@ -717,11 +1044,11 @@ export async function financeRoutes(app: FastifyInstance) {
     let subtotal = 0;
     let vatTotal = 0;
     const lineInserts = body.lines.map((line, i) => {
-      const lineTotal = line.quantity * line.unitPrice * (1 - line.discountPct / 100);
-      const lineTax = isTaxInclusive
-        ? lineTotal - (lineTotal / (1 + VAT_RATE))
-        : lineTotal * VAT_RATE;
-      const lineExVat = isTaxInclusive ? lineTotal - lineTax : lineTotal;
+      const lineGross = roundAmount(line.quantity * line.unitPrice * (1 - line.discountPct / 100));
+      const lineTax = roundAmount(isTaxInclusive
+        ? lineGross - (lineGross / (1 + VAT_RATE))
+        : lineGross * VAT_RATE);
+      const lineExVat = roundAmount(isTaxInclusive ? lineGross - lineTax : lineGross);
       subtotal += lineExVat;
       vatTotal += lineTax;
       return {
@@ -736,7 +1063,9 @@ export async function financeRoutes(app: FastifyInstance) {
       };
     });
 
-    const total = subtotal + vatTotal;
+    subtotal = roundAmount(subtotal);
+    vatTotal = roundAmount(vatTotal);
+    const total = roundAmount(subtotal + vatTotal);
 
     const [quotation] = await app.db.insert(quotations).values({
       number,
@@ -937,6 +1266,355 @@ export async function financeRoutes(app: FastifyInstance) {
     const pdf = await generatePdf(html);
     return reply.type('application/pdf')
       .header('Content-Disposition', `inline; filename="receipt-${payment.bankReference}.pdf"`)
+      .send(pdf);
+  });
+
+  // ==========================================
+  // PURCHASE ORDERS
+  // ==========================================
+
+  // List purchase orders
+  app.get('/purchase-orders', { preHandler: requirePermission('purchaseOrders', 'read') }, async (request) => {
+    const query = paginationSchema.parse(request.query);
+    const { page, limit, search } = query;
+    const offset = (page - 1) * limit;
+
+    const where = search
+      ? sql`(${purchaseOrders.number} ILIKE ${'%' + search + '%'} OR ${purchaseOrders.supplierName} ILIKE ${'%' + search + '%'})`
+      : undefined;
+
+    const [items, countResult] = await Promise.all([
+      app.db.query.purchaseOrders.findMany({
+        where: where ? () => where : undefined,
+        with: { supplier: true },
+        orderBy: (po, { desc: d }) => [d(po.createdAt)],
+        limit,
+        offset,
+      }),
+      app.db.select({ count: sql<number>`count(*)` }).from(purchaseOrders).where(where),
+    ]);
+
+    return {
+      data: items,
+      pagination: { page, limit, total: Number(countResult[0].count), totalPages: Math.ceil(Number(countResult[0].count) / limit) },
+    };
+  });
+
+  // Get single purchase order with lines
+  app.get<{ Params: { id: string } }>('/purchase-orders/:id', { preHandler: requirePermission('purchaseOrders', 'read') }, async (request, reply) => {
+    const po = await app.db.query.purchaseOrders.findFirst({
+      where: eq(purchaseOrders.id, request.params.id),
+      with: { supplier: true, lines: true },
+    });
+    if (!po) return reply.notFound('Purchase order not found');
+    return { data: po };
+  });
+
+  // Create purchase order
+  app.post('/purchase-orders', { preHandler: requirePermission('purchaseOrders', 'create') }, async (request, reply) => {
+    const body = createPurchaseOrderSchema.parse(request.body);
+    const userId = request.session?.user?.id;
+    const number = await nextPurchaseOrderNumber(app.db as any);
+
+    const isTaxInclusive = body.taxInclusive ?? false;
+    let subtotal = 0;
+    let totalVat = 0;
+    const lineData = body.lines.map((line, i) => {
+      const lineSubtotal = roundAmount(line.quantity * line.unitPrice);
+      const discount = roundAmount(lineSubtotal * (line.discountPct / 100));
+      const lineTotal = roundAmount(lineSubtotal - discount);
+      const lineTax = roundAmount(isTaxInclusive
+        ? lineTotal - (lineTotal / (1 + VAT_RATE))
+        : lineTotal * VAT_RATE);
+      const lineExVat = roundAmount(isTaxInclusive ? lineTotal - lineTax : lineTotal);
+      subtotal += lineExVat;
+      totalVat += lineTax;
+      return {
+        lineNumber: i + 1,
+        titleId: line.titleId,
+        description: line.description,
+        quantity: String(line.quantity),
+        unitPrice: String(line.unitPrice),
+        discountPct: String(line.discountPct),
+        lineTotal: String(lineTotal),
+        lineTax: String(lineTax),
+      };
+    });
+
+    subtotal = roundAmount(subtotal);
+    totalVat = roundAmount(totalVat);
+    const total = roundAmount(subtotal + totalVat);
+
+    const result = await app.db.transaction(async (tx) => {
+      const [po] = await tx.insert(purchaseOrders).values({
+        number,
+        supplierId: body.supplierId,
+        supplierName: body.supplierName,
+        contactName: body.contactName,
+        contactEmail: body.contactEmail,
+        orderDate: new Date(body.orderDate),
+        expectedDeliveryDate: body.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : undefined,
+        deliveryAddress: body.deliveryAddress,
+        subtotal: String(subtotal),
+        vatAmount: String(totalVat),
+        total: String(total),
+        taxInclusive: isTaxInclusive,
+        notes: body.notes,
+        createdBy: userId,
+      }).returning();
+
+      const lines = await tx.insert(purchaseOrderLines).values(
+        lineData.map((l) => ({ ...l, purchaseOrderId: po.id }))
+      ).returning();
+
+      return { ...po, lines };
+    });
+
+    return reply.status(201).send({ data: result });
+  });
+
+  // Edit DRAFT purchase order
+  app.patch<{ Params: { id: string } }>('/purchase-orders/:id', { preHandler: requirePermission('purchaseOrders', 'update') }, async (request, reply) => {
+    const po = await app.db.query.purchaseOrders.findFirst({
+      where: eq(purchaseOrders.id, request.params.id),
+    });
+    if (!po) return reply.notFound('Purchase order not found');
+    if (po.status !== 'DRAFT') return reply.badRequest('Only DRAFT purchase orders can be edited');
+
+    const body = request.body as Record<string, any>;
+    const updates: Record<string, any> = { updatedAt: new Date() };
+
+    for (const key of ['supplierId', 'supplierName', 'contactName', 'contactEmail', 'deliveryAddress', 'notes'] as const) {
+      if (body[key] !== undefined) updates[key] = body[key];
+    }
+    if (body.orderDate) updates.orderDate = new Date(body.orderDate);
+    if (body.expectedDeliveryDate) updates.expectedDeliveryDate = new Date(body.expectedDeliveryDate);
+
+    const [updated] = await app.db.update(purchaseOrders).set(updates).where(eq(purchaseOrders.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Issue purchase order (DRAFT → ISSUED)
+  app.post<{ Params: { id: string } }>('/purchase-orders/:id/issue', { preHandler: requirePermission('purchaseOrders', 'update') }, async (request, reply) => {
+    const po = await app.db.query.purchaseOrders.findFirst({ where: eq(purchaseOrders.id, request.params.id) });
+    if (!po) return reply.notFound('Purchase order not found');
+    if (po.status !== 'DRAFT') return reply.badRequest('Only DRAFT purchase orders can be issued');
+
+    const [updated] = await app.db.update(purchaseOrders).set({ status: 'ISSUED', updatedAt: new Date() }).where(eq(purchaseOrders.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Receive goods (update quantityReceived per line)
+  app.post<{ Params: { id: string } }>('/purchase-orders/:id/receive', { preHandler: requirePermission('purchaseOrders', 'update') }, async (request, reply) => {
+    const po = await app.db.query.purchaseOrders.findFirst({
+      where: eq(purchaseOrders.id, request.params.id),
+      with: { lines: true },
+    });
+    if (!po) return reply.notFound('Purchase order not found');
+    if (!['ISSUED', 'PARTIAL'].includes(po.status)) return reply.badRequest('Purchase order must be ISSUED or PARTIAL to receive goods');
+
+    const { lineReceives } = request.body as { lineReceives: { lineId: string; quantityReceived: number }[] };
+    if (!lineReceives?.length) return reply.badRequest('lineReceives is required');
+
+    await app.db.transaction(async (tx) => {
+      for (const lr of lineReceives) {
+        await tx.update(purchaseOrderLines).set({
+          quantityReceived: String(lr.quantityReceived),
+        }).where(eq(purchaseOrderLines.id, lr.lineId));
+      }
+    });
+
+    // Check if fully received
+    const updatedLines = await app.db.query.purchaseOrderLines.findMany({
+      where: eq(purchaseOrderLines.purchaseOrderId, request.params.id),
+    });
+    const allReceived = updatedLines.every((l) => Number(l.quantityReceived) >= Number(l.quantity));
+    const anyReceived = updatedLines.some((l) => Number(l.quantityReceived) > 0);
+
+    const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL' : po.status;
+
+    const [updated] = await app.db.update(purchaseOrders).set({
+      status: newStatus,
+      receivedAt: allReceived ? new Date() : undefined,
+      updatedAt: new Date(),
+    }).where(eq(purchaseOrders.id, request.params.id)).returning();
+
+    return { data: { ...updated, lines: updatedLines } };
+  });
+
+  // Cancel purchase order
+  app.post<{ Params: { id: string } }>('/purchase-orders/:id/cancel', { preHandler: requirePermission('purchaseOrders', 'update') }, async (request, reply) => {
+    const po = await app.db.query.purchaseOrders.findFirst({ where: eq(purchaseOrders.id, request.params.id) });
+    if (!po) return reply.notFound('Purchase order not found');
+    if (['RECEIVED', 'CLOSED', 'CANCELLED'].includes(po.status)) return reply.badRequest('Cannot cancel this purchase order');
+
+    const { reason } = request.body as { reason?: string };
+    const [updated] = await app.db.update(purchaseOrders).set({
+      status: 'CANCELLED',
+      cancelledAt: new Date(),
+      cancelReason: reason,
+      updatedAt: new Date(),
+    }).where(eq(purchaseOrders.id, request.params.id)).returning();
+
+    return { data: updated };
+  });
+
+  // Duplicate purchase order
+  app.post<{ Params: { id: string } }>('/purchase-orders/:id/duplicate', { preHandler: requirePermission('purchaseOrders', 'create') }, async (request, reply) => {
+    const po = await app.db.query.purchaseOrders.findFirst({
+      where: eq(purchaseOrders.id, request.params.id),
+      with: { lines: true },
+    });
+    if (!po) return reply.notFound('Purchase order not found');
+
+    const number = await nextPurchaseOrderNumber(app.db as any);
+    const userId = request.session?.user?.id;
+
+    const result = await app.db.transaction(async (tx) => {
+      const [newPo] = await tx.insert(purchaseOrders).values({
+        number,
+        supplierId: po.supplierId,
+        supplierName: po.supplierName,
+        contactName: po.contactName,
+        contactEmail: po.contactEmail,
+        orderDate: new Date(),
+        expectedDeliveryDate: po.expectedDeliveryDate,
+        deliveryAddress: po.deliveryAddress,
+        subtotal: po.subtotal,
+        vatAmount: po.vatAmount,
+        total: po.total,
+        taxInclusive: po.taxInclusive,
+        notes: po.notes,
+        createdBy: userId,
+      }).returning();
+
+      if (po.lines.length > 0) {
+        await tx.insert(purchaseOrderLines).values(
+          po.lines.map((l) => ({
+            purchaseOrderId: newPo.id,
+            titleId: l.titleId,
+            lineNumber: l.lineNumber,
+            description: l.description,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            discountPct: l.discountPct,
+            lineTotal: l.lineTotal,
+            lineTax: l.lineTax,
+          }))
+        );
+      }
+
+      return newPo;
+    });
+
+    return reply.status(201).send({ data: result });
+  });
+
+  // Send purchase order via email
+  app.post<{ Params: { id: string } }>('/purchase-orders/:id/send', { preHandler: requirePermission('purchaseOrders', 'create') }, async (request, reply) => {
+    const body = sendDocumentSchema.parse(request.body);
+    const userId = request.session?.user?.id;
+
+    const po = await app.db.query.purchaseOrders.findFirst({
+      where: eq(purchaseOrders.id, request.params.id),
+      with: { supplier: true, lines: true },
+    });
+    if (!po) return reply.notFound('Purchase order not found');
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    const html = renderPurchaseOrderHtml({
+      number: po.number,
+      orderDate: po.orderDate.toISOString(),
+      expectedDeliveryDate: po.expectedDeliveryDate?.toISOString(),
+      deliveryAddress: po.deliveryAddress,
+      company: settings ? {
+        name: settings.companyName, tradingAs: settings.tradingAs, vatNumber: settings.vatNumber,
+        registrationNumber: settings.registrationNumber, addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2, city: settings.city, province: settings.province,
+        postalCode: settings.postalCode, phone: settings.phone, email: settings.email,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+      supplier: {
+        name: po.supplier?.name ?? po.supplierName ?? 'Supplier',
+        contactName: po.contactName ?? po.supplier?.contactName,
+        contactEmail: po.contactEmail ?? po.supplier?.contactEmail,
+        addressLine1: po.supplier?.addressLine1,
+        addressLine2: po.supplier?.addressLine2,
+        city: po.supplier?.city,
+        province: po.supplier?.province,
+        postalCode: po.supplier?.postalCode,
+        vatNumber: po.supplier?.vatNumber,
+      },
+      lines: po.lines,
+      subtotal: po.subtotal, vatAmount: po.vatAmount, total: po.total,
+      notes: po.notes,
+    });
+
+    const result = await sendDocumentEmail({
+      app,
+      documentType: 'PURCHASE_ORDER',
+      documentId: request.params.id,
+      recipientEmail: body.recipientEmail,
+      subject: body.subject ?? `Purchase Order ${po.number} from Xarra Books`,
+      message: body.message,
+      html,
+      documentNumber: po.number,
+      sentBy: userId,
+    });
+
+    if (result.success) {
+      const updateData: Record<string, any> = { sentAt: new Date(), sentTo: body.recipientEmail, updatedAt: new Date() };
+      if (po.status === 'DRAFT') {
+        updateData.status = 'ISSUED';
+      }
+      await app.db.update(purchaseOrders).set(updateData).where(eq(purchaseOrders.id, request.params.id));
+    }
+
+    return { data: result };
+  });
+
+  // Generate purchase order PDF
+  app.get<{ Params: { id: string } }>('/purchase-orders/:id/pdf', { preHandler: requirePermission('purchaseOrders', 'read') }, async (request, reply) => {
+    const po = await app.db.query.purchaseOrders.findFirst({
+      where: eq(purchaseOrders.id, request.params.id),
+      with: { supplier: true, lines: true },
+    });
+    if (!po) return reply.notFound('Purchase order not found');
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    const html = renderPurchaseOrderHtml({
+      number: po.number,
+      orderDate: po.orderDate.toISOString(),
+      expectedDeliveryDate: po.expectedDeliveryDate?.toISOString(),
+      deliveryAddress: po.deliveryAddress,
+      company: settings ? {
+        name: settings.companyName, tradingAs: settings.tradingAs, vatNumber: settings.vatNumber,
+        registrationNumber: settings.registrationNumber, addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2, city: settings.city, province: settings.province,
+        postalCode: settings.postalCode, phone: settings.phone, email: settings.email,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+      supplier: {
+        name: po.supplier?.name ?? po.supplierName ?? 'Supplier',
+        contactName: po.contactName ?? po.supplier?.contactName,
+        contactEmail: po.contactEmail ?? po.supplier?.contactEmail,
+        addressLine1: po.supplier?.addressLine1,
+        addressLine2: po.supplier?.addressLine2,
+        city: po.supplier?.city,
+        province: po.supplier?.province,
+        postalCode: po.supplier?.postalCode,
+        vatNumber: po.supplier?.vatNumber,
+      },
+      lines: po.lines,
+      subtotal: po.subtotal, vatAmount: po.vatAmount, total: po.total,
+      notes: po.notes,
+    });
+
+    const pdf = await generatePdf(html);
+    return reply.type('application/pdf')
+      .header('Content-Disposition', `inline; filename="${po.number}.pdf"`)
       .send(pdf);
   });
 }

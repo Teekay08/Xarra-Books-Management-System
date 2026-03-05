@@ -54,10 +54,31 @@ import { SalesReport } from './pages/reports/SalesReport';
 import { OverdueAging } from './pages/reports/OverdueAging';
 import { InventoryReport } from './pages/reports/InventoryReport';
 import { AuthorRoyaltyReport } from './pages/reports/AuthorRoyaltyReport';
+import { TitlePerformance } from './pages/reports/TitlePerformance';
+import { PartnerPerformance } from './pages/reports/PartnerPerformance';
+import { ChannelRevenue } from './pages/reports/ChannelRevenue';
+import { Bestsellers } from './pages/reports/Bestsellers';
+import { ExpenseTrends } from './pages/reports/ExpenseTrends';
+import { CashFlowAnalysis } from './pages/reports/CashFlowAnalysis';
+import { TaxReport } from './pages/reports/TaxReport';
 import { ReturnsList } from './pages/returns/ReturnsList';
 import { ReturnsCreate } from './pages/returns/ReturnsCreate';
 import { ReturnsDetail } from './pages/returns/ReturnsDetail';
 import { SyncDashboard } from './pages/sync/SyncDashboard';
+import { PurchaseOrderList } from './pages/finance/PurchaseOrderList';
+import { PurchaseOrderCreate } from './pages/finance/PurchaseOrderCreate';
+import { PurchaseOrderDetail } from './pages/finance/PurchaseOrderDetail';
+import { CashSaleList } from './pages/sales/CashSaleList';
+import { CashSaleCreate } from './pages/sales/CashSaleCreate';
+import { CashSaleDetail } from './pages/sales/CashSaleDetail';
+import { ExpenseClaimList } from './pages/expenses/ExpenseClaimList';
+import { ExpenseClaimCreate } from './pages/expenses/ExpenseClaimCreate';
+import { ExpenseClaimDetail } from './pages/expenses/ExpenseClaimDetail';
+import { RequisitionList } from './pages/procurement/RequisitionList';
+import { RequisitionCreate } from './pages/procurement/RequisitionCreate';
+import { RequisitionDetail } from './pages/procurement/RequisitionDetail';
+import { AuditLog } from './pages/admin/AuditLog';
+import { DeletionRequests } from './pages/admin/DeletionRequests';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { NotFound } from './pages/NotFound';
@@ -131,10 +152,30 @@ export function App() {
           <Route path="quotations/new" element={<QuotationCreate />} />
           <Route path="quotations/:id" element={<QuotationDetail />} />
 
+          {/* Purchase Orders */}
+          <Route path="finance/purchase-orders" element={<PurchaseOrderList />} />
+          <Route path="finance/purchase-orders/new" element={<PurchaseOrderCreate />} />
+          <Route path="finance/purchase-orders/:id" element={<PurchaseOrderDetail />} />
+
+          {/* Cash Sales */}
+          <Route path="sales/cash-sales" element={<CashSaleList />} />
+          <Route path="sales/cash-sales/new" element={<CashSaleCreate />} />
+          <Route path="sales/cash-sales/:id" element={<CashSaleDetail />} />
+
           {/* Expenses */}
           <Route path="expenses" element={<ExpenseList />} />
           <Route path="expenses/new" element={<ExpenseCreate />} />
           <Route path="expenses/categories" element={<ExpenseCategoryManage />} />
+
+          {/* Expense Claims */}
+          <Route path="expenses/claims" element={<ExpenseClaimList />} />
+          <Route path="expenses/claims/new" element={<ExpenseClaimCreate />} />
+          <Route path="expenses/claims/:id" element={<ExpenseClaimDetail />} />
+
+          {/* Requisitions */}
+          <Route path="procurement/requisitions" element={<RequisitionList />} />
+          <Route path="procurement/requisitions/new" element={<RequisitionCreate />} />
+          <Route path="procurement/requisitions/:id" element={<RequisitionDetail />} />
 
           {/* Consignments */}
           <Route path="consignments" element={<ConsignmentList />} />
@@ -156,6 +197,13 @@ export function App() {
           <Route path="reports/overdue-aging" element={<OverdueAging />} />
           <Route path="reports/inventory" element={<InventoryReport />} />
           <Route path="reports/author-royalty" element={<AuthorRoyaltyReport />} />
+          <Route path="reports/title-performance" element={<TitlePerformance />} />
+          <Route path="reports/partner-performance" element={<PartnerPerformance />} />
+          <Route path="reports/channel-revenue" element={<ChannelRevenue />} />
+          <Route path="reports/bestsellers" element={<Bestsellers />} />
+          <Route path="reports/expense-trends" element={<ExpenseTrends />} />
+          <Route path="reports/cash-flow" element={<CashFlowAnalysis />} />
+          <Route path="reports/tax" element={<TaxReport />} />
 
           {/* Sync */}
           <Route path="sync" element={<SyncDashboard />} />
@@ -166,6 +214,10 @@ export function App() {
           <Route path="settings/profile" element={<UserProfile />} />
           <Route path="settings/users" element={<UserManagement />} />
           <Route path="settings/reminders" element={<InvoiceReminders />} />
+
+          {/* Admin — Audit & Deletion */}
+          <Route path="admin/audit-log" element={<AuditLog />} />
+          <Route path="admin/deletion-requests" element={<DeletionRequests />} />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />

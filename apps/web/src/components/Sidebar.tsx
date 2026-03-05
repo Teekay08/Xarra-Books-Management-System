@@ -1,46 +1,71 @@
 import { NavLink } from 'react-router';
+import { usePermissions } from '../hooks/usePermissions';
+import type { Module } from '@xarra/shared';
 
-interface NavItem { name: string; href: string }
+interface NavItem { name: string; href: string; module?: Module }
 interface NavSection { label: string; items: NavItem[] }
 
-const sections: NavSection[] = [
+const allSections: NavSection[] = [
   {
     label: '',
-    items: [{ name: 'Dashboard', href: '/' }],
+    items: [{ name: 'Dashboard', href: '/', module: 'dashboard' }],
   },
   {
     label: 'Catalog',
     items: [
-      { name: 'Authors', href: '/authors' },
-      { name: 'Titles', href: '/titles' },
+      { name: 'Authors', href: '/authors', module: 'authors' },
+      { name: 'Titles', href: '/titles', module: 'titles' },
     ],
   },
   {
     label: 'Operations',
     items: [
-      { name: 'Channel Partners', href: '/partners' },
-      { name: 'Inventory', href: '/inventory' },
-      { name: 'Consignments', href: '/consignments' },
-      { name: 'Returns', href: '/returns' },
-      { name: 'Sync', href: '/sync' },
+      { name: 'Channel Partners', href: '/partners', module: 'partners' },
+      { name: 'Inventory', href: '/inventory', module: 'inventory' },
+      { name: 'Consignments', href: '/consignments', module: 'consignments' },
+      { name: 'Returns', href: '/returns', module: 'returns' },
+      { name: 'Sync', href: '/sync', module: 'sync' },
     ],
   },
   {
     label: 'Finance',
     items: [
-      { name: 'Quotations', href: '/quotations' },
-      { name: 'Invoices', href: '/invoices' },
-      { name: 'Credit Notes', href: '/credit-notes' },
-      { name: 'Debit Notes', href: '/debit-notes' },
-      { name: 'Payments', href: '/payments' },
-      { name: 'Remittances', href: '/remittances' },
-      { name: 'Expenses', href: '/expenses' },
-      { name: 'Statements', href: '/statements' },
+      { name: 'Quotations', href: '/quotations', module: 'quotations' },
+      { name: 'Invoices', href: '/invoices', module: 'invoices' },
+      { name: 'Purchase Orders', href: '/finance/purchase-orders', module: 'purchaseOrders' },
+      { name: 'Credit Notes', href: '/credit-notes', module: 'creditNotes' },
+      { name: 'Debit Notes', href: '/debit-notes', module: 'debitNotes' },
+      { name: 'Payments', href: '/payments', module: 'payments' },
+      { name: 'Remittances', href: '/remittances', module: 'remittances' },
+      { name: 'Expenses', href: '/expenses', module: 'expenses' },
+      { name: 'Statements', href: '/statements', module: 'statements' },
+    ],
+  },
+  {
+    label: 'Sales',
+    items: [
+      { name: 'Cash Sales', href: '/sales/cash-sales', module: 'cashSales' },
+    ],
+  },
+  {
+    label: 'Procurement',
+    items: [
+      { name: 'Expense Claims', href: '/expenses/claims', module: 'expenseClaims' },
+      { name: 'Requisitions', href: '/procurement/requisitions', module: 'requisitions' },
     ],
   },
   {
     label: 'Analytics',
-    items: [{ name: 'Reports', href: '/reports' }],
+    items: [{ name: 'Reports', href: '/reports', module: 'reports' }],
+  },
+  {
+    label: 'Admin',
+    items: [
+      { name: 'Settings', href: '/settings', module: 'settings' },
+      { name: 'User Management', href: '/settings/users', module: 'users' },
+      { name: 'Audit Trail', href: '/admin/audit-log', module: 'auditLogs' },
+      { name: 'Deletion Requests', href: '/admin/deletion-requests', module: 'deletionRequests' },
+    ],
   },
 ];
 
@@ -69,6 +94,16 @@ function SectionGroup({ section }: { section: NavSection }) {
 }
 
 export function Sidebar() {
+  const { canAccess } = usePermissions();
+
+  // Filter sections based on user's role permissions
+  const sections = allSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.module || canAccess(item.module)),
+    }))
+    .filter((section) => section.items.length > 0);
+
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
       <div className="p-5 border-b border-gray-100">

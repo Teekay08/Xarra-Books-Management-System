@@ -32,6 +32,7 @@ export function InvoiceList() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoices', page, search],
@@ -54,6 +55,12 @@ export function InvoiceList() {
     { key: 'invoiceDate', header: 'Date', render: (inv: Invoice) =>
       new Date(inv.invoiceDate).toLocaleDateString('en-ZA')
     },
+    { key: 'dueDate', header: 'Due Date', render: (inv: Invoice) => {
+      if (!inv.dueDate) return '—';
+      const due = new Date(inv.dueDate);
+      const isOverdue = due < new Date() && !['PAID', 'VOIDED'].includes(inv.status);
+      return <span className={isOverdue ? 'text-red-600 font-medium' : ''}>{due.toLocaleDateString('en-ZA')}</span>;
+    }},
     { key: 'total', header: 'Total', render: (inv: Invoice) => (
       <span className="font-mono">R {Number(inv.total).toFixed(2)}</span>
     )},
@@ -79,8 +86,20 @@ export function InvoiceList() {
         }
       />
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search by invoice number..." />
+      <div className="mb-4 flex gap-3 items-center">
+        <div className="flex-1">
+          <SearchBar value={search} onChange={handleSearch} placeholder="Search by invoice number..." />
+        </div>
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm">
+          <option value="">All Statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="ISSUED">Issued</option>
+          <option value="PARTIAL">Partial</option>
+          <option value="PAID">Paid</option>
+          <option value="OVERDUE">Overdue</option>
+          <option value="VOIDED">Voided</option>
+        </select>
       </div>
 
       {isLoading ? (

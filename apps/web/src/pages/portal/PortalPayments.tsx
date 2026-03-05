@@ -4,12 +4,37 @@ import { api } from '../../lib/api';
 
 interface Payment {
   id: string;
-  titleName: string;
-  amount: string;
-  paidDate: string;
-  reference: string | null;
-  method: string;
+  number: string;
+  periodFrom: string;
+  periodTo: string;
+  grossRoyalty: number;
+  advanceDeducted: number;
+  netPayable: number;
+  amountDue: number;
+  amountPaid: number;
+  status: string;
+  paymentMethod?: string | null;
+  bankReference?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
 }
+
+function fmt(v: number) {
+  return `R ${v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const statusColors: Record<string, string> = {
+  COMPLETED: 'bg-green-100 text-green-800',
+  PAID: 'bg-green-100 text-green-800',
+  PENDING: 'bg-amber-100 text-amber-800',
+  PROCESSING: 'bg-blue-100 text-blue-800',
+  FAILED: 'bg-red-100 text-red-800',
+  REVERSED: 'bg-red-100 text-red-800',
+};
 
 export function PortalPayments() {
   const [page, setPage] = useState(1);
@@ -35,30 +60,40 @@ export function PortalPayments() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment #</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Gross Royalty</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Advance Deducted</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Payable</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount Paid</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bank Ref</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid Date</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {payments.map((p) => (
               <tr key={p.id}>
-                <td className="px-4 py-3 text-sm text-gray-900">
-                  {new Date(p.paidDate).toLocaleDateString()}
+                <td className="px-4 py-3 text-sm font-semibold text-gray-900">{p.number}</td>
+                <td className="px-4 py-3 text-xs text-gray-600">
+                  {fmtDate(p.periodFrom)} — {fmtDate(p.periodTo)}
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-900">{p.titleName}</td>
-                <td className="px-4 py-3 text-sm font-medium text-green-600 text-right">
-                  R {Number(p.amount).toFixed(2)}
+                <td className="px-4 py-3 text-sm text-gray-900 text-right">{fmt(p.grossRoyalty)}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 text-right">{fmt(p.advanceDeducted)}</td>
+                <td className="px-4 py-3 text-sm text-gray-900 text-right">{fmt(p.netPayable)}</td>
+                <td className="px-4 py-3 text-sm font-semibold text-green-700 text-right">{fmt(p.amountPaid)}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${statusColors[p.status] || 'bg-gray-100 text-gray-800'}`}>
+                    {p.status}
+                  </span>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-500">{p.method.replace(/_/g, ' ')}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{p.reference ?? '—'}</td>
+                <td className="px-4 py-3 text-xs text-gray-500">{p.bankReference ?? '—'}</td>
+                <td className="px-4 py-3 text-xs text-gray-500">{p.paidAt ? fmtDate(p.paidAt) : '—'}</td>
               </tr>
             ))}
             {payments.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-500">
                   No payments recorded yet.
                 </td>
               </tr>

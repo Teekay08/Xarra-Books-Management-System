@@ -6,10 +6,11 @@ import { WooCommerceAdapter } from '../../integrations/woocommerce.js';
 import { TakealotAdapter } from '../../integrations/takealot.js';
 import { KdpAdapter } from '../../integrations/kdp.js';
 import { config } from '../../config.js';
+import { requireAuth, requirePermission } from '../../middleware/require-auth.js';
 
 export const syncRoutes: FastifyPluginAsync = async (app) => {
   // List sync history
-  app.get('/', async (request) => {
+  app.get('/', { preHandler: requirePermission('sync', 'read') }, async (request) => {
     const { page = '1', limit = '20' } = request.query as Record<string, string>;
     const p = Math.max(1, parseInt(page));
     const l = Math.min(100, parseInt(limit));
@@ -24,7 +25,7 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // Trigger WooCommerce sync
-  app.post('/woocommerce', async (request, reply) => {
+  app.post('/woocommerce', { preHandler: requirePermission('sync', 'create') }, async (request, reply) => {
     const { since, until, baseUrl, consumerKey, consumerSecret } = request.body as {
       since: string;
       until?: string;
@@ -44,12 +45,18 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
     return { data: result };
   });
 
-  // Upload Takealot CSV report
-  app.post('/takealot', async (request, reply) => {
-    const { csvContent } = request.body as { csvContent: string };
+  // Upload Takealot CSV report (file upload or raw body)
+  app.post('/takealot', { preHandler: requirePermission('sync', 'create') }, async (request, reply) => {
+    let csvContent: string;
 
-    if (!csvContent) {
-      return reply.badRequest('csvContent is required (paste the CSV report content)');
+    if (request.isMultipart()) {
+      const file = await request.file();
+      if (!file) return reply.badRequest('CSV file is required');
+      csvContent = (await file.toBuffer()).toString('utf-8');
+    } else {
+      const body = request.body as { csvContent?: string };
+      if (!body?.csvContent) return reply.badRequest('csvContent or CSV file is required');
+      csvContent = body.csvContent;
     }
 
     const adapter = new TakealotAdapter({ apiKey: '' });
@@ -57,17 +64,16 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
 
     const engine = new SyncEngine(request.server.db);
 
-    // Manually run the import with parsed sales
     const syncResult = await engine.importSales(
       { platform: 'TAKEALOT', fetchSales: async () => sales },
-      new Date(0) // not used since we pre-parsed
+      new Date(0)
     );
 
     return { data: syncResult };
   });
 
   // Takealot API poll (requires TAKEALOT_API_KEY)
-  app.post('/takealot/poll', async (request, reply) => {
+  app.post('/takealot/poll', { preHandler: requirePermission('sync', 'create') }, async (request, reply) => {
     const { since, until } = request.body as { since: string; until?: string };
 
     if (!since) {
@@ -86,12 +92,25 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
     return { data: result };
   });
 
-  // Upload KDP CSV report
-  app.post('/kdp', async (request, reply) => {
-    const { csvContent, exchangeRate } = request.body as { csvContent: string; exchangeRate?: number };
+  // Upload KDP CSV report (file upload or raw body)
+  app.post('/kdp', { preHandler: requirePermission('sync', 'create') }, async (request, reply) => {
+    let csvContent: string;
+    let exchangeRate: number | undefined;
 
-    if (!csvContent) {
-      return reply.badRequest('csvContent is required (paste the KDP royalty report content)');
+    if (request.isMultipart()) {
+      const file = await request.file();
+      if (!file) return reply.badRequest('CSV file is required');
+      csvContent = (await file.toBuffer()).toString('utf-8');
+      // Exchange rate can be passed as a field in multipart
+      const rateField = file.fields?.exchangeRate;
+      if (rateField && 'value' in rateField) {
+        exchangeRate = parseFloat(rateField.value as string) || undefined;
+      }
+    } else {
+      const body = request.body as { csvContent?: string; exchangeRate?: number };
+      if (!body?.csvContent) return reply.badRequest('csvContent or CSV file is required');
+      csvContent = body.csvContent;
+      exchangeRate = body.exchangeRate;
     }
 
     const adapter = new KdpAdapter(exchangeRate);

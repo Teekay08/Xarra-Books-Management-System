@@ -49,9 +49,8 @@ export function StatementGenerate() {
     };
   }
 
-  async function handlePreview(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+  async function handlePreview(form: HTMLFormElement) {
+    const fd = new FormData(form);
     const result = await api<{ data: any }>('/statements/preview', {
       method: 'POST',
       body: JSON.stringify(buildBody(fd)),
@@ -176,7 +175,10 @@ export function StatementGenerate() {
         <div className="flex gap-3">
           <button
             type="button"
-            onClick={(e) => handlePreview(e.currentTarget.form as any)}
+            onClick={() => {
+              const form = document.querySelector('form');
+              if (form) handlePreview(form);
+            }}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
           >
             Preview Data

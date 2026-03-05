@@ -23,6 +23,11 @@ export const invoices = pgTable('invoices', {
   status: invoiceStatusEnum('status').notNull().default('DRAFT'),
   issuedAt: timestamp('issued_at', { withTimezone: true }),
   dueDate: timestamp('due_date', { withTimezone: true }),
+  purchaseOrderNumber: varchar('purchase_order_number', { length: 50 }),
+  customerReference: varchar('customer_reference', { length: 100 }),
+  paymentTermsText: text('payment_terms_text'),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  sentTo: varchar('sent_to', { length: 255 }),
   pdfUrl: varchar('pdf_url', { length: 500 }),
   notes: text('notes'),
   voidedAt: timestamp('voided_at', { withTimezone: true }),
@@ -238,6 +243,118 @@ export const quotationLines = pgTable('quotation_lines', {
 }, (t) => [
   index('idx_quotation_lines_quotation_id').on(t.quotationId),
 ]);
+
+// ==========================================
+// PURCHASE ORDERS
+// ==========================================
+
+export const purchaseOrderStatusEnum = pgEnum('purchase_order_status', [
+  'DRAFT', 'ISSUED', 'RECEIVED', 'PARTIAL', 'CLOSED', 'CANCELLED',
+]);
+
+export const purchaseOrders = pgTable('purchase_orders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  number: varchar('number', { length: 20 }).notNull().unique(), // PO-YYYY-NNNN
+  supplierId: uuid('supplier_id').references(() => channelPartners.id),
+  supplierName: varchar('supplier_name', { length: 255 }),
+  contactName: varchar('contact_name', { length: 255 }),
+  contactEmail: varchar('contact_email', { length: 255 }),
+  orderDate: timestamp('order_date', { withTimezone: true }).notNull(),
+  expectedDeliveryDate: timestamp('expected_delivery_date', { withTimezone: true }),
+  deliveryAddress: text('delivery_address'),
+  subtotal: decimal('subtotal', { precision: 12, scale: 2 }).notNull(),
+  vatAmount: decimal('vat_amount', { precision: 12, scale: 2 }).notNull(),
+  total: decimal('total', { precision: 12, scale: 2 }).notNull(),
+  taxInclusive: boolean('tax_inclusive').notNull().default(false),
+  status: purchaseOrderStatusEnum('status').notNull().default('DRAFT'),
+  notes: text('notes'),
+  pdfUrl: varchar('pdf_url', { length: 500 }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  sentTo: varchar('sent_to', { length: 255 }),
+  receivedAt: timestamp('received_at', { withTimezone: true }),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  cancelReason: text('cancel_reason'),
+  createdBy: uuid('created_by').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_purchase_orders_supplier_id').on(t.supplierId),
+  index('idx_purchase_orders_status').on(t.status),
+]);
+
+export const purchaseOrderLines = pgTable('purchase_order_lines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  purchaseOrderId: uuid('purchase_order_id').notNull().references(() => purchaseOrders.id, { onDelete: 'cascade' }),
+  titleId: uuid('title_id').references(() => titles.id),
+  lineNumber: integer('line_number').notNull(),
+  description: varchar('description', { length: 500 }).notNull(),
+  quantity: decimal('quantity', { precision: 10, scale: 2 }).notNull(),
+  unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
+  discountPct: decimal('discount_pct', { precision: 5, scale: 2 }).notNull().default('0'),
+  lineTotal: decimal('line_total', { precision: 12, scale: 2 }).notNull(),
+  lineTax: decimal('line_tax', { precision: 12, scale: 2 }).notNull().default('0'),
+  quantityReceived: decimal('quantity_received', { precision: 10, scale: 2 }).notNull().default('0'),
+}, (t) => [
+  index('idx_po_lines_po_id').on(t.purchaseOrderId),
+]);
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  supplier: one(channelPartners, { fields: [purchaseOrders.supplierId], references: [channelPartners.id] }),
+  createdByUser: one(users, { fields: [purchaseOrders.createdBy], references: [users.id] }),
+  lines: many(purchaseOrderLines),
+}));
+
+export const purchaseOrderLinesRelations = relations(purchaseOrderLines, ({ one }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [purchaseOrderLines.purchaseOrderId], references: [purchaseOrders.id] }),
+}));
+
+// ==========================================
+// CASH SALES
+// ==========================================
+
+export const cashSales = pgTable('cash_sales', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  number: varchar('number', { length: 20 }).notNull().unique(), // CS-YYYY-NNNN
+  saleDate: timestamp('sale_date', { withTimezone: true }).notNull(),
+  customerName: varchar('customer_name', { length: 255 }),
+  subtotal: decimal('subtotal', { precision: 12, scale: 2 }).notNull(),
+  vatAmount: decimal('vat_amount', { precision: 12, scale: 2 }).notNull(),
+  total: decimal('total', { precision: 12, scale: 2 }).notNull(),
+  taxInclusive: boolean('tax_inclusive').notNull().default(true),
+  paymentMethod: varchar('payment_method', { length: 30 }).notNull().default('CASH'),
+  paymentReference: varchar('payment_reference', { length: 100 }),
+  notes: text('notes'),
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  voidedReason: text('voided_reason'),
+  createdBy: uuid('created_by').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_cash_sales_sale_date').on(t.saleDate),
+]);
+
+export const cashSaleLines = pgTable('cash_sale_lines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  cashSaleId: uuid('cash_sale_id').notNull().references(() => cashSales.id, { onDelete: 'cascade' }),
+  titleId: uuid('title_id').references(() => titles.id),
+  lineNumber: integer('line_number').notNull(),
+  description: varchar('description', { length: 500 }).notNull(),
+  quantity: decimal('quantity', { precision: 10, scale: 2 }).notNull(),
+  unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
+  discountPct: decimal('discount_pct', { precision: 5, scale: 2 }).notNull().default('0'),
+  lineTotal: decimal('line_total', { precision: 12, scale: 2 }).notNull(),
+  lineTax: decimal('line_tax', { precision: 12, scale: 2 }).notNull().default('0'),
+}, (t) => [
+  index('idx_cash_sale_lines_cash_sale_id').on(t.cashSaleId),
+]);
+
+export const cashSalesRelations = relations(cashSales, ({ one, many }) => ({
+  createdByUser: one(users, { fields: [cashSales.createdBy], references: [users.id] }),
+  lines: many(cashSaleLines),
+}));
+
+export const cashSaleLinesRelations = relations(cashSaleLines, ({ one }) => ({
+  cashSale: one(cashSales, { fields: [cashSaleLines.cashSaleId], references: [cashSales.id] }),
+}));
 
 export const quotationsRelations = relations(quotations, ({ one, many }) => ({
   partner: one(channelPartners, { fields: [quotations.partnerId], references: [channelPartners.id] }),

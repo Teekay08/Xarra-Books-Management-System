@@ -7,6 +7,8 @@ export const authorTypeEnum = pgEnum('author_type', ['HYBRID', 'TRADITIONAL']);
 
 export const royaltyTriggerEnum = pgEnum('royalty_trigger', ['DATE', 'UNITS', 'REVENUE']);
 
+export const paymentFrequencyEnum = pgEnum('payment_frequency', ['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']);
+
 export const authors = pgTable('authors', {
   id: uuid('id').primaryKey().defaultRandom(),
   legalName: varchar('legal_name', { length: 255 }).notNull(),
@@ -43,6 +45,8 @@ export const authorContracts = pgTable('author_contracts', {
   triggerValue: decimal('trigger_value', { precision: 12, scale: 2 }),
   advanceAmount: decimal('advance_amount', { precision: 12, scale: 2 }).notNull().default('0'),
   advanceRecovered: decimal('advance_recovered', { precision: 12, scale: 2 }).notNull().default('0'),
+  paymentFrequency: paymentFrequencyEnum('payment_frequency').notNull().default('QUARTERLY'),
+  minimumPayment: decimal('minimum_payment', { precision: 12, scale: 2 }).notNull().default('100'), // minimum threshold before payment is made
   isSigned: boolean('is_signed').notNull().default(false),
   signedDocUrl: varchar('signed_doc_url', { length: 500 }),
   startDate: timestamp('start_date', { withTimezone: true }).notNull(),

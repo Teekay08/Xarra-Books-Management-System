@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { VAT_RATE, roundAmount } from '@xarra/shared';
 
 interface Partner { id: string; name: string; discountPct: string }
 interface Title { id: string; title: string; rrpZar: string }
@@ -105,6 +106,9 @@ export function InvoiceCreate() {
         unitPrice: l.unitPrice,
         discountPct: l.discountPct || partnerDiscount,
       })),
+      purchaseOrderNumber: fd.get('purchaseOrderNumber') || undefined,
+      customerReference: fd.get('customerReference') || undefined,
+      paymentTermsText: fd.get('paymentTermsText') || undefined,
       notes: fd.get('notes') || undefined,
     }, { onError: (err) => setError(err.message) });
   }
@@ -113,8 +117,8 @@ export function InvoiceCreate() {
     const line = l.quantity * l.unitPrice;
     return sum + line - line * (l.discountPct / 100);
   }, 0);
-  const subtotal = taxInclusive ? lineGross / 1.15 : lineGross;
-  const vat = taxInclusive ? lineGross - subtotal : lineGross * 0.15;
+  const subtotal = roundAmount(taxInclusive ? lineGross / (1 + VAT_RATE) : lineGross);
+  const vat = roundAmount(taxInclusive ? lineGross - subtotal : lineGross * VAT_RATE);
 
   return (
     <div>
@@ -146,6 +150,21 @@ export function InvoiceCreate() {
               defaultValue={new Date().toISOString().split('T')[0]}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
             />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">PO Number</label>
+            <input name="purchaseOrderNumber" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="e.g. PO-12345" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Customer Reference</label>
+            <input name="customerReference" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="e.g. Order #ABC" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+            <input name="paymentTermsText" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="e.g. Net 30 days" />
           </div>
         </div>
 
@@ -237,7 +256,7 @@ export function InvoiceCreate() {
               <span className="font-mono">R {subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">VAT (15%)</span>
+              <span className="text-gray-500">VAT ({VAT_RATE * 100}%)</span>
               <span className="font-mono">R {vat.toFixed(2)}</span>
             </div>
             <div className="flex justify-between border-t pt-1 font-semibold">

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   AUTHOR_TYPES,
   ROYALTY_TRIGGER_TYPES,
+  PAYMENT_FREQUENCIES,
   TITLE_FORMATS,
   TITLE_STATUSES,
   CHANNELS,
@@ -44,9 +45,28 @@ export const createAuthorContractSchema = z.object({
   triggerType: z.enum(ROYALTY_TRIGGER_TYPES),
   triggerValue: z.number().optional(),
   advanceAmount: z.number().min(0).default(0),
+  paymentFrequency: z.enum(PAYMENT_FREQUENCIES).default('QUARTERLY'),
+  minimumPayment: z.number().min(0).default(100),
   isSigned: z.boolean().default(false),
   startDate: z.string().or(z.date()),
   endDate: z.string().or(z.date()).optional(),
+});
+
+// === Royalty Payment Schemas ===
+
+export const createAuthorPaymentRunSchema = z.object({
+  authorId: z.string().uuid(),
+  periodFrom: z.string().or(z.date()),
+  periodTo: z.string().or(z.date()),
+  royaltyLedgerIds: z.array(z.string().uuid()).min(1, 'Select at least one royalty entry'),
+  notes: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+});
+
+export const processAuthorPaymentSchema = z.object({
+  paymentMethod: z.enum(['EFT', 'BANK_TRANSFER', 'CHEQUE']).default('EFT'),
+  bankReference: z.string().min(1, 'Bank reference is required'),
+  notes: z.string().optional(),
 });
 
 // === Title Schemas ===
@@ -118,6 +138,9 @@ export const createInvoiceSchema = z.object({
   consignmentId: z.string().uuid().optional(),
   invoiceDate: z.string().or(z.date()),
   taxInclusive: z.boolean().default(false),
+  purchaseOrderNumber: z.string().max(50).optional(),
+  customerReference: z.string().max(100).optional(),
+  paymentTermsText: z.string().optional(),
   lines: z.array(z.object({
     titleId: z.string().uuid(),
     description: z.string().optional(),
@@ -298,6 +321,7 @@ export const createQuotationSchema = z.object({
   quotationDate: z.string().or(z.date()),
   validUntil: z.string().or(z.date()).optional(),
   taxInclusive: z.boolean().default(false),
+  customerReference: z.string().max(100).optional(),
   lines: z.array(z.object({
     titleId: z.string().uuid().optional(),
     description: z.string(),
@@ -306,4 +330,80 @@ export const createQuotationSchema = z.object({
     discountPct: z.number().min(0).max(100).default(0),
   })).min(1),
   notes: z.string().optional(),
+});
+
+// === Purchase Order Schemas ===
+
+export const createPurchaseOrderSchema = z.object({
+  supplierId: z.string().uuid().optional(),
+  supplierName: z.string().optional(),
+  contactName: z.string().optional(),
+  contactEmail: z.string().email().optional(),
+  orderDate: z.string().or(z.date()),
+  expectedDeliveryDate: z.string().or(z.date()).optional(),
+  deliveryAddress: z.string().optional(),
+  taxInclusive: z.boolean().default(false),
+  lines: z.array(z.object({
+    titleId: z.string().uuid().optional(),
+    description: z.string().min(1),
+    quantity: z.number().positive(),
+    unitPrice: z.number().positive(),
+    discountPct: z.number().min(0).max(100).default(0),
+  })).min(1),
+  notes: z.string().optional(),
+});
+
+// === Cash Sale Schemas ===
+
+export const createCashSaleSchema = z.object({
+  saleDate: z.string().or(z.date()),
+  customerName: z.string().optional(),
+  taxInclusive: z.boolean().default(true),
+  paymentMethod: z.string().min(1),
+  paymentReference: z.string().optional(),
+  lines: z.array(z.object({
+    titleId: z.string().uuid().optional(),
+    description: z.string().min(1),
+    quantity: z.number().positive(),
+    unitPrice: z.number().positive(),
+    discountPct: z.number().min(0).max(100).default(0),
+  })).min(1),
+  notes: z.string().optional(),
+});
+
+// === Expense Claim Schemas ===
+
+export const createExpenseClaimSchema = z.object({
+  claimDate: z.string().or(z.date()),
+  lines: z.array(z.object({
+    categoryId: z.string().uuid().optional(),
+    description: z.string().min(1),
+    amount: z.number().positive(),
+    taxAmount: z.number().min(0).default(0),
+    receiptUrl: z.string().optional(),
+    expenseDate: z.string().or(z.date()),
+  })).min(1),
+  notes: z.string().optional(),
+});
+
+// === Requisition Schemas ===
+
+export const createRequisitionSchema = z.object({
+  department: z.string().optional(),
+  requiredByDate: z.string().or(z.date()).optional(),
+  lines: z.array(z.object({
+    description: z.string().min(1),
+    quantity: z.number().positive(),
+    estimatedUnitPrice: z.number().positive(),
+    notes: z.string().optional(),
+  })).min(1),
+  notes: z.string().optional(),
+});
+
+// === Document Send Schema ===
+
+export const sendDocumentSchema = z.object({
+  recipientEmail: z.string().email(),
+  subject: z.string().optional(),
+  message: z.string().optional(),
 });

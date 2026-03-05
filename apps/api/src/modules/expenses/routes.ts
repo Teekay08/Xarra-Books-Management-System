@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc } from 'drizzle-orm';
-import { expenses, expenseCategories } from '@xarra/db';
-import { createExpenseSchema, createExpenseCategorySchema, paginationSchema } from '@xarra/shared';
+import { expenses, expenseCategories, expenseClaims, expenseClaimLines, requisitions, requisitionLines } from '@xarra/db';
+import { createExpenseSchema, createExpenseCategorySchema, createExpenseClaimSchema, createRequisitionSchema, paginationSchema } from '@xarra/shared';
 import { VAT_RATE } from '@xarra/shared';
-import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { requireAuth, requireRole, requirePermission } from '../../middleware/require-auth.js';
 import { requireIdempotencyKey, getIdempotencyKey } from '../../middleware/idempotency.js';
+import { nextExpenseClaimNumber, nextRequisitionNumber } from '../finance/invoice-number.js';
 
 export async function expenseRoutes(app: FastifyInstance) {
   // ==========================================
@@ -125,5 +126,324 @@ export async function expenseRoutes(app: FastifyInstance) {
     `);
 
     return { data: result };
+  });
+
+  // ==========================================
+  // EXPENSE CLAIMS
+  // ==========================================
+
+  // List expense claims
+  app.get('/claims', { preHandler: requirePermission('expenseClaims', 'read') }, async (request) => {
+    const query = paginationSchema.parse(request.query);
+    const { page, limit, search } = query;
+    const offset = (page - 1) * limit;
+
+    const where = search
+      ? sql`${expenseClaims.number} ILIKE ${'%' + search + '%'}`
+      : undefined;
+
+    const [items, countResult] = await Promise.all([
+      app.db.query.expenseClaims.findMany({
+        where: where ? () => where : undefined,
+        with: { claimant: true, lines: true },
+        orderBy: (ec, { desc: d }) => [d(ec.createdAt)],
+        limit,
+        offset,
+      }),
+      app.db.select({ count: sql<number>`count(*)` }).from(expenseClaims).where(where),
+    ]);
+
+    return {
+      data: items,
+      pagination: { page, limit, total: Number(countResult[0].count), totalPages: Math.ceil(Number(countResult[0].count) / limit) },
+    };
+  });
+
+  // Get single expense claim
+  app.get<{ Params: { id: string } }>('/claims/:id', { preHandler: requirePermission('expenseClaims', 'read') }, async (request, reply) => {
+    const claim = await app.db.query.expenseClaims.findFirst({
+      where: eq(expenseClaims.id, request.params.id),
+      with: { claimant: true, approvedByUser: true, lines: { with: { category: true } } },
+    });
+    if (!claim) return reply.notFound('Expense claim not found');
+    return { data: claim };
+  });
+
+  // Create expense claim
+  app.post('/claims', { preHandler: requirePermission('expenseClaims', 'create') }, async (request, reply) => {
+    const body = createExpenseClaimSchema.parse(request.body);
+    const userId = request.session?.user?.id;
+    if (!userId) return reply.unauthorized('Authentication required');
+
+    const number = await nextExpenseClaimNumber(app.db as any);
+
+    // Calculate total from lines
+    const totalAmount = body.lines.reduce((sum, l) => sum + l.amount, 0);
+
+    const result = await app.db.transaction(async (tx) => {
+      const [claim] = await tx.insert(expenseClaims).values({
+        number,
+        claimantId: userId,
+        claimDate: new Date(body.claimDate),
+        totalAmount: String(totalAmount),
+        notes: body.notes,
+      }).returning();
+
+      const lines = await tx.insert(expenseClaimLines).values(
+        body.lines.map((l) => ({
+          claimId: claim.id,
+          categoryId: l.categoryId,
+          description: l.description,
+          amount: String(l.amount),
+          taxAmount: String(l.taxAmount ?? 0),
+          receiptUrl: l.receiptUrl,
+          expenseDate: new Date(l.expenseDate),
+        }))
+      ).returning();
+
+      return { ...claim, lines };
+    });
+
+    return reply.status(201).send({ data: result });
+  });
+
+  // Submit expense claim (DRAFT → SUBMITTED)
+  app.post<{ Params: { id: string } }>('/claims/:id/submit', { preHandler: requirePermission('expenseClaims', 'update') }, async (request, reply) => {
+    const claim = await app.db.query.expenseClaims.findFirst({ where: eq(expenseClaims.id, request.params.id) });
+    if (!claim) return reply.notFound('Expense claim not found');
+    if (claim.status !== 'DRAFT') return reply.badRequest('Only DRAFT claims can be submitted');
+
+    const [updated] = await app.db.update(expenseClaims).set({ status: 'SUBMITTED', updatedAt: new Date() }).where(eq(expenseClaims.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Approve expense claim
+  app.post<{ Params: { id: string } }>('/claims/:id/approve', { preHandler: requirePermission('expenseClaims', 'approve') }, async (request, reply) => {
+    const claim = await app.db.query.expenseClaims.findFirst({ where: eq(expenseClaims.id, request.params.id) });
+    if (!claim) return reply.notFound('Expense claim not found');
+    if (claim.status !== 'SUBMITTED') return reply.badRequest('Only SUBMITTED claims can be approved');
+
+    const userId = request.session?.user?.id;
+    const [updated] = await app.db.update(expenseClaims).set({
+      status: 'APPROVED',
+      approvedBy: userId,
+      approvedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(expenseClaims.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Reject expense claim
+  app.post<{ Params: { id: string } }>('/claims/:id/reject', { preHandler: requirePermission('expenseClaims', 'approve') }, async (request, reply) => {
+    const claim = await app.db.query.expenseClaims.findFirst({ where: eq(expenseClaims.id, request.params.id) });
+    if (!claim) return reply.notFound('Expense claim not found');
+    if (claim.status !== 'SUBMITTED') return reply.badRequest('Only SUBMITTED claims can be rejected');
+
+    const { reason } = request.body as { reason: string };
+    if (!reason) return reply.badRequest('Rejection reason is required');
+
+    const userId = request.session?.user?.id;
+    const [updated] = await app.db.update(expenseClaims).set({
+      status: 'REJECTED',
+      rejectedBy: userId,
+      rejectedAt: new Date(),
+      rejectionReason: reason,
+      updatedAt: new Date(),
+    }).where(eq(expenseClaims.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Mark expense claim as paid
+  app.post<{ Params: { id: string } }>('/claims/:id/mark-paid', { preHandler: requirePermission('expenseClaims', 'approve') }, async (request, reply) => {
+    const claim = await app.db.query.expenseClaims.findFirst({ where: eq(expenseClaims.id, request.params.id) });
+    if (!claim) return reply.notFound('Expense claim not found');
+    if (claim.status !== 'APPROVED') return reply.badRequest('Only APPROVED claims can be marked as paid');
+
+    const { reference } = request.body as { reference?: string };
+    const [updated] = await app.db.update(expenseClaims).set({
+      status: 'PAID',
+      paidAt: new Date(),
+      paidReference: reference,
+      updatedAt: new Date(),
+    }).where(eq(expenseClaims.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // ==========================================
+  // REQUISITIONS
+  // ==========================================
+
+  // List requisitions
+  app.get('/requisitions', { preHandler: requirePermission('requisitions', 'read') }, async (request) => {
+    const query = paginationSchema.parse(request.query);
+    const { page, limit, search } = query;
+    const offset = (page - 1) * limit;
+
+    const where = search
+      ? sql`(${requisitions.number} ILIKE ${'%' + search + '%'} OR ${requisitions.department} ILIKE ${'%' + search + '%'})`
+      : undefined;
+
+    const [items, countResult] = await Promise.all([
+      app.db.query.requisitions.findMany({
+        where: where ? () => where : undefined,
+        with: { requester: true, lines: true },
+        orderBy: (r, { desc: d }) => [d(r.createdAt)],
+        limit,
+        offset,
+      }),
+      app.db.select({ count: sql<number>`count(*)` }).from(requisitions).where(where),
+    ]);
+
+    return {
+      data: items,
+      pagination: { page, limit, total: Number(countResult[0].count), totalPages: Math.ceil(Number(countResult[0].count) / limit) },
+    };
+  });
+
+  // Get single requisition
+  app.get<{ Params: { id: string } }>('/requisitions/:id', { preHandler: requirePermission('requisitions', 'read') }, async (request, reply) => {
+    const req = await app.db.query.requisitions.findFirst({
+      where: eq(requisitions.id, request.params.id),
+      with: { requester: true, approvedByUser: true, lines: true },
+    });
+    if (!req) return reply.notFound('Requisition not found');
+    return { data: req };
+  });
+
+  // Create requisition
+  app.post('/requisitions', { preHandler: requirePermission('requisitions', 'create') }, async (request, reply) => {
+    const body = createRequisitionSchema.parse(request.body);
+    const userId = request.session?.user?.id;
+    if (!userId) return reply.unauthorized('Authentication required');
+
+    const number = await nextRequisitionNumber(app.db as any);
+
+    const totalEstimate = body.lines.reduce((sum, l) => sum + (l.quantity * l.estimatedUnitPrice), 0);
+
+    const result = await app.db.transaction(async (tx) => {
+      const [req] = await tx.insert(requisitions).values({
+        number,
+        requestedBy: userId,
+        department: body.department,
+        requiredByDate: body.requiredByDate ? new Date(body.requiredByDate) : undefined,
+        totalEstimate: String(totalEstimate),
+        notes: body.notes,
+      }).returning();
+
+      const lines = await tx.insert(requisitionLines).values(
+        body.lines.map((l) => ({
+          requisitionId: req.id,
+          description: l.description,
+          quantity: String(l.quantity),
+          estimatedUnitPrice: String(l.estimatedUnitPrice),
+          estimatedTotal: String(l.quantity * l.estimatedUnitPrice),
+          notes: l.notes,
+        }))
+      ).returning();
+
+      return { ...req, lines };
+    });
+
+    return reply.status(201).send({ data: result });
+  });
+
+  // Submit requisition (DRAFT → SUBMITTED)
+  app.post<{ Params: { id: string } }>('/requisitions/:id/submit', { preHandler: requirePermission('requisitions', 'update') }, async (request, reply) => {
+    const req = await app.db.query.requisitions.findFirst({ where: eq(requisitions.id, request.params.id) });
+    if (!req) return reply.notFound('Requisition not found');
+    if (req.status !== 'DRAFT') return reply.badRequest('Only DRAFT requisitions can be submitted');
+
+    const [updated] = await app.db.update(requisitions).set({ status: 'SUBMITTED', updatedAt: new Date() }).where(eq(requisitions.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Approve requisition
+  app.post<{ Params: { id: string } }>('/requisitions/:id/approve', { preHandler: requirePermission('requisitions', 'approve') }, async (request, reply) => {
+    const req = await app.db.query.requisitions.findFirst({ where: eq(requisitions.id, request.params.id) });
+    if (!req) return reply.notFound('Requisition not found');
+    if (req.status !== 'SUBMITTED') return reply.badRequest('Only SUBMITTED requisitions can be approved');
+
+    const userId = request.session?.user?.id;
+    const [updated] = await app.db.update(requisitions).set({
+      status: 'APPROVED',
+      approvedBy: userId,
+      approvedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(requisitions.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Reject requisition
+  app.post<{ Params: { id: string } }>('/requisitions/:id/reject', { preHandler: requirePermission('requisitions', 'approve') }, async (request, reply) => {
+    const req = await app.db.query.requisitions.findFirst({ where: eq(requisitions.id, request.params.id) });
+    if (!req) return reply.notFound('Requisition not found');
+    if (req.status !== 'SUBMITTED') return reply.badRequest('Only SUBMITTED requisitions can be rejected');
+
+    const { reason } = request.body as { reason: string };
+    if (!reason) return reply.badRequest('Rejection reason is required');
+
+    const userId = request.session?.user?.id;
+    const [updated] = await app.db.update(requisitions).set({
+      status: 'REJECTED',
+      rejectedBy: userId,
+      rejectedAt: new Date(),
+      rejectionReason: reason,
+      updatedAt: new Date(),
+    }).where(eq(requisitions.id, request.params.id)).returning();
+    return { data: updated };
+  });
+
+  // Convert requisition to purchase order
+  app.post<{ Params: { id: string } }>('/requisitions/:id/convert-to-po', { preHandler: requirePermission('requisitions', 'approve') }, async (request, reply) => {
+    const req = await app.db.query.requisitions.findFirst({
+      where: eq(requisitions.id, request.params.id),
+      with: { lines: true },
+    });
+    if (!req) return reply.notFound('Requisition not found');
+    if (req.status !== 'APPROVED') return reply.badRequest('Only APPROVED requisitions can be converted to PO');
+
+    // Import purchase order tables and number generator dynamically
+    const { purchaseOrders, purchaseOrderLines } = await import('@xarra/db');
+    const { nextPurchaseOrderNumber } = await import('../finance/invoice-number.js');
+
+    const poNumber = await nextPurchaseOrderNumber(app.db as any);
+    const userId = request.session?.user?.id;
+
+    // Create PO from requisition
+    const result = await app.db.transaction(async (tx) => {
+      const [po] = await tx.insert(purchaseOrders).values({
+        number: poNumber,
+        orderDate: new Date(),
+        subtotal: req.totalEstimate,
+        vatAmount: '0',
+        total: req.totalEstimate,
+        notes: `Converted from requisition ${req.number}`,
+        createdBy: userId,
+      }).returning();
+
+      if (req.lines.length > 0) {
+        await tx.insert(purchaseOrderLines).values(
+          req.lines.map((l, i) => ({
+            purchaseOrderId: po.id,
+            lineNumber: i + 1,
+            description: l.description,
+            quantity: l.quantity,
+            unitPrice: l.estimatedUnitPrice,
+            lineTotal: l.estimatedTotal,
+          }))
+        );
+      }
+
+      // Mark requisition as ORDERED
+      await tx.update(requisitions).set({
+        status: 'ORDERED',
+        convertedPurchaseOrderId: po.id,
+        updatedAt: new Date(),
+      }).where(eq(requisitions.id, request.params.id));
+
+      return po;
+    });
+
+    return reply.status(201).send({ data: result });
   });
 }

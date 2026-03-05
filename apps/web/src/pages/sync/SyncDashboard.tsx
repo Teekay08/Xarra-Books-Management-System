@@ -33,9 +33,10 @@ const statusColors: Record<string, string> = {
 export function SyncDashboard() {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [csvContent, setCsvContent] = useState('');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvPlatform, setCsvPlatform] = useState<'takealot' | 'kdp'>('takealot');
   const [showCsvModal, setShowCsvModal] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['sync-history'],
@@ -52,15 +53,20 @@ export function SyncDashboard() {
   });
 
   const csvImportMutation = useMutation({
-    mutationFn: (body: { csvContent: string; platform: string }) =>
-      api(`/sync/${body.platform}`, {
+    mutationFn: (params: { file: File; platform: string; exchangeRate?: string }) => {
+      const formData = new FormData();
+      formData.append('file', params.file);
+      if (params.exchangeRate) formData.append('exchangeRate', params.exchangeRate);
+      return api(`/sync/${params.platform}`, {
         method: 'POST',
-        body: JSON.stringify({ csvContent: body.csvContent }),
-      }),
+        body: formData,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-history'] });
       setShowCsvModal(false);
-      setCsvContent('');
+      setCsvFile(null);
+      setExchangeRate('');
     },
   });
 
@@ -196,30 +202,50 @@ export function SyncDashboard() {
       {/* CSV Import Modal */}
       {showCsvModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               Import {csvPlatform === 'takealot' ? 'Takealot' : 'KDP'} CSV Report
             </h3>
-            <textarea
-              value={csvContent}
-              onChange={(e) => setCsvContent(e.target.value)}
-              rows={12}
-              placeholder="Paste CSV content here..."
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
-            />
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">CSV File</label>
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                />
+                {csvFile && (
+                  <p className="mt-1 text-xs text-gray-500">{csvFile.name} ({(csvFile.size / 1024).toFixed(1)} KB)</p>
+                )}
+              </div>
+              {csvPlatform === 'kdp' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">USD → ZAR Exchange Rate (optional)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={exchangeRate}
+                    onChange={(e) => setExchangeRate(e.target.value)}
+                    placeholder="e.g. 18.50"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+            </div>
             {csvImportMutation.isError && (
-              <p className="mt-2 text-sm text-red-600">{(csvImportMutation.error as Error).message}</p>
+              <p className="mt-3 text-sm text-red-600">{(csvImportMutation.error as Error).message}</p>
             )}
-            <div className="flex justify-end gap-3 mt-4">
+            <div className="flex justify-end gap-3 mt-5">
               <button
-                onClick={() => { setShowCsvModal(false); setCsvContent(''); }}
+                onClick={() => { setShowCsvModal(false); setCsvFile(null); setExchangeRate(''); }}
                 className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
-                onClick={() => csvImportMutation.mutate({ csvContent, platform: csvPlatform })}
-                disabled={!csvContent.trim() || csvImportMutation.isPending}
+                onClick={() => csvFile && csvImportMutation.mutate({ file: csvFile, platform: csvPlatform, exchangeRate: exchangeRate || undefined })}
+                disabled={!csvFile || csvImportMutation.isPending}
                 className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
               >
                 {csvImportMutation.isPending ? 'Importing...' : 'Import'}
