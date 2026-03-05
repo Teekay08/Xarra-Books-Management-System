@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
@@ -9,9 +10,11 @@ interface Contract {
   royaltyRatePrint: string;
   royaltyRateEbook: string;
   triggerType: string;
+  triggerValue: number | null;
   advanceAmount: string;
   isSigned: boolean;
   startDate: string;
+  endDate: string | null;
   title?: { title: string; isbn13: string | null };
 }
 
@@ -30,10 +33,17 @@ interface Author {
   contracts?: Contract[];
 }
 
+interface TitleOption {
+  id: string;
+  title: string;
+  isbn13: string | null;
+}
+
 export function AuthorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [showContractModal, setShowContractModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['author', id],
@@ -52,6 +62,7 @@ export function AuthorDetail() {
   if (!data?.data) return <div className="py-12 text-center text-gray-400">Author not found</div>;
 
   const author = data.data;
+  const contracts = author.contracts ?? [];
 
   return (
     <div>
@@ -99,15 +110,26 @@ export function AuthorDetail() {
             </Card>
           )}
 
-          {author.contracts && author.contracts.length > 0 && (
-            <Card title="Contracts">
+          <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900">Contracts</h3>
+              <button
+                onClick={() => setShowContractModal(true)}
+                className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
+              >
+                Add Contract
+              </button>
+            </div>
+            {contracts.length > 0 ? (
               <div className="divide-y">
-                {author.contracts.map((c) => (
+                {contracts.map((c) => (
                   <div key={c.id} className="py-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{c.title?.title ?? c.titleId}</p>
                       <p className="text-xs text-gray-500">
-                        Print: {(Number(c.royaltyRatePrint) * 100).toFixed(0)}% | Ebook: {(Number(c.royaltyRateEbook) * 100).toFixed(0)}%
+                        Print: {(Number(c.royaltyRatePrint) * 100).toFixed(0)}%
+                        {c.royaltyRateEbook && ` | Ebook: ${(Number(c.royaltyRateEbook) * 100).toFixed(0)}%`}
+                        {Number(c.advanceAmount) > 0 && ` | Advance: R ${Number(c.advanceAmount).toFixed(2)}`}
                       </p>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -118,8 +140,10 @@ export function AuthorDetail() {
                   </div>
                 ))}
               </div>
-            </Card>
-          )}
+            ) : (
+              <p className="text-sm text-gray-500">No contracts yet. Add a contract to link this author to a title.</p>
+            )}
+          </div>
         </div>
 
         {author.notes && (
@@ -127,6 +151,147 @@ export function AuthorDetail() {
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{author.notes}</p>
           </Card>
         )}
+      </div>
+
+      {showContractModal && (
+        <ContractModal
+          authorId={id!}
+          onClose={() => setShowContractModal(false)}
+          onSuccess={() => {
+            setShowContractModal(false);
+            queryClient.invalidateQueries({ queryKey: ['author', id] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ContractModal({
+  authorId,
+  onClose,
+  onSuccess,
+}: {
+  authorId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { data: titlesData } = useQuery({
+    queryKey: ['titles-all'],
+    queryFn: () => api<{ data: TitleOption[] }>('/titles?limit=200'),
+  });
+
+  const createContract = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api(`/authors/${authorId}/contracts`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess,
+  });
+
+  const titles = titlesData?.data ?? [];
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    createContract.mutate({
+      authorId,
+      titleId: fd.get('titleId') as string,
+      royaltyRatePrint: Number(fd.get('royaltyRatePrint')) / 100,
+      royaltyRateEbook: Number(fd.get('royaltyRateEbook') || 0) / 100,
+      triggerType: fd.get('triggerType') as string,
+      triggerValue: fd.get('triggerValue') ? Number(fd.get('triggerValue')) : undefined,
+      advanceAmount: Number(fd.get('advanceAmount') || 0),
+      startDate: fd.get('startDate') as string,
+      endDate: (fd.get('endDate') as string) || undefined,
+      isSigned: fd.get('isSigned') === 'on',
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="p-5 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">Add Contract</h2>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+            <select name="titleId" required className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+              <option value="">Select a title...</option>
+              {titles.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title} {t.isbn13 ? `(${t.isbn13})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Print Royalty % *</label>
+              <input name="royaltyRatePrint" type="number" step="0.1" min="0" max="100" required
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. 25" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Ebook Royalty %</label>
+              <input name="royaltyRateEbook" type="number" step="0.1" min="0" max="100"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. 35" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Trigger Type *</label>
+              <select name="triggerType" required className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                <option value="DATE">Date-based</option>
+                <option value="UNITS">Units sold threshold</option>
+                <option value="REVENUE">Revenue threshold</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Trigger Value</label>
+              <input name="triggerValue" type="number" min="0"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="Optional" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Advance Amount (R)</label>
+            <input name="advanceAmount" type="number" step="0.01" min="0" defaultValue="0"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+              <input name="startDate" type="date" required
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+              <input name="endDate" type="date"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input name="isSigned" type="checkbox" id="isSigned" className="rounded border-gray-300" />
+            <label htmlFor="isSigned" className="text-sm text-gray-700">Contract is signed</label>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={createContract.isPending}
+              className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+              {createContract.isPending ? 'Creating...' : 'Create Contract'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

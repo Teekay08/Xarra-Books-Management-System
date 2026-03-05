@@ -6,6 +6,11 @@ import type {
   createConsignmentSchema,
   createInvoiceSchema,
   recordPaymentSchema,
+  companySettingsSchema,
+  createPartnerBranchSchema,
+  generateStatementSchema,
+  createRemittanceSchema,
+  updateProfileSchema,
 } from '../schemas/index.js';
 
 // Inferred types from Zod schemas
@@ -15,6 +20,11 @@ export type CreateChannelPartnerInput = z.infer<typeof createChannelPartnerSchem
 export type CreateConsignmentInput = z.infer<typeof createConsignmentSchema>;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
+export type CompanySettingsInput = z.infer<typeof companySettingsSchema>;
+export type CreatePartnerBranchInput = z.infer<typeof createPartnerBranchSchema>;
+export type GenerateStatementInput = z.infer<typeof generateStatementSchema>;
+export type CreateRemittanceInput = z.infer<typeof createRemittanceSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 // API response wrapper
 export interface ApiResponse<T> {

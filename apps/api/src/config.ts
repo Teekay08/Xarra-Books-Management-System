@@ -17,6 +17,7 @@ const envSchema = z.object({
   AWS_REGION: z.string().default('af-south-1'),
   RESEND_API_KEY: z.string().default(''),
   FROM_EMAIL: z.string().email().default('noreply@xarrabooks.com'),
+  TAKEALOT_API_KEY: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -59,5 +60,9 @@ export const config = {
   resend: {
     apiKey: env.RESEND_API_KEY,
     fromEmail: env.FROM_EMAIL,
+  },
+
+  takealot: {
+    apiKey: env.TAKEALOT_API_KEY,
   },
 } as const;

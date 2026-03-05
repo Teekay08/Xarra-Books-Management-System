@@ -7,9 +7,18 @@ import { config } from '../config.js';
 
 const QUEUE_NAME = 'sor-expiry-alerts';
 
+function parseRedisUrl(url: string) {
+  const parsed = new URL(url);
+  return {
+    host: parsed.hostname || 'localhost',
+    port: parseInt(parsed.port || '6379'),
+    password: parsed.password || undefined,
+  };
+}
+
 export function createSorExpiryQueue(redisUrl: string) {
   const queue = new Queue(QUEUE_NAME, {
-    connection: { url: redisUrl },
+    connection: parseRedisUrl(redisUrl),
   });
   return queue;
 }
@@ -105,7 +114,7 @@ export function createSorExpiryWorker(redisUrl: string) {
         upcoming: upcoming.length,
       };
     },
-    { connection: { url: redisUrl } }
+    { connection: parseRedisUrl(redisUrl) }
   );
 
   worker.on('completed', (job, result) => {

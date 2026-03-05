@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
@@ -65,6 +66,22 @@ export function InvoiceDetail() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoice', id] }),
   });
 
+  const [showCreditNoteModal, setShowCreditNoteModal] = useState(false);
+  const [cnError, setCnError] = useState('');
+
+  const creditNoteMutation = useMutation({
+    mutationFn: (body: { reason: string; lines: { invoiceLineId: string; quantity: number }[] }) =>
+      api(`/finance/invoices/${id}/credit-notes`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'X-Idempotency-Key': crypto.randomUUID() },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      setShowCreditNoteModal(false);
+    },
+  });
+
   if (isLoading) return <div className="py-12 text-center text-gray-400">Loading...</div>;
   if (!data?.data) return <div className="py-12 text-center text-gray-400">Invoice not found</div>;
 
@@ -93,6 +110,14 @@ export function InvoiceDetail() {
             >
               Download PDF
             </a>
+            {inv.status !== 'VOIDED' && inv.status !== 'DRAFT' && (
+              <button
+                onClick={() => setShowCreditNoteModal(true)}
+                className="rounded-md border border-amber-300 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50"
+              >
+                Credit Note
+              </button>
+            )}
             {inv.status !== 'VOIDED' && (
               <button
                 onClick={() => {
@@ -206,6 +231,83 @@ export function InvoiceDetail() {
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{inv.notes}</p>
           </div>
         )}
+      </div>
+
+      {showCreditNoteModal && (
+        <CreditNoteModal
+          lines={inv.lines}
+          error={cnError}
+          isPending={creditNoteMutation.isPending}
+          onClose={() => { setShowCreditNoteModal(false); setCnError(''); }}
+          onSubmit={(reason, lines) => {
+            setCnError('');
+            creditNoteMutation.mutate({ reason, lines }, { onError: (err) => setCnError(err.message) });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreditNoteModal({ lines, error, isPending, onClose, onSubmit }: {
+  lines: InvoiceLine[];
+  error: string;
+  isPending: boolean;
+  onClose: () => void;
+  onSubmit: (reason: string, lines: { invoiceLineId: string; quantity: number }[]) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [selectedLines, setSelectedLines] = useState<Record<string, number>>({});
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    const cnLines = Object.entries(selectedLines)
+      .filter(([, qty]) => qty > 0)
+      .map(([invoiceLineId, quantity]) => ({ invoiceLineId, quantity }));
+    if (cnLines.length === 0) return;
+    onSubmit(reason, cnLines);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Create Credit Note</h3>
+          {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} required
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. Damaged goods returned" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select line items to credit</label>
+            <div className="border rounded-md divide-y">
+              {lines.map((line) => (
+                <div key={line.id} className="flex items-center gap-3 px-3 py-2">
+                  <input type="number" min={0} max={Number(line.quantity)}
+                    value={selectedLines[line.id] ?? 0}
+                    onChange={(e) => setSelectedLines((prev) => ({ ...prev, [line.id]: Number(e.target.value) }))}
+                    className="w-16 rounded border border-gray-300 px-2 py-1 text-sm text-right" />
+                  <div className="flex-1 text-sm">
+                    <span className="text-gray-900">{line.description}</span>
+                    <span className="text-gray-500 ml-2">({line.quantity} x R {Number(line.unitPrice).toFixed(2)})</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={isPending}
+              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">
+              {isPending ? 'Creating...' : 'Create Credit Note'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

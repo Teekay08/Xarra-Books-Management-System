@@ -3,6 +3,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin } from 'better-auth/plugins';
 import { createDb } from '@xarra/db';
 import { config } from '../config.js';
+import { sendEmail, isEmailConfigured } from '../services/email.js';
 import {
   ac,
   adminRole,
@@ -26,6 +27,29 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
+    sendResetPassword: async ({ user, url }) => {
+      if (!isEmailConfigured()) {
+        console.warn('Email not configured — password reset link:', url);
+        return;
+      }
+      await sendEmail({
+        to: user.email,
+        subject: 'Reset your Xarra Books password',
+        html: `
+          <div style="font-family: 'Inter', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+            <h2 style="color: #1f2937; margin-bottom: 16px;">Password Reset</h2>
+            <p style="color: #4b5563; line-height: 1.6;">Hi ${user.name},</p>
+            <p style="color: #4b5563; line-height: 1.6;">You requested a password reset for your Xarra Books account. Click the button below to set a new password:</p>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${url}" style="background-color: #8B1A1A; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Reset Password</a>
+            </div>
+            <p style="color: #9ca3af; font-size: 13px;">If you didn't request this, you can safely ignore this email. This link expires in 1 hour.</p>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+            <p style="color: #d1d5db; font-size: 11px; text-align: center;">Xarra Books &mdash; We mainstream the African book</p>
+          </div>
+        `,
+      });
+    },
   },
 
   session: {

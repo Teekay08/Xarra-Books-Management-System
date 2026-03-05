@@ -58,6 +58,12 @@ export function PartnerForm() {
       contactEmail: fd.get('contactEmail') || undefined,
       contactPhone: fd.get('contactPhone') || undefined,
       remittanceEmail: fd.get('remittanceEmail') || undefined,
+      addressLine1: fd.get('addressLine1') || undefined,
+      addressLine2: fd.get('addressLine2') || undefined,
+      city: fd.get('city') || undefined,
+      province: fd.get('province') || undefined,
+      postalCode: fd.get('postalCode') || undefined,
+      vatNumber: fd.get('vatNumber') || undefined,
       isActive: fd.get('isActive') === 'on',
       notes: fd.get('notes') || undefined,
     };
@@ -98,6 +104,20 @@ export function PartnerForm() {
               <Field label="Contact Phone" name="contactPhone" defaultValue={partner?.contactPhone ?? ''} />
               <Field label="Remittance Email" name="remittanceEmail" type="email" defaultValue={partner?.remittanceEmail ?? ''} />
             </div>
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-md border border-gray-200 p-4">
+          <legend className="px-2 text-sm font-medium text-gray-600">Address & Tax</legend>
+          <div className="space-y-3">
+            <Field label="Address Line 1" name="addressLine1" defaultValue={(partner as any)?.addressLine1 ?? ''} />
+            <Field label="Address Line 2" name="addressLine2" defaultValue={(partner as any)?.addressLine2 ?? ''} />
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="City" name="city" defaultValue={(partner as any)?.city ?? ''} />
+              <Field label="Province" name="province" defaultValue={(partner as any)?.province ?? ''} />
+              <Field label="Postal Code" name="postalCode" defaultValue={(partner as any)?.postalCode ?? ''} />
+            </div>
+            <Field label="VAT Number" name="vatNumber" defaultValue={(partner as any)?.vatNumber ?? ''} />
           </div>
         </fieldset>
 

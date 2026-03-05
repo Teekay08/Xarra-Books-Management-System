@@ -2,10 +2,15 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import path from 'path';
 import databasePlugin from './plugins/database.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
 import { createSorExpiryQueue, createSorExpiryWorker, scheduleSorExpiryJob } from './jobs/sor-expiry.js';
+import { createTakealotSyncQueue, createTakealotSyncWorker, scheduleTakealotSyncJob } from './jobs/takealot-sync.js';
+import { createInvoiceReminderQueue, createInvoiceReminderWorker, scheduleInvoiceReminderJob } from './jobs/invoice-reminders.js';
 import { authorRoutes } from './modules/authors/routes.js';
 import { titleRoutes } from './modules/titles/routes.js';
 import { partnerRoutes } from './modules/partners/routes.js';
@@ -15,6 +20,14 @@ import { financeRoutes } from './modules/finance/routes.js';
 import { royaltyRoutes } from './modules/royalties/routes.js';
 import { consignmentRoutes } from './modules/consignments/routes.js';
 import { syncRoutes } from './modules/sync/routes.js';
+import { settingsRoutes } from './modules/settings/routes.js';
+import { profileRoutes } from './modules/profile/routes.js';
+import { statementRoutes } from './modules/statements/routes.js';
+import { authorPortalRoutes } from './modules/author-portal/routes.js';
+import { expenseRoutes } from './modules/expenses/routes.js';
+import { reportRoutes } from './modules/reports/routes.js';
+import { userRoutes } from './modules/users/routes.js';
+import { returnRoutes } from './modules/returns/routes.js';
 import { config } from './config.js';
 
 export async function buildApp() {
@@ -36,6 +49,14 @@ export async function buildApp() {
   });
   await app.register(helmet);
   await app.register(sensible);
+  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB max
+
+  // Serve uploaded files in dev
+  await app.register(fastifyStatic, {
+    root: path.join(process.cwd(), 'data', 'uploads'),
+    prefix: '/uploads/',
+    decorateReply: false,
+  });
 
   // Database
   await app.register(databasePlugin);
@@ -46,15 +67,38 @@ export async function buildApp() {
   // Authentication (Better Auth)
   await app.register(authPlugin);
 
-  // Background jobs
+  // Background jobs (non-blocking)
   const sorQueue = createSorExpiryQueue(config.redis.url);
   const sorWorker = createSorExpiryWorker(config.redis.url);
-  await scheduleSorExpiryJob(sorQueue);
-  app.log.info('SOR expiry alert job scheduled (daily 7:00 AM SAST)');
+  scheduleSorExpiryJob(sorQueue)
+    .then(() => app.log.info('SOR expiry alert job scheduled (daily 7:00 AM SAST)'))
+    .catch((err) => app.log.warn({ err }, 'Failed to schedule SOR expiry job — Redis may be unavailable'));
+
+  // Takealot API sync (only if API key is configured)
+  let takealotQueue: ReturnType<typeof createTakealotSyncQueue> | null = null;
+  let takealotWorker: ReturnType<typeof createTakealotSyncWorker> | null = null;
+  if (config.takealot.apiKey) {
+    takealotQueue = createTakealotSyncQueue(config.redis.url);
+    takealotWorker = createTakealotSyncWorker(config.redis.url);
+    scheduleTakealotSyncJob(takealotQueue)
+      .then(() => app.log.info('Takealot sync job scheduled (daily 6:00 AM SAST)'))
+      .catch((err) => app.log.warn({ err }, 'Failed to schedule Takealot sync job'));
+  }
+
+  // Invoice payment reminders
+  const reminderQueue = createInvoiceReminderQueue(config.redis.url);
+  const reminderWorker = createInvoiceReminderWorker(config.redis.url);
+  scheduleInvoiceReminderJob(reminderQueue)
+    .then(() => app.log.info('Invoice reminder job scheduled (daily 8:00 AM SAST)'))
+    .catch((err) => app.log.warn({ err }, 'Failed to schedule invoice reminder job'));
 
   app.addHook('onClose', async () => {
     await sorWorker.close();
     await sorQueue.close();
+    await reminderWorker.close();
+    await reminderQueue.close();
+    if (takealotWorker) await takealotWorker.close();
+    if (takealotQueue) await takealotQueue.close();
   });
 
   // Health check (no auth required)
@@ -92,6 +136,14 @@ export async function buildApp() {
     api.register(royaltyRoutes, { prefix: '/royalties' });
     api.register(consignmentRoutes, { prefix: '/consignments' });
     api.register(syncRoutes, { prefix: '/sync' });
+    api.register(settingsRoutes, { prefix: '/settings' });
+    api.register(profileRoutes, { prefix: '/profile' });
+    api.register(statementRoutes, { prefix: '/statements' });
+    api.register(authorPortalRoutes, { prefix: '/portal' });
+    api.register(expenseRoutes, { prefix: '/expenses' });
+    api.register(reportRoutes, { prefix: '/reports' });
+    api.register(userRoutes, { prefix: '/users' });
+    api.register(returnRoutes, { prefix: '/returns' });
   }, { prefix: '/api/v1' });
 
   return app;

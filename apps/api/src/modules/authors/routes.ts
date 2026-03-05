@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc, asc } from 'drizzle-orm';
-import { authors, authorContracts } from '@xarra/db';
+import { authors, authorContracts, users } from '@xarra/db';
 import { createAuthorSchema, updateAuthorSchema, createAuthorContractSchema, paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 
@@ -106,5 +106,44 @@ export async function authorRoutes(app: FastifyInstance) {
       endDate: body.endDate ? new Date(body.endDate) : undefined,
     }).returning();
     return reply.status(201).send({ data: contract });
+  });
+
+  // === Portal Access Provisioning ===
+
+  // Create portal user for an author (admin only)
+  app.post<{ Params: { id: string } }>('/:id/portal-access', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { email, name, password } = request.body as { email: string; name: string; password: string };
+
+    const author = await app.db.query.authors.findFirst({
+      where: eq(authors.id, request.params.id),
+    });
+    if (!author) return reply.notFound('Author not found');
+    if (author.portalUserId) return reply.badRequest('Author already has portal access');
+
+    // Create user via Better Auth sign-up
+    const response = await fetch(`${process.env.BETTER_AUTH_URL}/api/auth/sign-up/email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, password }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      return reply.badRequest(`Failed to create portal user: ${err}`);
+    }
+
+    const { user: newUser } = await response.json() as { user: { id: string } };
+
+    // Set user role to AUTHOR in our users table
+    await app.db.update(users).set({ role: 'AUTHOR' }).where(eq(users.id, newUser.id));
+
+    // Link portal user to author
+    const [updated] = await app.db
+      .update(authors)
+      .set({ portalUserId: newUser.id, updatedAt: new Date() })
+      .where(eq(authors.id, request.params.id))
+      .returning();
+
+    return reply.status(201).send({ data: updated });
   });
 }

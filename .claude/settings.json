@@ -18,7 +18,25 @@
       "Bash(npm ls better-auth)",
       "Bash(node -e \":*)",
       "Bash(npm install -w apps/api @better-auth/drizzle-adapter)",
-      "Bash(npm install -w apps/web better-auth)"
+      "Bash(npm install -w apps/web better-auth)",
+      "Bash(npm install puppeteer)",
+      "Bash(npm install bullmq ioredis resend --workspace=apps/api)",
+      "Bash(npx vitest run)",
+      "Bash(gh auth status)",
+      "Bash(gh repo create Xarra-Books-Management-System --private --source=. --push --description \"Bespoke publishing management system for Xarra Books \\(South African publisher\\)\")",
+      "Bash(npx drizzle-kit push)",
+      "Bash(PGPASSWORD=xarra psql -h localhost -p 5433 -U xarra -d xarra -c \"DROP SCHEMA public CASCADE; CREATE SCHEMA public;\")",
+      "Bash(docker exec xarra-postgres psql -U xarra -d xarra -c \"DROP SCHEMA public CASCADE; CREATE SCHEMA public;\")",
+      "Bash(npx tsx src/seed.ts)",
+      "Bash(npm run dev --workspace=apps/api)",
+      "Bash(npm run dev --workspace=apps/web)",
+      "Bash(curl -s http://localhost:3002/health)",
+      "Bash(docker exec xarra-redis redis-cli ping)",
+      "Bash(node -e \"fetch\\(''http://localhost:3002/health''\\).then\\(r=>r.json\\(\\)\\).then\\(d=>console.log\\(JSON.stringify\\(d,null,2\\)\\)\\).catch\\(e=>console.error\\(e.message\\)\\)\")",
+      "Bash(docker exec xarra-postgres psql -U xarra -d xarra -c \"DELETE FROM users WHERE email = ''admin@xarrabooks.com'';\")",
+      "Bash(docker exec xarra-postgres psql -U xarra -d xarra -c \"\\\\dt\")",
+      "Bash(docker exec xarra-postgres psql -U xarra -d xarra -c \":*)",
+      "Bash(docker exec xarra-postgres psql -U xarra -d xarra -c \"DROP TABLE IF EXISTS verification, account, session, \"\"user\"\" CASCADE;\")"
     ]
   }
 }

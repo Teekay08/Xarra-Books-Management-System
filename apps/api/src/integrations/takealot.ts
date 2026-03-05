@@ -1,33 +1,107 @@
 import type { NormalizedSale, PlatformAdapter } from './types.js';
 
 interface TakealotConfig {
-  apiKey: string;  // Takealot Seller Portal API key
+  apiKey: string;
+}
+
+interface TakealotSaleItem {
+  order_id: number;
+  order_item_id: number;
+  order_date: string;
+  product_title: string;
+  tsin_id: number;
+  offer_id: number;
+  sku: string;
+  quantity: number;
+  selling_price: number;
+  dc: string;
+  takealot_url_mobi: string;
+  success_fee: number;
+  fulfillment_fee: number;
+  courier_collection_fee: number;
+  auto_ibt_fee: number;
+  total_fee: number;
+  status: string;
+}
+
+interface TakealotApiResponse {
+  total_results: number;
+  page_number: number;
+  page_size: number;
+  sales: TakealotSaleItem[];
 }
 
 /**
- * Takealot integration via CSV import.
+ * Takealot integration supporting both CSV import and Seller API polling.
  *
- * Takealot does not currently provide a real-time sales API.
- * Sellers download sales reports from the Seller Portal as CSV files.
- * This adapter parses those CSV reports into normalized sales.
- *
- * Expected CSV columns from Takealot:
- *   Order ID, Date, Product Title, TSIN, Offer ID, Quantity, Selling Price,
- *   Success Fee, Fulfilment Fee, Total Fees, Net Payment
+ * API mode: Uses the Takealot Seller API to fetch orders within a date range.
+ * CSV mode: Parses downloaded CSV sales reports.
  */
 export class TakealotAdapter implements PlatformAdapter {
   readonly platform = 'TAKEALOT' as const;
 
-  constructor(private _config: TakealotConfig) {}
+  constructor(private config: TakealotConfig) {}
 
   /**
-   * For Takealot, `since` and `until` are ignored — we parse a pre-downloaded CSV.
-   * Call `parseCsvReport` instead for actual imports.
+   * Fetch sales from the Takealot Seller API.
+   * Requires a valid API key configured in config.
    */
-  async fetchSales(_since: Date, _until?: Date): Promise<NormalizedSale[]> {
-    throw new Error(
-      'Takealot does not support API polling. Use TakealotAdapter.parseCsvReport(csvContent) to import downloaded reports.'
-    );
+  async fetchSales(since: Date, until?: Date): Promise<NormalizedSale[]> {
+    if (!this.config.apiKey) {
+      throw new Error(
+        'Takealot API key not configured. Use TakealotAdapter.parseCsvReport(csvContent) for CSV imports.'
+      );
+    }
+
+    const allSales: NormalizedSale[] = [];
+    let page = 1;
+    const pageSize = 100;
+    let hasMore = true;
+
+    const sinceStr = since.toISOString().split('T')[0];
+    const untilStr = until ? until.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
+    while (hasMore) {
+      const url = `https://seller-api.takealot.com/v2/sales?start_date=${sinceStr}&end_date=${untilStr}&page_number=${page}&page_size=${pageSize}`;
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Key ${this.config.apiKey}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Takealot API error (${response.status}): ${text}`);
+      }
+
+      const data = (await response.json()) as TakealotApiResponse;
+
+      for (const item of data.sales) {
+        if (item.status === 'Cancelled') continue;
+
+        allSales.push({
+          externalId: `tak-${item.order_id}-${item.order_item_id}`,
+          channel: 'TAKEALOT',
+          sku: item.sku || String(item.offer_id) || String(item.tsin_id),
+          quantity: item.quantity,
+          unitPrice: item.selling_price,
+          commission: item.total_fee,
+          netRevenue: item.selling_price * item.quantity - item.total_fee,
+          currency: 'ZAR',
+          orderRef: String(item.order_id),
+          saleDate: new Date(item.order_date),
+          fulfilmentType: 'LEAD_TIME',
+          source: 'API',
+        });
+      }
+
+      hasMore = data.sales.length === pageSize;
+      page++;
+    }
+
+    return allSales;
   }
 
   /**

@@ -19,6 +19,7 @@ export function InvoiceCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [taxInclusive, setTaxInclusive] = useState(false);
   const [lines, setLines] = useState<LineInput[]>([
     { titleId: '', description: '', quantity: 1, unitPrice: 0, discountPct: 0 },
   ]);
@@ -96,6 +97,7 @@ export function InvoiceCreate() {
     mutation.mutate({
       partnerId,
       invoiceDate,
+      taxInclusive,
       lines: lines.map((l) => ({
         titleId: l.titleId,
         description: l.description,
@@ -107,11 +109,12 @@ export function InvoiceCreate() {
     }, { onError: (err) => setError(err.message) });
   }
 
-  const subtotal = lines.reduce((sum, l) => {
+  const lineGross = lines.reduce((sum, l) => {
     const line = l.quantity * l.unitPrice;
     return sum + line - line * (l.discountPct / 100);
   }, 0);
-  const vat = subtotal * 0.15;
+  const subtotal = taxInclusive ? lineGross / 1.15 : lineGross;
+  const vat = taxInclusive ? lineGross - subtotal : lineGross * 0.15;
 
   return (
     <div>
@@ -144,6 +147,12 @@ export function InvoiceCreate() {
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
             />
           </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="taxInclusive" checked={taxInclusive} onChange={(e) => setTaxInclusive(e.target.checked)}
+            className="rounded border-gray-300" />
+          <label htmlFor="taxInclusive" className="text-sm text-gray-700">Prices include VAT</label>
         </div>
 
         <fieldset className="rounded-md border border-gray-200 p-4">
@@ -233,7 +242,7 @@ export function InvoiceCreate() {
             </div>
             <div className="flex justify-between border-t pt-1 font-semibold">
               <span>Total</span>
-              <span className="font-mono">R {(subtotal + vat).toFixed(2)}</span>
+              <span className="font-mono">R {(taxInclusive ? lineGross : subtotal + vat).toFixed(2)}</span>
             </div>
           </div>
         </div>

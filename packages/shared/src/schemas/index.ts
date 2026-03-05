@@ -9,6 +9,8 @@ import {
   INVOICE_STATUSES,
   MOVEMENT_TYPES,
   USER_ROLES,
+  DISCOUNT_TYPES,
+  REMITTANCE_STATUSES,
 } from '../constants.js';
 
 // === Author Schemas ===
@@ -80,6 +82,13 @@ export const createChannelPartnerSchema = z.object({
   contactEmail: z.string().email().optional(),
   contactPhone: z.string().optional(),
   remittanceEmail: z.string().email().optional(),
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  province: z.string().optional(),
+  postalCode: z.string().optional(),
+  country: z.string().optional(),
+  vatNumber: z.string().optional(),
   isActive: z.boolean().default(true),
   notes: z.string().optional(),
 });
@@ -90,6 +99,7 @@ export const updateChannelPartnerSchema = createChannelPartnerSchema.partial();
 
 export const createConsignmentSchema = z.object({
   partnerId: z.string().uuid(),
+  branchId: z.string().uuid().optional(),
   dispatchDate: z.string().or(z.date()),
   courierCompany: z.string().optional(),
   courierWaybill: z.string().optional(),
@@ -104,14 +114,17 @@ export const createConsignmentSchema = z.object({
 
 export const createInvoiceSchema = z.object({
   partnerId: z.string().uuid(),
+  branchId: z.string().uuid().optional(),
   consignmentId: z.string().uuid().optional(),
   invoiceDate: z.string().or(z.date()),
+  taxInclusive: z.boolean().default(false),
   lines: z.array(z.object({
     titleId: z.string().uuid(),
     description: z.string().optional(),
     quantity: z.number().int().positive(),
     unitPrice: z.number().positive(),
     discountPct: z.number().min(0).max(100),
+    discountType: z.enum(DISCOUNT_TYPES).default('PERCENT'),
   })).min(1),
   notes: z.string().optional(),
 });
@@ -120,6 +133,7 @@ export const createInvoiceSchema = z.object({
 
 export const recordPaymentSchema = z.object({
   partnerId: z.string().uuid(),
+  branchId: z.string().uuid().optional(),
   amount: z.number().positive(),
   paymentDate: z.string().or(z.date()),
   paymentMethod: z.string().optional(),
@@ -152,3 +166,144 @@ export const paginationSchema = z.object({
 });
 
 export type PaginationInput = z.infer<typeof paginationSchema>;
+
+// === Company Settings Schemas ===
+
+export const companySettingsSchema = z.object({
+  companyName: z.string().min(1, 'Company name is required'),
+  tradingAs: z.string().optional(),
+  registrationNumber: z.string().optional(),
+  vatNumber: z.string().optional(),
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  province: z.string().optional(),
+  postalCode: z.string().optional(),
+  country: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email().optional(),
+  website: z.string().url().optional(),
+  bankDetails: z.object({
+    bankName: z.string(),
+    accountNumber: z.string(),
+    branchCode: z.string(),
+    accountType: z.string(),
+  }).optional(),
+  invoiceFooterText: z.string().optional(),
+  statementFooterText: z.string().optional(),
+});
+
+// === Partner Branch Schemas ===
+
+export const createPartnerBranchSchema = z.object({
+  name: z.string().min(1, 'Branch name is required'),
+  code: z.string().optional(),
+  contactName: z.string().optional(),
+  contactEmail: z.string().email().optional(),
+  contactPhone: z.string().optional(),
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  province: z.string().optional(),
+  postalCode: z.string().optional(),
+  isActive: z.boolean().default(true),
+  notes: z.string().optional(),
+});
+
+export const updatePartnerBranchSchema = createPartnerBranchSchema.partial();
+
+// === Statement Schemas ===
+
+export const generateStatementSchema = z.object({
+  partnerId: z.string().uuid(),
+  branchId: z.string().uuid().optional(),
+  branchIds: z.array(z.string().uuid()).optional(),
+  periodFrom: z.string().or(z.date()),
+  periodTo: z.string().or(z.date()),
+  consolidated: z.boolean().default(false),
+});
+
+// === Remittance Schemas ===
+
+export const createRemittanceSchema = z.object({
+  partnerId: z.string().uuid(),
+  partnerRef: z.string().optional(),
+  periodFrom: z.string().or(z.date()).optional(),
+  periodTo: z.string().or(z.date()).optional(),
+  totalAmount: z.number().positive(),
+  parseMethod: z.enum(['PDF_TEXT', 'OCR', 'CSV', 'MANUAL']).default('MANUAL'),
+  invoiceAllocations: z.array(z.object({
+    invoiceId: z.string().uuid(),
+    amount: z.number().positive(),
+  })).optional(),
+  notes: z.string().optional(),
+});
+
+// === User Profile Schemas ===
+
+export const updateProfileSchema = z.object({
+  name: z.string().min(1).optional(),
+  preferences: z.object({
+    theme: z.enum(['light', 'dark']).optional(),
+    dateFormat: z.string().optional(),
+    itemsPerPage: z.number().int().min(10).max(100).optional(),
+  }).optional(),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+// === Debit Note Schemas ===
+
+export const createDebitNoteSchema = z.object({
+  partnerId: z.string().uuid(),
+  invoiceId: z.string().uuid().optional(),
+  lines: z.array(z.object({
+    description: z.string(),
+    quantity: z.number().int().positive(),
+    unitPrice: z.number().positive(),
+    discountPct: z.number().min(0).max(100).default(0),
+  })).min(1),
+  reason: z.string().min(1, 'Reason is required'),
+  notes: z.string().optional(),
+});
+
+// === Expense Schemas ===
+
+export const createExpenseCategorySchema = z.object({
+  name: z.string().min(1, 'Category name is required'),
+  description: z.string().optional(),
+  isActive: z.boolean().default(true),
+});
+
+export const createExpenseSchema = z.object({
+  categoryId: z.string().uuid(),
+  description: z.string().min(1, 'Description is required'),
+  amount: z.number().positive(),
+  taxAmount: z.number().min(0).default(0),
+  taxInclusive: z.boolean().default(false),
+  expenseDate: z.string().or(z.date()),
+  paymentMethod: z.string().optional(),
+  reference: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// === Quotation Schemas ===
+
+export const createQuotationSchema = z.object({
+  partnerId: z.string().uuid(),
+  branchId: z.string().uuid().optional(),
+  quotationDate: z.string().or(z.date()),
+  validUntil: z.string().or(z.date()).optional(),
+  taxInclusive: z.boolean().default(false),
+  lines: z.array(z.object({
+    titleId: z.string().uuid().optional(),
+    description: z.string(),
+    quantity: z.number().int().positive(),
+    unitPrice: z.number().positive(),
+    discountPct: z.number().min(0).max(100).default(0),
+  })).min(1),
+  notes: z.string().optional(),
+});

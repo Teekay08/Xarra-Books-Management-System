@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, sql, desc, asc } from 'drizzle-orm';
-import { channelPartners } from '@xarra/db';
-import { createChannelPartnerSchema, updateChannelPartnerSchema, paginationSchema } from '@xarra/shared';
+import { eq, sql, desc, asc, and } from 'drizzle-orm';
+import { channelPartners, partnerBranches } from '@xarra/db';
+import { createChannelPartnerSchema, updateChannelPartnerSchema, paginationSchema, createPartnerBranchSchema, updatePartnerBranchSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 
 export async function partnerRoutes(app: FastifyInstance) {
@@ -40,10 +40,11 @@ export async function partnerRoutes(app: FastifyInstance) {
     };
   });
 
-  // Get single partner
+  // Get single partner (with branches)
   app.get<{ Params: { id: string } }>('/:id', { preHandler: requireAuth }, async (request, reply) => {
     const partner = await app.db.query.channelPartners.findFirst({
       where: eq(channelPartners.id, request.params.id),
+      with: { branches: true },
     });
 
     if (!partner) return reply.notFound('Channel partner not found');
@@ -85,6 +86,82 @@ export async function partnerRoutes(app: FastifyInstance) {
       .returning();
 
     if (!updated) return reply.notFound('Channel partner not found');
+    return { data: updated };
+  });
+
+  // === Branch Sub-routes ===
+
+  // List branches for a partner
+  app.get<{ Params: { id: string } }>('/:id/branches', { preHandler: requireAuth }, async (request) => {
+    const branches = await app.db
+      .select()
+      .from(partnerBranches)
+      .where(eq(partnerBranches.partnerId, request.params.id))
+      .orderBy(asc(partnerBranches.name));
+
+    return { data: branches };
+  });
+
+  // Get single branch
+  app.get<{ Params: { id: string; branchId: string } }>('/:id/branches/:branchId', { preHandler: requireAuth }, async (request, reply) => {
+    const branch = await app.db.query.partnerBranches.findFirst({
+      where: and(
+        eq(partnerBranches.id, request.params.branchId),
+        eq(partnerBranches.partnerId, request.params.id),
+      ),
+    });
+
+    if (!branch) return reply.notFound('Branch not found');
+    return { data: branch };
+  });
+
+  // Create branch
+  app.post<{ Params: { id: string } }>('/:id/branches', { preHandler: requireRole('admin', 'operations') }, async (request, reply) => {
+    const body = createPartnerBranchSchema.parse(request.body);
+
+    // Verify partner exists
+    const partner = await app.db.query.channelPartners.findFirst({
+      where: eq(channelPartners.id, request.params.id),
+    });
+    if (!partner) return reply.notFound('Channel partner not found');
+
+    const [branch] = await app.db.insert(partnerBranches).values({
+      ...body,
+      partnerId: request.params.id,
+    }).returning();
+
+    return reply.status(201).send({ data: branch });
+  });
+
+  // Update branch
+  app.patch<{ Params: { id: string; branchId: string } }>('/:id/branches/:branchId', { preHandler: requireRole('admin', 'operations') }, async (request, reply) => {
+    const body = updatePartnerBranchSchema.parse(request.body);
+
+    const [updated] = await app.db
+      .update(partnerBranches)
+      .set({ ...body, updatedAt: new Date() })
+      .where(and(
+        eq(partnerBranches.id, request.params.branchId),
+        eq(partnerBranches.partnerId, request.params.id),
+      ))
+      .returning();
+
+    if (!updated) return reply.notFound('Branch not found');
+    return { data: updated };
+  });
+
+  // Deactivate branch
+  app.delete<{ Params: { id: string; branchId: string } }>('/:id/branches/:branchId', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const [updated] = await app.db
+      .update(partnerBranches)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(and(
+        eq(partnerBranches.id, request.params.branchId),
+        eq(partnerBranches.partnerId, request.params.id),
+      ))
+      .returning();
+
+    if (!updated) return reply.notFound('Branch not found');
     return { data: updated };
   });
 }

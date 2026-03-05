@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { config } from '../config.js';
 
 let browserInstance: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
 
@@ -12,11 +13,21 @@ async function getBrowser() {
   return browserInstance;
 }
 
+/**
+ * Rewrites relative URLs (e.g. /uploads/logo.png) in the HTML
+ * to absolute URLs so Puppeteer can load them via setContent.
+ */
+function resolveRelativeUrls(html: string): string {
+  const baseUrl = `http://localhost:${config.port}`;
+  return html.replace(/src="(\/[^"]+)"/g, `src="${baseUrl}$1"`);
+}
+
 export async function generatePdf(html: string): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const resolved = resolveRelativeUrls(html);
+    await page.setContent(resolved, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({
       format: 'A4',
       margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },

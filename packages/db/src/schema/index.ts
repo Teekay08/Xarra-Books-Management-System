@@ -1,4 +1,5 @@
 export * from './users';
+export * from './auth';
 export * from './authors';
 export * from './titles';
 export * from './channels';
@@ -8,3 +9,5 @@ export * from './finance';
 export * from './royalties';
 export * from './sales';
 export * from './sync';
+export * from './settings';
+export * from './expenses';

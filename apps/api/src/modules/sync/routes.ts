@@ -5,6 +5,7 @@ import { SyncEngine } from '../../integrations/sync-engine.js';
 import { WooCommerceAdapter } from '../../integrations/woocommerce.js';
 import { TakealotAdapter } from '../../integrations/takealot.js';
 import { KdpAdapter } from '../../integrations/kdp.js';
+import { config } from '../../config.js';
 
 export const syncRoutes: FastifyPluginAsync = async (app) => {
   // List sync history
@@ -63,6 +64,26 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
     );
 
     return { data: syncResult };
+  });
+
+  // Takealot API poll (requires TAKEALOT_API_KEY)
+  app.post('/takealot/poll', async (request, reply) => {
+    const { since, until } = request.body as { since: string; until?: string };
+
+    if (!since) {
+      return reply.badRequest('since date is required');
+    }
+
+    const apiKey = config.takealot.apiKey;
+    if (!apiKey) {
+      return reply.badRequest('TAKEALOT_API_KEY not configured');
+    }
+
+    const adapter = new TakealotAdapter({ apiKey });
+    const engine = new SyncEngine(request.server.db);
+    const result = await engine.importSales(adapter, new Date(since), until ? new Date(until) : undefined);
+
+    return { data: result };
   });
 
   // Upload KDP CSV report

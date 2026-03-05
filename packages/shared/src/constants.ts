@@ -66,3 +66,24 @@ export const DOCUMENT_PREFIXES = {
 
 export const VAT_RATE = 0.15; // South Africa VAT rate
 export const DEFAULT_CURRENCY = 'ZAR';
+
+export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;
+export type DiscountType = (typeof DISCOUNT_TYPES)[number];
+
+export const STATEMENT_TYPES = ['PARTNER', 'BRANCH', 'CONSOLIDATED'] as const;
+export type StatementType = (typeof STATEMENT_TYPES)[number];
+
+export const PAYMENT_METHODS = ['BANK_TRANSFER', 'EFT', 'CASH', 'CHEQUE'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const REMITTANCE_STATUSES = ['PENDING', 'MATCHED', 'DISPUTED'] as const;
+export type RemittanceStatus = (typeof REMITTANCE_STATUSES)[number];
+
+export const QUOTATION_STATUSES = ['DRAFT', 'SENT', 'ACCEPTED', 'EXPIRED', 'CONVERTED'] as const;
+export type QuotationStatus = (typeof QUOTATION_STATUSES)[number];
+
+export const DEFAULT_EXPENSE_CATEGORIES = [
+  'Office Supplies', 'Printing & Production', 'Shipping & Courier',
+  'Marketing & Advertising', 'Software & Subscriptions', 'Travel',
+  'Professional Services', 'Utilities', 'Rent', 'Other',
+] as const;

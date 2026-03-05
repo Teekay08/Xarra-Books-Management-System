@@ -4,15 +4,51 @@ interface InvoiceLine {
   quantity: string;
   unitPrice: string;
   discountPct: string;
+  discountType?: string;
   lineTotal: string;
   lineTax: string;
+}
+
+interface CompanyInfo {
+  name: string;
+  tradingAs?: string | null;
+  vatNumber?: string | null;
+  registrationNumber?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  logoUrl?: string | null;
+  bankDetails?: {
+    bankName: string;
+    accountNumber: string;
+    branchCode: string;
+    accountType: string;
+  };
+}
+
+interface RecipientInfo {
+  name: string;
+  branchName?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
+  vatNumber?: string | null;
 }
 
 interface InvoiceData {
   number: string;
   invoiceDate: string;
   dueDate: string;
-  partner: { name: string; contactName?: string | null; contactEmail?: string | null };
+  company?: CompanyInfo;
+  recipient: RecipientInfo;
   lines: InvoiceLine[];
   subtotal: string;
   vatAmount: string;
@@ -28,17 +64,50 @@ function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
+function formatAddress(addr: { addressLine1?: string | null; addressLine2?: string | null; city?: string | null; province?: string | null; postalCode?: string | null }): string {
+  const parts = [addr.addressLine1, addr.addressLine2, [addr.city, addr.province].filter(Boolean).join(', '), addr.postalCode].filter(Boolean);
+  return parts.map(p => `<p style="margin:2px 0">${p}</p>`).join('');
+}
+
+function formatDiscount(line: InvoiceLine): string {
+  if (line.discountType === 'FIXED') {
+    return formatCurrency(line.discountPct);
+  }
+  return `${Number(line.discountPct)}%`;
+}
+
 export function renderInvoiceHtml(data: InvoiceData): string {
+  const company = data.company ?? { name: 'Xarra Books' };
+
   const linesHtml = data.lines.map((line) => `
     <tr>
       <td style="padding:8px;border-bottom:1px solid #eee">${line.lineNumber}</td>
       <td style="padding:8px;border-bottom:1px solid #eee">${line.description}</td>
       <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${line.quantity}</td>
       <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(line.unitPrice)}</td>
-      <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${Number(line.discountPct)}%</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${formatDiscount(line)}</td>
       <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(line.lineTotal)}</td>
     </tr>
   `).join('');
+
+  const logoHtml = company.logoUrl
+    ? `<img src="${company.logoUrl}" alt="${company.name}" style="max-height:60px;max-width:200px;margin-bottom:8px">`
+    : '';
+
+  const companyAddressHtml = formatAddress(company as any);
+
+  const recipientAddressHtml = formatAddress(data.recipient);
+
+  const bankDetailsHtml = company.bankDetails ? `
+    <div style="margin-top:20px;padding:12px;background:#f0f7f0;border-radius:4px;font-size:12px">
+      <strong>Banking Details</strong><br>
+      Bank: ${company.bankDetails.bankName}<br>
+      Account: ${company.bankDetails.accountNumber}<br>
+      Branch Code: ${company.bankDetails.branchCode}<br>
+      Account Type: ${company.bankDetails.accountType}<br>
+      Reference: ${data.number}
+    </div>
+  ` : '';
 
   return `<!DOCTYPE html>
 <html>
@@ -51,9 +120,10 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     .company-sub { font-size: 11px; color: #666; margin-top: 4px; }
     .invoice-title { font-size: 28px; font-weight: bold; color: #166534; text-align: right; }
     .invoice-meta { text-align: right; font-size: 12px; color: #555; margin-top: 8px; }
-    .bill-to { margin-bottom: 30px; }
-    .bill-to h3 { font-size: 11px; text-transform: uppercase; color: #999; margin: 0 0 8px; }
-    .bill-to p { margin: 2px 0; }
+    .parties { display: flex; justify-content: space-between; margin-bottom: 30px; }
+    .party { width: 48%; }
+    .party h3 { font-size: 11px; text-transform: uppercase; color: #999; margin: 0 0 8px; }
+    .party p { margin: 2px 0; }
     table { width: 100%; border-collapse: collapse; margin: 20px 0; }
     th { text-align: left; padding: 10px 8px; border-bottom: 2px solid #166534; font-size: 11px; text-transform: uppercase; color: #555; }
     .totals { margin-left: auto; width: 280px; }
@@ -66,9 +136,14 @@ export function renderInvoiceHtml(data: InvoiceData): string {
 <body>
   <div class="header">
     <div>
-      <div class="company">Xarra Books</div>
-      <div class="company-sub">Publishing & Distribution</div>
-      <div class="company-sub">Midrand, Gauteng, South Africa</div>
+      ${logoHtml}
+      <div class="company">${company.name}</div>
+      ${company.tradingAs ? `<div class="company-sub">Trading as ${company.tradingAs}</div>` : ''}
+      ${companyAddressHtml ? `<div class="company-sub">${companyAddressHtml}</div>` : '<div class="company-sub">Midrand, Gauteng, South Africa</div>'}
+      ${company.vatNumber ? `<div class="company-sub">VAT: ${company.vatNumber}</div>` : ''}
+      ${company.registrationNumber ? `<div class="company-sub">Reg: ${company.registrationNumber}</div>` : ''}
+      ${company.phone ? `<div class="company-sub">Tel: ${company.phone}</div>` : ''}
+      ${company.email ? `<div class="company-sub">Email: ${company.email}</div>` : ''}
     </div>
     <div>
       <div class="invoice-title">TAX INVOICE</div>
@@ -80,11 +155,16 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     </div>
   </div>
 
-  <div class="bill-to">
-    <h3>Bill To</h3>
-    <p><strong>${data.partner.name}</strong></p>
-    ${data.partner.contactName ? `<p>${data.partner.contactName}</p>` : ''}
-    ${data.partner.contactEmail ? `<p>${data.partner.contactEmail}</p>` : ''}
+  <div class="parties">
+    <div class="party">
+      <h3>Bill To</h3>
+      <p><strong>${data.recipient.name}</strong></p>
+      ${data.recipient.branchName ? `<p><em>Branch: ${data.recipient.branchName}</em></p>` : ''}
+      ${data.recipient.contactName ? `<p>${data.recipient.contactName}</p>` : ''}
+      ${recipientAddressHtml}
+      ${data.recipient.vatNumber ? `<p>VAT: ${data.recipient.vatNumber}</p>` : ''}
+      ${data.recipient.contactEmail ? `<p>${data.recipient.contactEmail}</p>` : ''}
+    </div>
   </div>
 
   <table>
@@ -120,9 +200,11 @@ export function renderInvoiceHtml(data: InvoiceData): string {
 
   ${data.notes ? `<div class="notes"><strong>Notes:</strong> ${data.notes}</div>` : ''}
 
+  ${bankDetailsHtml}
+
   <div class="footer">
-    <p>Xarra Books (Pty) Ltd &mdash; Midrand, Gauteng, South Africa</p>
-    <p>Payment terms: EFT to account details provided separately. Reference: ${data.number}</p>
+    <p>${company.name}${company.registrationNumber ? ` (Reg: ${company.registrationNumber})` : ''}</p>
+    <p>Payment terms: EFT to account details provided above. Reference: ${data.number}</p>
   </div>
 </body>
 </html>`;

@@ -32,3 +32,31 @@ export async function nextCreditNoteNumber(db: NodePgDatabase<Record<string, unk
   const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
   return `CN-${year}-${String(nextNum).padStart(4, '0')}`;
 }
+
+export async function nextDebitNoteNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `DN-${year}-%`;
+
+  const result = await db.execute<{ maxNum: string | null }>(sql`
+    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    FROM debit_notes
+    WHERE number LIKE ${pattern}
+  `);
+
+  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
+  return `DN-${year}-${String(nextNum).padStart(4, '0')}`;
+}
+
+export async function nextQuotationNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `PF-${year}-%`;
+
+  const result = await db.execute<{ maxNum: string | null }>(sql`
+    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    FROM quotations
+    WHERE number LIKE ${pattern}
+  `);
+
+  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
+  return `PF-${year}-${String(nextNum).padStart(4, '0')}`;
+}
