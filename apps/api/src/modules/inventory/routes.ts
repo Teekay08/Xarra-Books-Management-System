@@ -1,0 +1,185 @@
+import type { FastifyInstance } from 'fastify';
+import { eq, sql, desc } from 'drizzle-orm';
+import { inventoryMovements, titles } from '@xarra/db';
+import { stockAdjustmentSchema, paginationSchema } from '@xarra/shared';
+import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+
+export async function inventoryRoutes(app: FastifyInstance) {
+  // Stock levels per title (aggregated from movements)
+  app.get('/stock', { preHandler: requireAuth }, async (request) => {
+    const query = paginationSchema.parse(request.query);
+    const { page, limit, search } = query;
+    const offset = (page - 1) * limit;
+
+    const where = search
+      ? sql`${titles.title} ILIKE ${'%' + search + '%'} OR ${titles.isbn13} ILIKE ${'%' + search + '%'}`
+      : undefined;
+
+    // Aggregate stock by title and location
+    const stockQuery = sql`
+      SELECT
+        t.id AS "titleId",
+        t.title,
+        t.isbn13,
+        COALESCE(im.to_location, im.from_location) AS location,
+        SUM(
+          CASE
+            WHEN im.to_location = COALESCE(im.to_location, im.from_location) THEN im.quantity
+            WHEN im.from_location = COALESCE(im.to_location, im.from_location) THEN -im.quantity
+            ELSE 0
+          END
+        )::int AS "stockOnHand"
+      FROM ${titles} t
+      LEFT JOIN ${inventoryMovements} im ON im.title_id = t.id
+      ${where ? sql`WHERE ${where}` : sql``}
+      GROUP BY t.id, t.title, t.isbn13, COALESCE(im.to_location, im.from_location)
+      HAVING SUM(
+        CASE
+          WHEN im.to_location = COALESCE(im.to_location, im.from_location) THEN im.quantity
+          WHEN im.from_location = COALESCE(im.to_location, im.from_location) THEN -im.quantity
+          ELSE 0
+        END
+      ) != 0
+      ORDER BY t.title, location
+    `;
+
+    // Simpler approach: net stock per title
+    const summaryItems = await app.db.execute<{
+      titleId: string;
+      title: string;
+      isbn13: string | null;
+      totalIn: number;
+      totalOut: number;
+      stockOnHand: number;
+    }>(sql`
+      SELECT
+        t.id AS "titleId",
+        t.title,
+        t.isbn13,
+        COALESCE(SUM(CASE WHEN im.movement_type = 'IN' OR im.movement_type = 'RETURN' THEN im.quantity ELSE 0 END), 0)::int AS "totalIn",
+        COALESCE(SUM(CASE WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') THEN im.quantity ELSE 0 END), 0)::int AS "totalOut",
+        COALESCE(SUM(
+          CASE
+            WHEN im.movement_type IN ('IN', 'RETURN') THEN im.quantity
+            WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') THEN -im.quantity
+            WHEN im.movement_type = 'ADJUST' THEN im.quantity
+            ELSE 0
+          END
+        ), 0)::int AS "stockOnHand"
+      FROM ${titles} t
+      LEFT JOIN ${inventoryMovements} im ON im.title_id = t.id
+      ${where ? sql`WHERE ${where}` : sql``}
+      GROUP BY t.id, t.title, t.isbn13
+      ORDER BY t.title
+      LIMIT ${limit} OFFSET ${offset}
+    `);
+
+    const countResult = await app.db
+      .select({ count: sql<number>`count(*)` })
+      .from(titles)
+      .where(where);
+
+    return {
+      data: summaryItems,
+      pagination: {
+        page,
+        limit,
+        total: Number(countResult[0].count),
+        totalPages: Math.ceil(Number(countResult[0].count) / limit),
+      },
+    };
+  });
+
+  // Movement history for a title
+  app.get<{ Params: { titleId: string } }>(
+    '/titles/:titleId/movements',
+    { preHandler: requireAuth },
+    async (request) => {
+      const query = paginationSchema.parse(request.query);
+      const { page, limit } = query;
+      const offset = (page - 1) * limit;
+
+      const where = eq(inventoryMovements.titleId, request.params.titleId);
+
+      const [items, countResult] = await Promise.all([
+        app.db
+          .select()
+          .from(inventoryMovements)
+          .where(where)
+          .orderBy(desc(inventoryMovements.createdAt))
+          .limit(limit)
+          .offset(offset),
+        app.db
+          .select({ count: sql<number>`count(*)` })
+          .from(inventoryMovements)
+          .where(where),
+      ]);
+
+      return {
+        data: items,
+        pagination: {
+          page,
+          limit,
+          total: Number(countResult[0].count),
+          totalPages: Math.ceil(Number(countResult[0].count) / limit),
+        },
+      };
+    }
+  );
+
+  // Record stock adjustment
+  app.post(
+    '/adjustments',
+    { preHandler: requireRole('admin', 'operations') },
+    async (request, reply) => {
+      const body = stockAdjustmentSchema.parse(request.body);
+      const userId = request.session?.user?.id;
+
+      const [movement] = await app.db
+        .insert(inventoryMovements)
+        .values({
+          titleId: body.titleId,
+          movementType: 'ADJUST',
+          toLocation: body.location,
+          quantity: body.quantity,
+          reason: body.reason,
+          notes: body.notes,
+          referenceType: 'ADJUSTMENT',
+          createdBy: userId,
+        })
+        .returning();
+
+      return reply.status(201).send({ data: movement });
+    }
+  );
+
+  // Record stock in (goods received)
+  app.post(
+    '/receive',
+    { preHandler: requireRole('admin', 'operations') },
+    async (request, reply) => {
+      const body = request.body as {
+        titleId: string;
+        quantity: number;
+        location?: string;
+        notes?: string;
+      };
+      const userId = request.session?.user?.id;
+
+      const [movement] = await app.db
+        .insert(inventoryMovements)
+        .values({
+          titleId: body.titleId,
+          movementType: 'IN',
+          toLocation: body.location ?? 'XARRA_WAREHOUSE',
+          quantity: body.quantity,
+          referenceType: 'PRINT_RUN',
+          notes: body.notes,
+          createdBy: userId,
+        })
+        .returning();
+
+      return reply.status(201).send({ data: movement });
+    }
+  );
+}

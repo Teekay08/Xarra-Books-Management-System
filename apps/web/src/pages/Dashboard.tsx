@@ -1,4 +1,30 @@
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
+import { api } from '../lib/api';
+
+interface DashboardStats {
+  totalTitles: number;
+  activeAuthors: number;
+  activePartners: number;
+  totalStock: number;
+}
+
 export function Dashboard() {
+  const navigate = useNavigate();
+  const { data, isLoading } = useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: () => api<{ data: DashboardStats }>('/dashboard/stats'),
+  });
+
+  const stats = data?.data;
+
+  const cards = [
+    { label: 'Total Titles', value: stats?.totalTitles, color: 'bg-blue-50 text-blue-700', link: '/titles' },
+    { label: 'Active Authors', value: stats?.activeAuthors, color: 'bg-green-50 text-green-700', link: '/authors' },
+    { label: 'Channel Partners', value: stats?.activePartners, color: 'bg-amber-50 text-amber-700', link: '/partners' },
+    { label: 'Total Stock', value: stats?.totalStock, color: 'bg-purple-50 text-purple-700', link: '/inventory' },
+  ];
+
   return (
     <div>
       <div className="mb-8">
@@ -7,23 +33,26 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {[
-          { label: 'Total Titles', value: '—', color: 'bg-blue-50 text-blue-700' },
-          { label: 'Active Authors', value: '—', color: 'bg-green-50 text-green-700' },
-          { label: 'Open Consignments', value: '—', color: 'bg-amber-50 text-amber-700' },
-          { label: 'Outstanding Invoices', value: '—', color: 'bg-red-50 text-red-700' },
-        ].map((stat) => (
-          <div key={stat.label} className={`rounded-lg p-6 ${stat.color}`}>
+        {cards.map((stat) => (
+          <div
+            key={stat.label}
+            onClick={() => navigate(stat.link)}
+            className={`rounded-lg p-6 ${stat.color} cursor-pointer hover:opacity-80 transition-opacity`}
+          >
             <p className="text-sm font-medium opacity-80">{stat.label}</p>
-            <p className="text-3xl font-bold mt-1">{stat.value}</p>
+            <p className="text-3xl font-bold mt-1">
+              {isLoading ? '...' : stat.value ?? 0}
+            </p>
           </div>
         ))}
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-400">
-        <p className="text-lg font-medium">System is ready</p>
-        <p className="text-sm mt-2">Start by adding authors and titles in the sidebar.</p>
-      </div>
+      {!isLoading && stats?.totalTitles === 0 && (
+        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-400">
+          <p className="text-lg font-medium">System is ready</p>
+          <p className="text-sm mt-2">Start by adding authors and titles in the sidebar.</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,6 +12,9 @@ import { TitleForm } from './pages/titles/TitleForm';
 import { PartnerList } from './pages/partners/PartnerList';
 import { PartnerDetail } from './pages/partners/PartnerDetail';
 import { PartnerForm } from './pages/partners/PartnerForm';
+import { InventoryDashboard } from './pages/inventory/InventoryDashboard';
+import { StockAdjustment } from './pages/inventory/StockAdjustment';
+import { MovementHistory } from './pages/inventory/MovementHistory';
 
 export function App() {
   return (
@@ -44,6 +47,12 @@ export function App() {
           <Route path="partners/new" element={<PartnerForm />} />
           <Route path="partners/:id" element={<PartnerDetail />} />
           <Route path="partners/:id/edit" element={<PartnerForm />} />
+
+          {/* Inventory */}
+          <Route path="inventory" element={<InventoryDashboard />} />
+          <Route path="inventory/receive" element={<StockAdjustment mode="receive" />} />
+          <Route path="inventory/adjust" element={<StockAdjustment mode="adjust" />} />
+          <Route path="inventory/:titleId/movements" element={<MovementHistory />} />
         </Route>
       </Routes>
     </BrowserRouter>

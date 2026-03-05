@@ -7,6 +7,8 @@ import authPlugin from './plugins/auth.js';
 import { authorRoutes } from './modules/authors/routes.js';
 import { titleRoutes } from './modules/titles/routes.js';
 import { partnerRoutes } from './modules/partners/routes.js';
+import { inventoryRoutes } from './modules/inventory/routes.js';
+import { dashboardRoutes } from './modules/dashboard/routes.js';
 import { config } from './config.js';
 
 export async function buildApp() {
@@ -64,6 +66,8 @@ export async function buildApp() {
     api.register(authorRoutes, { prefix: '/authors' });
     api.register(titleRoutes, { prefix: '/titles' });
     api.register(partnerRoutes, { prefix: '/partners' });
+    api.register(inventoryRoutes, { prefix: '/inventory' });
+    api.register(dashboardRoutes, { prefix: '/dashboard' });
   }, { prefix: '/api/v1' });
 
   return app;
