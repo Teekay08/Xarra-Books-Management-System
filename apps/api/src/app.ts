@@ -4,6 +4,9 @@ import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
 import databasePlugin from './plugins/database.js';
 import authPlugin from './plugins/auth.js';
+import { authorRoutes } from './modules/authors/routes.js';
+import { titleRoutes } from './modules/titles/routes.js';
+import { partnerRoutes } from './modules/partners/routes.js';
 import { config } from './config.js';
 
 export async function buildApp() {
@@ -56,6 +59,11 @@ export async function buildApp() {
         },
       };
     });
+
+    // Module routes
+    api.register(authorRoutes, { prefix: '/authors' });
+    api.register(titleRoutes, { prefix: '/titles' });
+    api.register(partnerRoutes, { prefix: '/partners' });
   }, { prefix: '/api/v1' });
 
   return app;

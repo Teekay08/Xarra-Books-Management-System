@@ -3,6 +3,15 @@ import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
+import { AuthorList } from './pages/authors/AuthorList';
+import { AuthorDetail } from './pages/authors/AuthorDetail';
+import { AuthorForm } from './pages/authors/AuthorForm';
+import { TitleList } from './pages/titles/TitleList';
+import { TitleDetail } from './pages/titles/TitleDetail';
+import { TitleForm } from './pages/titles/TitleForm';
+import { PartnerList } from './pages/partners/PartnerList';
+import { PartnerDetail } from './pages/partners/PartnerDetail';
+import { PartnerForm } from './pages/partners/PartnerForm';
 
 export function App() {
   return (
@@ -17,6 +26,24 @@ export function App() {
           }
         >
           <Route index element={<Dashboard />} />
+
+          {/* Authors */}
+          <Route path="authors" element={<AuthorList />} />
+          <Route path="authors/new" element={<AuthorForm />} />
+          <Route path="authors/:id" element={<AuthorDetail />} />
+          <Route path="authors/:id/edit" element={<AuthorForm />} />
+
+          {/* Titles */}
+          <Route path="titles" element={<TitleList />} />
+          <Route path="titles/new" element={<TitleForm />} />
+          <Route path="titles/:id" element={<TitleDetail />} />
+          <Route path="titles/:id/edit" element={<TitleForm />} />
+
+          {/* Channel Partners */}
+          <Route path="partners" element={<PartnerList />} />
+          <Route path="partners/new" element={<PartnerForm />} />
+          <Route path="partners/:id" element={<PartnerDetail />} />
+          <Route path="partners/:id/edit" element={<PartnerForm />} />
         </Route>
       </Routes>
     </BrowserRouter>

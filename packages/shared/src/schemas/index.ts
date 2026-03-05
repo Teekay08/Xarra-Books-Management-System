@@ -19,7 +19,14 @@ export const createAuthorSchema = z.object({
   type: z.enum(AUTHOR_TYPES),
   email: z.string().email().optional(),
   phone: z.string().optional(),
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  province: z.string().optional(),
+  postalCode: z.string().optional(),
+  country: z.string().optional(),
   taxNumber: z.string().optional(),
+  isActive: z.boolean().default(true),
   notes: z.string().optional(),
 });
 
@@ -35,20 +42,28 @@ export const createAuthorContractSchema = z.object({
   triggerType: z.enum(ROYALTY_TRIGGER_TYPES),
   triggerValue: z.number().optional(),
   advanceAmount: z.number().min(0).default(0),
+  isSigned: z.boolean().default(false),
   startDate: z.string().or(z.date()),
+  endDate: z.string().or(z.date()).optional(),
 });
 
 // === Title Schemas ===
 
 export const createTitleSchema = z.object({
   title: z.string().min(1, 'Title is required'),
+  subtitle: z.string().optional(),
   isbn13: z.string().regex(/^\d{13}$/, 'ISBN-13 must be 13 digits').optional(),
   asin: z.string().optional(),
+  primaryAuthorId: z.string().uuid().optional(),
   rrpZar: z.number().positive('RRP must be positive'),
+  costPriceZar: z.number().positive().optional(),
   formats: z.array(z.enum(TITLE_FORMATS)).min(1),
   status: z.enum(TITLE_STATUSES).default('PRODUCTION'),
   description: z.string().optional(),
   publishDate: z.string().or(z.date()).optional(),
+  pageCount: z.number().int().positive().optional(),
+  weightGrams: z.number().int().positive().optional(),
+  coverImageUrl: z.string().url().optional(),
 });
 
 export const updateTitleSchema = createTitleSchema.partial();
@@ -59,11 +74,13 @@ export const createChannelPartnerSchema = z.object({
   name: z.string().min(1, 'Partner name is required'),
   discountPct: z.number().min(0).max(100),
   sorDays: z.number().int().positive().optional(),
+  paymentTermsDays: z.number().int().positive().optional(),
   paymentDay: z.number().int().min(1).max(31).optional(),
   contactName: z.string().optional(),
   contactEmail: z.string().email().optional(),
   contactPhone: z.string().optional(),
   remittanceEmail: z.string().email().optional(),
+  isActive: z.boolean().default(true),
   notes: z.string().optional(),
 });
 
@@ -74,6 +91,7 @@ export const updateChannelPartnerSchema = createChannelPartnerSchema.partial();
 export const createConsignmentSchema = z.object({
   partnerId: z.string().uuid(),
   dispatchDate: z.string().or(z.date()),
+  courierCompany: z.string().optional(),
   courierWaybill: z.string().optional(),
   notes: z.string().optional(),
   lines: z.array(z.object({
@@ -87,8 +105,10 @@ export const createConsignmentSchema = z.object({
 export const createInvoiceSchema = z.object({
   partnerId: z.string().uuid(),
   consignmentId: z.string().uuid().optional(),
+  invoiceDate: z.string().or(z.date()),
   lines: z.array(z.object({
     titleId: z.string().uuid(),
+    description: z.string().optional(),
     quantity: z.number().int().positive(),
     unitPrice: z.number().positive(),
     discountPct: z.number().min(0).max(100),
@@ -102,6 +122,7 @@ export const recordPaymentSchema = z.object({
   partnerId: z.string().uuid(),
   amount: z.number().positive(),
   paymentDate: z.string().or(z.date()),
+  paymentMethod: z.string().optional(),
   bankReference: z.string().min(1, 'Bank reference is required'),
   invoiceAllocations: z.array(z.object({
     invoiceId: z.string().uuid(),
