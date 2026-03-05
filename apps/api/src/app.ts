@@ -3,7 +3,9 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
 import databasePlugin from './plugins/database.js';
+import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
+import { createSorExpiryQueue, createSorExpiryWorker, scheduleSorExpiryJob } from './jobs/sor-expiry.js';
 import { authorRoutes } from './modules/authors/routes.js';
 import { titleRoutes } from './modules/titles/routes.js';
 import { partnerRoutes } from './modules/partners/routes.js';
@@ -37,8 +39,22 @@ export async function buildApp() {
   // Database
   await app.register(databasePlugin);
 
+  // Redis
+  await app.register(redisPlugin);
+
   // Authentication (Better Auth)
   await app.register(authPlugin);
+
+  // Background jobs
+  const sorQueue = createSorExpiryQueue(config.redis.url);
+  const sorWorker = createSorExpiryWorker(config.redis.url);
+  await scheduleSorExpiryJob(sorQueue);
+  app.log.info('SOR expiry alert job scheduled (daily 7:00 AM SAST)');
+
+  app.addHook('onClose', async () => {
+    await sorWorker.close();
+    await sorQueue.close();
+  });
 
   // Health check (no auth required)
   app.get('/health', async () => ({
