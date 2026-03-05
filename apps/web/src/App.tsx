@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Dashboard } from './pages/Dashboard';
@@ -23,9 +24,11 @@ import { PaymentCreate } from './pages/finance/PaymentCreate';
 import { ConsignmentList } from './pages/consignments/ConsignmentList';
 import { ConsignmentCreate } from './pages/consignments/ConsignmentCreate';
 import { ConsignmentDetail } from './pages/consignments/ConsignmentDetail';
+import { NotFound } from './pages/NotFound';
 
 export function App() {
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -75,8 +78,12 @@ export function App() {
           <Route path="consignments" element={<ConsignmentList />} />
           <Route path="consignments/new" element={<ConsignmentCreate />} />
           <Route path="consignments/:id" element={<ConsignmentDetail />} />
+
+          {/* 404 */}
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }
