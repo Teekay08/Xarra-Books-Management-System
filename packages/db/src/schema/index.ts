@@ -7,3 +7,4 @@ export * from './consignments';
 export * from './finance';
 export * from './royalties';
 export * from './sales';
+export * from './sync';

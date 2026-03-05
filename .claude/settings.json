@@ -7,7 +7,10 @@
       "Bash(taskkill //F //PID 49740 //T)",
       "Bash(curl -s http://localhost:3001/health)",
       "Bash(curl -s http://localhost:3001/api/v1/ping)",
-      "Bash(kill %1)"
+      "Bash(kill %1)",
+      "Bash(npm install -w apps/api zod)",
+      "Bash(npm install -D eslint @eslint/js typescript-eslint prettier eslint-config-prettier)",
+      "Bash(npm run lint)"
     ]
   }
 }

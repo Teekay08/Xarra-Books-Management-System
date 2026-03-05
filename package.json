@@ -12,7 +12,8 @@
     "test": "turbo test",
     "db:generate": "turbo db:generate --filter=@xarra/db",
     "db:migrate": "turbo db:migrate --filter=@xarra/db",
-    "db:push": "turbo db:push --filter=@xarra/db"
+    "db:push": "turbo db:push --filter=@xarra/db",
+    "db:seed": "turbo db:seed --filter=@xarra/db"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, decimal, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, decimal, integer, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { titles } from './titles';
 import { channelPartners } from './channels';
@@ -18,11 +18,18 @@ export const saleRecords = pgTable('sale_records', {
   orderRef: varchar('order_ref', { length: 100 }),
   customerName: varchar('customer_name', { length: 255 }),
   saleDate: timestamp('sale_date', { withTimezone: true }).notNull(),
-  source: varchar('source', { length: 30 }).notNull(), // WEBHOOK, CSV_IMPORT, MANUAL, POLLING
+  source: varchar('source', { length: 30 }).notNull(), // WEBHOOK, CSV_IMPORT, MANUAL, POLLING, HISTORICAL_IMPORT
   fulfilmentType: varchar('fulfilment_type', { length: 20 }), // SHIP, DIGITAL, LEAD_TIME, DROP_SHIP
-  status: varchar('status', { length: 20 }).notNull().default('CONFIRMED'),
+  status: varchar('status', { length: 20 }).notNull().default('CONFIRMED'), // CONFIRMED, REFUNDED, REVERSED, DISPUTED
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uk_sale_external_channel').on(t.channel, t.externalId),
+  index('idx_sale_records_title_id').on(t.titleId),
+  index('idx_sale_records_channel').on(t.channel),
+  index('idx_sale_records_partner_id').on(t.partnerId),
+  index('idx_sale_records_sale_date').on(t.saleDate),
+]);
 
 export const saleRecordsRelations = relations(saleRecords, ({ one }) => ({
   title: one(titles, { fields: [saleRecords.titleId], references: [titles.id] }),

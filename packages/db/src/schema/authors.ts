@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, decimal, pgEnum, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, timestamp, decimal, pgEnum, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { users } from './users';
 import { titles } from './titles';
@@ -14,13 +14,24 @@ export const authors = pgTable('authors', {
   type: authorTypeEnum('type').notNull(),
   email: varchar('email', { length: 255 }),
   phone: varchar('phone', { length: 50 }),
-  bankDetails: jsonb('bank_details'), // encrypted at app level
-  taxNumber: varchar('tax_number', { length: 50 }),
+  addressLine1: varchar('address_line_1', { length: 255 }),
+  addressLine2: varchar('address_line_2', { length: 255 }),
+  city: varchar('city', { length: 100 }),
+  province: varchar('province', { length: 100 }),
+  postalCode: varchar('postal_code', { length: 20 }),
+  country: varchar('country', { length: 100 }).default('South Africa'),
+  bankDetails: jsonb('bank_details'), // { bankName, accountNumber, branchCode, accountType }
+  taxNumber: varchar('tax_number', { length: 50 }), // SARS tax number
+  isActive: boolean('is_active').notNull().default(true),
   portalUserId: uuid('portal_user_id').references(() => users.id),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_authors_type').on(t.type),
+  index('idx_authors_is_active').on(t.isActive),
+  index('idx_authors_email').on(t.email),
+]);
 
 export const authorContracts = pgTable('author_contracts', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -32,11 +43,17 @@ export const authorContracts = pgTable('author_contracts', {
   triggerValue: decimal('trigger_value', { precision: 12, scale: 2 }),
   advanceAmount: decimal('advance_amount', { precision: 12, scale: 2 }).notNull().default('0'),
   advanceRecovered: decimal('advance_recovered', { precision: 12, scale: 2 }).notNull().default('0'),
+  isSigned: boolean('is_signed').notNull().default(false),
   signedDocUrl: varchar('signed_doc_url', { length: 500 }),
   startDate: timestamp('start_date', { withTimezone: true }).notNull(),
+  endDate: timestamp('end_date', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex('uk_author_title_contract').on(t.authorId, t.titleId),
+  index('idx_author_contracts_author_id').on(t.authorId),
+  index('idx_author_contracts_title_id').on(t.titleId),
+]);
 
 export const authorsRelations = relations(authors, ({ many, one }) => ({
   contracts: many(authorContracts),
