@@ -1,39 +1,63 @@
 import { resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
+import { z } from 'zod';
 
 // Load .env from monorepo root
 dotenvConfig({ path: resolve(import.meta.dirname, '../../../.env') });
 
+const envSchema = z.object({
+  PORT: z.coerce.number().default(3001),
+  HOST: z.string().default('0.0.0.0'),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  DATABASE_URL: z.string().url(),
+  REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  CORS_ORIGIN: z.string().url().default('http://localhost:5173'),
+  JWT_SECRET: z.string().min(8),
+  S3_BUCKET: z.string().default('xarra-documents'),
+  AWS_REGION: z.string().default('af-south-1'),
+  RESEND_API_KEY: z.string().default(''),
+  FROM_EMAIL: z.string().email().default('noreply@xarrabooks.com'),
+});
+
+const parsed = envSchema.safeParse(process.env);
+
+if (!parsed.success) {
+  console.error('Invalid environment variables:', parsed.error.flatten().fieldErrors);
+  process.exit(1);
+}
+
+const env = parsed.data;
+
 export const config = {
-  port: parseInt(process.env.PORT || '3001', 10),
-  host: process.env.HOST || '0.0.0.0',
-  nodeEnv: process.env.NODE_ENV || 'development',
+  port: env.PORT,
+  host: env.HOST,
+  nodeEnv: env.NODE_ENV,
 
   database: {
-    url: process.env.DATABASE_URL || 'postgres://xarra:xarra@localhost:5432/xarra',
+    url: env.DATABASE_URL,
   },
 
   redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
+    url: env.REDIS_URL,
   },
 
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: env.CORS_ORIGIN,
   },
 
   jwt: {
-    secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+    secret: env.JWT_SECRET,
     expiresIn: '15m',
     refreshExpiresIn: '7d',
   },
 
   s3: {
-    bucket: process.env.S3_BUCKET || 'xarra-documents',
-    region: process.env.AWS_REGION || 'af-south-1',
+    bucket: env.S3_BUCKET,
+    region: env.AWS_REGION,
   },
 
   resend: {
-    apiKey: process.env.RESEND_API_KEY || '',
-    fromEmail: process.env.FROM_EMAIL || 'noreply@xarrabooks.com',
+    apiKey: env.RESEND_API_KEY,
+    fromEmail: env.FROM_EMAIL,
   },
 } as const;

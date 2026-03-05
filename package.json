@@ -15,8 +15,13 @@
     "db:push": "turbo db:push --filter=@xarra/db"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.2",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
     "turbo": "^2.4.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.56.1"
   },
   "packageManager": "npm@10.9.0",
   "engines": {
