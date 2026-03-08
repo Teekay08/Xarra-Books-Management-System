@@ -32,7 +32,7 @@ const allSections: NavSection[] = [
     label: 'Partner Portal',
     items: [
       { name: 'Portal Users', href: '/partners/portal-users', module: 'partnerPortal' },
-      { name: 'Partner Orders', href: '/partners/portal-orders', module: 'partnerPortal' },
+      { name: 'Partner Book Orders', href: '/partners/portal-orders', module: 'partnerPortal' },
       { name: 'Return Requests', href: '/partners/return-requests', module: 'partnerPortal' },
       { name: 'Courier Shipments', href: '/partners/courier-shipments', module: 'courierShipments' },
     ],
@@ -42,7 +42,7 @@ const allSections: NavSection[] = [
     items: [
       { name: 'Quotations', href: '/quotations', module: 'quotations' },
       { name: 'Invoices', href: '/invoices', module: 'invoices' },
-      { name: 'Purchase Orders', href: '/finance/purchase-orders', module: 'purchaseOrders' },
+      { name: 'Supplier Orders', href: '/finance/purchase-orders', module: 'purchaseOrders' },
       { name: 'Credit Notes', href: '/credit-notes', module: 'creditNotes' },
       { name: 'Debit Notes', href: '/debit-notes', module: 'debitNotes' },
       { name: 'Payments', href: '/payments', module: 'payments' },

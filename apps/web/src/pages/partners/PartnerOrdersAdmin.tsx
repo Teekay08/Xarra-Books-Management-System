@@ -185,7 +185,7 @@ export function PartnerOrdersAdmin() {
 
   return (
     <div>
-      <PageHeader title="Partner Orders" subtitle="View and process partner orders" />
+      <PageHeader title="Partner Book Orders" subtitle="Orders placed by partners and bookstores for Xarra titles" />
 
       <div className="mb-4 flex items-center gap-4">
         <div className="flex-1">

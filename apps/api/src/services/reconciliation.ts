@@ -1,0 +1,152 @@
+import type { FastifyInstance } from 'fastify';
+import { eq, sql, and } from 'drizzle-orm';
+import {
+  invoices, invoiceLines, consignmentLines, consignments,
+  inventoryMovements, remittances, remittanceInvoices,
+} from '@xarra/db';
+
+interface ReconciliationResult {
+  invoiceId: string;
+  invoiceNumber: string;
+  titlesReconciled: Array<{
+    titleId: string;
+    quantity: number;
+    consignmentLineId: string | null;
+  }>;
+  consignmentsUpdated: string[];
+}
+
+/**
+ * When an invoice reaches PAID status, determine what was sold per title:
+ * - For lines linked to a consignment line: increment qtySold on the consignment line
+ * - For all lines with a titleId: create SELL inventory movements
+ *
+ * Idempotent — checks for existing SELL movements before creating new ones.
+ */
+export async function reconcileInvoiceSales(
+  app: FastifyInstance,
+  invoiceId: string,
+  userId?: string,
+): Promise<ReconciliationResult | null> {
+  const invoice = await app.db.query.invoices.findFirst({
+    where: eq(invoices.id, invoiceId),
+    with: { lines: true },
+  });
+
+  if (!invoice) return null;
+  // Only reconcile fully paid invoices
+  if (invoice.status !== 'PAID') return null;
+
+  const result: ReconciliationResult = {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.number,
+    titlesReconciled: [],
+    consignmentsUpdated: [],
+  };
+
+  const consignmentIdsToCheck = new Set<string>();
+
+  await app.db.transaction(async (tx) => {
+    for (const line of invoice.lines) {
+      if (!line.titleId) continue;
+
+      const qty = Math.floor(Number(line.quantity));
+      if (qty <= 0) continue;
+
+      // Idempotency: check if a SELL movement already exists for this invoice + title + line
+      const existingMovement = await tx.execute(sql`
+        SELECT id FROM inventory_movements
+        WHERE movement_type = 'SELL'
+          AND reference_type = 'INVOICE_LINE'
+          AND reference_id = ${line.id}
+          AND title_id = ${line.titleId}
+        LIMIT 1
+      `);
+
+      if (existingMovement.length > 0) {
+        // Already reconciled this line
+        continue;
+      }
+
+      // Create SELL inventory movement
+      await tx.insert(inventoryMovements).values({
+        titleId: line.titleId,
+        movementType: 'SELL',
+        quantity: qty,
+        fromLocation: 'XARRA_WAREHOUSE',
+        reason: `Invoice ${invoice.number} — line ${line.lineNumber}`,
+        referenceType: 'INVOICE_LINE',
+        referenceId: line.id,
+        createdBy: userId,
+      });
+
+      // Update consignment line qtySold if linked
+      if (line.consignmentLineId) {
+        await tx.execute(sql`
+          UPDATE consignment_lines
+          SET qty_sold = qty_sold + ${qty}
+          WHERE id = ${line.consignmentLineId}
+        `);
+
+        // Get the consignment ID for status check
+        const cl = await tx.execute(sql`
+          SELECT consignment_id FROM consignment_lines WHERE id = ${line.consignmentLineId}
+        `);
+        if (cl[0]?.consignment_id) {
+          consignmentIdsToCheck.add(cl[0].consignment_id as string);
+        }
+      }
+
+      result.titlesReconciled.push({
+        titleId: line.titleId,
+        quantity: qty,
+        consignmentLineId: line.consignmentLineId,
+      });
+    }
+
+    // Check if any consignments are now fully reconciled
+    for (const consignmentId of consignmentIdsToCheck) {
+      const lines = await tx.query.consignmentLines.findMany({
+        where: eq(consignmentLines.consignmentId, consignmentId),
+      });
+
+      const fullyAccountedFor = lines.every(
+        (l) => l.qtySold + l.qtyReturned + l.qtyDamaged >= l.qtyDispatched,
+      );
+
+      if (fullyAccountedFor) {
+        await tx.update(consignments).set({
+          status: 'RECONCILED',
+          updatedAt: new Date(),
+        }).where(eq(consignments.id, consignmentId));
+        result.consignmentsUpdated.push(consignmentId);
+      }
+    }
+  });
+
+  return result;
+}
+
+/**
+ * After a remittance is matched, reconcile all linked invoices that are now PAID.
+ */
+export async function reconcileRemittanceInvoices(
+  app: FastifyInstance,
+  remittanceId: string,
+  userId?: string,
+): Promise<ReconciliationResult[]> {
+  const ri = await app.db.query.remittanceInvoices.findMany({
+    where: eq(remittanceInvoices.remittanceId, remittanceId),
+  });
+
+  const results: ReconciliationResult[] = [];
+
+  for (const link of ri) {
+    const result = await reconcileInvoiceSales(app, link.invoiceId, userId);
+    if (result && result.titlesReconciled.length > 0) {
+      results.push(result);
+    }
+  }
+
+  return results;
+}

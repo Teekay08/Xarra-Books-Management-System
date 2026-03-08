@@ -131,7 +131,7 @@ export function PurchaseOrderCreate() {
   return (
     <div>
       <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
-      <PageHeader title="Create Purchase Order" subtitle={nextNumber?.data?.number ? `Next: ${nextNumber.data.number}` : undefined} />
+      <PageHeader title="Create Supplier Purchase Order" subtitle={nextNumber?.data?.number ? `Next: ${nextNumber.data.number}` : undefined} />
 
       <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-4xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}

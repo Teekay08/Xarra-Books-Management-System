@@ -214,7 +214,7 @@ export function PartnerOrderDetail() {
               </tr>
             </thead>
             <tbody>
-              {order.lines?.map((line) => (
+              {(order.lines ?? []).map((line) => (
                 <tr key={line.id} className="border-b last:border-0">
                   <td className="px-6 py-3 text-gray-900">{line.title?.title ?? '-'}</td>
                   <td className="px-6 py-3 text-gray-600 font-mono text-xs">{line.title?.isbn13 ?? '-'}</td>
@@ -295,7 +295,7 @@ export function PartnerOrderDetail() {
             <div className="flex flex-wrap gap-3">
               {order.invoiceId && (
                 <Link
-                  to={`/partner/invoices/${order.invoiceId}`}
+                  to="/partner/invoices"
                   className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -306,7 +306,7 @@ export function PartnerOrderDetail() {
               )}
               {order.consignmentId && (
                 <Link
-                  to={`/partner/consignments/${order.consignmentId}`}
+                  to="/partner/consignments"
                   className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -317,7 +317,7 @@ export function PartnerOrderDetail() {
               )}
               {order.quotationId && (
                 <Link
-                  to={`/partner/quotations/${order.quotationId}`}
+                  to="/partner/orders"
                   className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

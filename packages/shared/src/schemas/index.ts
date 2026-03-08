@@ -260,6 +260,11 @@ export const createRemittanceSchema = z.object({
     invoiceId: z.string().uuid(),
     amount: z.number().positive(),
   })).optional(),
+  creditNoteAllocations: z.array(z.object({
+    creditNoteId: z.string().uuid(),
+    invoiceId: z.string().uuid(),
+    amount: z.number().positive(),
+  })).optional(),
   notes: z.string().optional(),
 });
 

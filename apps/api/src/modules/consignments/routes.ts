@@ -7,6 +7,7 @@ import {
 import { createConsignmentSchema, paginationSchema, VAT_RATE, roundAmount } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
+import { notifyPartner } from '../../services/partner-notifications.js';
 import { renderSorProformaHtml } from '../../services/templates/sor-proforma.js';
 import { generatePdf } from '../../services/pdf.js';
 
@@ -164,6 +165,16 @@ export async function consignmentRoutes(app: FastifyInstance) {
       referenceType: 'CONSIGNMENT',
       referenceId: consignment.id,
     });
+
+    // Notify partner about the consignment dispatch
+    notifyPartner(app, consignment.partnerId, {
+      type: 'CONSIGNMENT_DISPATCHED',
+      title: 'Consignment dispatched',
+      message: `${totalQty} items have been dispatched to you. SOR expires ${sorExpiryDate.toLocaleDateString('en-ZA')}.`,
+      actionUrl: '/partner/consignments',
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
 
     return { data: updated };
   });

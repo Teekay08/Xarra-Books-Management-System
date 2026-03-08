@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, or, isNull, sql, desc } from 'drizzle-orm';
 import { scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   partnerUsers,
@@ -11,9 +11,11 @@ import {
   partnerBranches,
   titles,
   invoices,
+  creditNotes,
   consignments,
   courierShipments,
   inventoryMovements,
+  partnerNotifications,
 } from '@xarra/db';
 import {
   partnerLoginSchema,
@@ -28,6 +30,7 @@ import {
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { nextPartnerOrderNumber, nextPartnerReturnRequestNumber } from '../finance/invoice-number.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
+import { notifyPartner } from '../../services/partner-notifications.js';
 
 // Password hashing using Node.js built-in scrypt
 function hashPassword(password: string): Promise<string> {
@@ -489,15 +492,75 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     };
   });
 
-  // Get invoice detail
+  // Get invoice detail (with credit notes and balance)
   app.get<{ Params: { id: string } }>('/documents/invoices/:id', { preHandler: requirePartnerAuth }, async (request, reply) => {
     const session = request.partnerSession!;
     const invoice = await app.db.query.invoices.findFirst({
       where: and(eq(invoices.id, request.params.id), eq(invoices.partnerId, session.partnerId)),
-      with: { lines: true, partner: true },
+      with: { lines: true, partner: true, creditNotes: true },
     });
     if (!invoice) return reply.notFound('Invoice not found');
-    return { data: invoice };
+
+    // Compute balance: total − credit notes − payments
+    const [paidResult, creditResult] = await Promise.all([
+      app.db.execute(sql`
+        SELECT COALESCE(SUM(amount::numeric), 0) AS total
+        FROM payment_allocations WHERE invoice_id = ${invoice.id}
+      `),
+      app.db.execute(sql`
+        SELECT COALESCE(SUM(total::numeric), 0) AS total
+        FROM credit_notes WHERE invoice_id = ${invoice.id} AND voided_at IS NULL
+      `),
+    ]);
+    const amountPaid = Number(paidResult[0]?.total ?? 0);
+    const creditTotal = Number(creditResult[0]?.total ?? 0);
+    const effectiveTotal = Math.max(0, Number(invoice.total) - creditTotal);
+    const amountDue = Math.max(0, effectiveTotal - amountPaid);
+
+    return {
+      data: {
+        ...invoice,
+        amountPaid: String(amountPaid.toFixed(2)),
+        creditNotesTotal: String(creditTotal.toFixed(2)),
+        effectiveTotal: String(effectiveTotal.toFixed(2)),
+        amountDue: String(amountDue.toFixed(2)),
+      },
+    };
+  });
+
+  // List credit notes for this partner
+  app.get('/documents/credit-notes', { preHandler: requirePartnerAuth }, async (request) => {
+    const query = paginationSchema.parse(request.query);
+    const { page, limit } = query;
+    const offset = (page - 1) * limit;
+    const session = request.partnerSession!;
+
+    const [items, countResult] = await Promise.all([
+      app.db.query.creditNotes.findMany({
+        where: eq(creditNotes.partnerId, session.partnerId),
+        with: { invoice: true },
+        orderBy: [desc(creditNotes.createdAt)],
+        limit,
+        offset,
+      }),
+      app.db.select({ count: sql<number>`count(*)` }).from(creditNotes).where(eq(creditNotes.partnerId, session.partnerId)),
+    ]);
+
+    return {
+      data: items,
+      pagination: { page, limit, total: Number(countResult[0].count), totalPages: Math.ceil(Number(countResult[0].count) / limit) },
+    };
+  });
+
+  // Get credit note detail
+  app.get<{ Params: { id: string } }>('/documents/credit-notes/:id', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    const cn = await app.db.query.creditNotes.findFirst({
+      where: and(eq(creditNotes.id, request.params.id), eq(creditNotes.partnerId, session.partnerId)),
+      with: { invoice: true },
+    });
+    if (!cn) return reply.notFound('Credit note not found');
+    return { data: cn };
   });
 
   // List consignments for this partner
@@ -743,6 +806,107 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
 
     return { data: { message: 'Password changed successfully' } };
   });
+
+  // ==========================================
+  // PARTNER NOTIFICATIONS
+  // ==========================================
+
+  // Unread notification count
+  app.get('/notifications/count', { preHandler: requirePartnerAuth }, async (request) => {
+    const session = request.partnerSession!;
+
+    const result = await app.db
+      .select({ count: sql<number>`count(*)` })
+      .from(partnerNotifications)
+      .where(
+        and(
+          eq(partnerNotifications.partnerId, session.partnerId),
+          or(eq(partnerNotifications.partnerUserId, session.userId), isNull(partnerNotifications.partnerUserId)),
+          eq(partnerNotifications.isRead, false),
+        ),
+      );
+
+    return { data: { unread: Number(result[0].count) } };
+  });
+
+  // List partner notifications (paginated)
+  app.get('/notifications', { preHandler: requirePartnerAuth }, async (request) => {
+    const session = request.partnerSession!;
+    const query = paginationSchema.parse(request.query);
+    const { page, limit } = query;
+    const offset = (page - 1) * limit;
+
+    const filter = (request.query as any).filter as string | undefined;
+
+    const baseWhere = and(
+      eq(partnerNotifications.partnerId, session.partnerId),
+      or(eq(partnerNotifications.partnerUserId, session.userId), isNull(partnerNotifications.partnerUserId)),
+    );
+    const where = filter === 'unread'
+      ? and(baseWhere, eq(partnerNotifications.isRead, false))
+      : baseWhere;
+
+    const [items, countResult] = await Promise.all([
+      app.db
+        .select()
+        .from(partnerNotifications)
+        .where(where)
+        .orderBy(desc(partnerNotifications.createdAt))
+        .limit(limit)
+        .offset(offset),
+      app.db
+        .select({ count: sql<number>`count(*)` })
+        .from(partnerNotifications)
+        .where(where),
+    ]);
+
+    return {
+      data: items,
+      pagination: {
+        page, limit,
+        total: Number(countResult[0].count),
+        totalPages: Math.ceil(Number(countResult[0].count) / limit),
+      },
+    };
+  });
+
+  // Mark single notification as read
+  app.patch<{ Params: { id: string } }>('/notifications/:id/read', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+
+    const [updated] = await app.db
+      .update(partnerNotifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(
+        and(
+          eq(partnerNotifications.id, request.params.id),
+          eq(partnerNotifications.partnerId, session.partnerId),
+          or(eq(partnerNotifications.partnerUserId, session.userId), isNull(partnerNotifications.partnerUserId)),
+        ),
+      )
+      .returning();
+
+    if (!updated) return reply.notFound('Notification not found');
+    return { data: updated };
+  });
+
+  // Mark all notifications as read
+  app.post('/notifications/read-all', { preHandler: requirePartnerAuth }, async (request) => {
+    const session = request.partnerSession!;
+
+    await app.db
+      .update(partnerNotifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(
+        and(
+          eq(partnerNotifications.partnerId, session.partnerId),
+          or(eq(partnerNotifications.partnerUserId, session.userId), isNull(partnerNotifications.partnerUserId)),
+          eq(partnerNotifications.isRead, false),
+        ),
+      );
+
+    return { data: { success: true } };
+  });
 }
 
 // ==========================================
@@ -910,6 +1074,15 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       updatedAt: new Date(),
     }).where(eq(partnerOrders.id, order.id));
 
+    notifyPartner(app, order.partnerId, {
+      type: 'ORDER_STATUS_CHANGED',
+      title: `Order ${order.number} confirmed`,
+      message: 'Your order has been confirmed and will be processed shortly.',
+      actionUrl: '/partner/orders',
+      referenceType: 'PARTNER_ORDER',
+      referenceId: order.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
+
     return { data: { message: 'Order confirmed' } };
   });
 
@@ -975,6 +1148,17 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       updatedAt: new Date(),
     }).where(eq(partnerOrders.id, order.id));
 
+    notifyPartner(app, order.partnerId, {
+      type: 'ORDER_STATUS_CHANGED',
+      title: `Order ${order.number} dispatched`,
+      message: body?.courierWaybill
+        ? `Your order has been dispatched. Waybill: ${body.courierWaybill}`
+        : 'Your order has been dispatched.',
+      actionUrl: '/partner/orders',
+      referenceType: 'PARTNER_ORDER',
+      referenceId: order.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
+
     return { data: { message: 'Order dispatched, inventory updated' } };
   });
 
@@ -996,6 +1180,15 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       deliverySignedBy: body?.deliverySignedBy,
       updatedAt: new Date(),
     }).where(eq(partnerOrders.id, order.id));
+
+    notifyPartner(app, order.partnerId, {
+      type: 'ORDER_STATUS_CHANGED',
+      title: `Order ${order.number} delivered`,
+      message: 'Your order has been delivered.',
+      actionUrl: '/partner/orders',
+      referenceType: 'PARTNER_ORDER',
+      referenceId: order.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
 
     return { data: { message: 'Order marked as delivered' } };
   });
@@ -1107,6 +1300,15 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
         updatedAt: new Date(),
       }).where(eq(partnerReturnRequests.id, rr.id));
 
+      notifyPartner(app, rr.partnerId, {
+        type: 'RETURN_STATUS_CHANGED',
+        title: `Return ${rr.number} authorized`,
+        message: 'Your return request has been authorized. Please arrange collection or drop-off.',
+        actionUrl: '/partner/returns',
+        referenceType: 'RETURN_REQUEST',
+        referenceId: rr.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
+
       return { data: { message: 'Return request authorized' } };
     } else {
       await app.db.update(partnerReturnRequests).set({
@@ -1117,6 +1319,15 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
         rejectionReason: body.rejectionReason,
         updatedAt: new Date(),
       }).where(eq(partnerReturnRequests.id, rr.id));
+
+      notifyPartner(app, rr.partnerId, {
+        type: 'RETURN_STATUS_CHANGED',
+        title: `Return ${rr.number} rejected`,
+        message: body.rejectionReason || 'Your return request has been rejected.',
+        actionUrl: '/partner/returns',
+        referenceType: 'RETURN_REQUEST',
+        referenceId: rr.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
 
       return { data: { message: 'Return request rejected' } };
     }
@@ -1139,6 +1350,15 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       receivedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(partnerReturnRequests.id, rr.id));
+
+    notifyPartner(app, rr.partnerId, {
+      type: 'RETURN_STATUS_CHANGED',
+      title: `Return ${rr.number} received`,
+      message: 'Your returned goods have been received at our warehouse and will be inspected.',
+      actionUrl: '/partner/returns',
+      referenceType: 'RETURN_REQUEST',
+      referenceId: rr.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
 
     return { data: { message: 'Return marked as received' } };
   });
@@ -1190,6 +1410,15 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
         }
       }
     }
+
+    notifyPartner(app, rr.partnerId, {
+      type: 'RETURN_STATUS_CHANGED',
+      title: `Return ${rr.number} inspected`,
+      message: 'Your returned goods have been inspected. A credit note will be issued for accepted items.',
+      actionUrl: '/partner/returns',
+      referenceType: 'RETURN_REQUEST',
+      referenceId: rr.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
 
     return { data: { message: 'Return inspected, inventory updated for accepted items' } };
   });

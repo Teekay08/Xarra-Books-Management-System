@@ -20,10 +20,24 @@ interface InvoiceLine {
   lineTotal: string;
 }
 
+interface CreditNote {
+  id: string;
+  number: string;
+  total: string;
+  reason: string;
+  voidedAt: string | null;
+  createdAt: string;
+}
+
 interface InvoiceDetail extends Invoice {
   lines: InvoiceLine[];
   partner: { id: string; name: string } | null;
   notes: string | null;
+  creditNotes: CreditNote[];
+  amountPaid: string;
+  creditNotesTotal: string;
+  effectiveTotal: string;
+  amountDue: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -283,9 +297,9 @@ export function PartnerInvoices() {
                   </table>
                 </div>
 
-                {/* Totals */}
+                {/* Totals & Balance */}
                 <div className="border-t px-6 py-4">
-                  <div className="ml-auto w-64 space-y-1 text-sm">
+                  <div className="ml-auto w-72 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-500">Subtotal</span>
                       <span className="text-gray-900">{formatPrice(selectedInvoice.subtotal)}</span>
@@ -295,11 +309,49 @@ export function PartnerInvoices() {
                       <span className="text-gray-900">{formatPrice(selectedInvoice.vatAmount)}</span>
                     </div>
                     <div className="flex justify-between border-t pt-1 font-semibold">
-                      <span className="text-gray-900">Total</span>
+                      <span className="text-gray-900">Invoice Total</span>
                       <span className="text-gray-900">{formatPrice(selectedInvoice.total)}</span>
+                    </div>
+                    {Number(selectedInvoice.creditNotesTotal) > 0 && (
+                      <div className="flex justify-between text-green-700">
+                        <span>Credit Notes</span>
+                        <span>- {formatPrice(selectedInvoice.creditNotesTotal)}</span>
+                      </div>
+                    )}
+                    {Number(selectedInvoice.amountPaid) > 0 && (
+                      <div className="flex justify-between text-blue-700">
+                        <span>Payments Received</span>
+                        <span>- {formatPrice(selectedInvoice.amountPaid)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t pt-1 font-bold text-base">
+                      <span className={Number(selectedInvoice.amountDue) > 0 ? 'text-red-700' : 'text-green-700'}>
+                        Amount Due
+                      </span>
+                      <span className={Number(selectedInvoice.amountDue) > 0 ? 'text-red-700' : 'text-green-700'}>
+                        {formatPrice(selectedInvoice.amountDue)}
+                      </span>
                     </div>
                   </div>
                 </div>
+
+                {/* Credit Notes */}
+                {selectedInvoice.creditNotes && selectedInvoice.creditNotes.filter((cn) => !cn.voidedAt).length > 0 && (
+                  <div className="border-t px-6 py-4">
+                    <h3 className="mb-2 text-sm font-semibold text-gray-700">Credit Notes Applied</h3>
+                    <div className="space-y-2">
+                      {selectedInvoice.creditNotes.filter((cn) => !cn.voidedAt).map((cn) => (
+                        <div key={cn.id} className="flex items-center justify-between rounded-md bg-green-50 px-3 py-2 text-sm">
+                          <div>
+                            <span className="font-medium text-green-800">{cn.number}</span>
+                            <span className="ml-2 text-green-700">{cn.reason}</span>
+                          </div>
+                          <span className="font-medium text-green-800">- {formatPrice(cn.total)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {selectedInvoice.notes && (
                   <div className="border-t px-6 py-4">

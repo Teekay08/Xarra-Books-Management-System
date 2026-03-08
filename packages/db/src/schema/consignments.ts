@@ -70,7 +70,7 @@ export const consignmentLinesRelations = relations(consignmentLines, ({ one }) =
 // ==========================================
 
 export const returnStatusEnum = pgEnum('return_status', [
-  'DRAFT', 'AUTHORIZED', 'RECEIVED', 'PROCESSED',
+  'DRAFT', 'AUTHORIZED', 'IN_TRANSIT', 'RECEIVED', 'INSPECTED', 'VERIFIED', 'PROCESSED',
 ]);
 
 export const returnConditionEnum = pgEnum('return_condition', [
@@ -88,6 +88,20 @@ export const returnsAuthorizations = pgTable('returns_authorizations', {
   status: returnStatusEnum('status').notNull().default('DRAFT'),
   processedAt: timestamp('processed_at', { withTimezone: true }),
   notes: text('notes'),
+  // Courier details for return shipment
+  courierCompany: varchar('courier_company', { length: 100 }),
+  courierWaybill: varchar('courier_waybill', { length: 100 }),
+  // Warehouse receiving
+  receivedAt: timestamp('received_at', { withTimezone: true }),
+  receivedBy: uuid('received_by').references(() => users.id),
+  deliverySignedBy: varchar('delivery_signed_by', { length: 255 }),
+  // Inspection
+  inspectedAt: timestamp('inspected_at', { withTimezone: true }),
+  inspectedBy: uuid('inspected_by').references(() => users.id),
+  inspectionNotes: text('inspection_notes'),
+  // Verification (manager sign-off)
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  verifiedBy: uuid('verified_by').references(() => users.id),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -106,13 +120,34 @@ export const returnsAuthorizationLines = pgTable('returns_authorization_lines', 
   index('idx_returns_auth_lines_auth_id').on(t.returnsAuthId),
 ]);
 
+export const returnInspectionLines = pgTable('return_inspection_lines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  returnsAuthId: uuid('returns_auth_id').notNull().references(() => returnsAuthorizations.id, { onDelete: 'cascade' }),
+  returnsAuthLineId: uuid('returns_auth_line_id').notNull().references(() => returnsAuthorizationLines.id, { onDelete: 'cascade' }),
+  titleId: uuid('title_id').notNull().references(() => titles.id),
+  qtyReceived: integer('qty_received').notNull(),
+  qtyGood: integer('qty_good').notNull().default(0),
+  qtyDamaged: integer('qty_damaged').notNull().default(0),
+  qtyUnsaleable: integer('qty_unsaleable').notNull().default(0),
+  notes: text('notes'),
+}, (t) => [
+  index('idx_return_inspection_lines_auth').on(t.returnsAuthId),
+]);
+
 export const returnsAuthorizationsRelations = relations(returnsAuthorizations, ({ one, many }) => ({
   partner: one(channelPartners, { fields: [returnsAuthorizations.partnerId], references: [channelPartners.id] }),
   consignment: one(consignments, { fields: [returnsAuthorizations.consignmentId], references: [consignments.id] }),
   lines: many(returnsAuthorizationLines),
+  inspectionLines: many(returnInspectionLines),
 }));
 
 export const returnsAuthorizationLinesRelations = relations(returnsAuthorizationLines, ({ one }) => ({
   returnsAuth: one(returnsAuthorizations, { fields: [returnsAuthorizationLines.returnsAuthId], references: [returnsAuthorizations.id] }),
   title: one(titles, { fields: [returnsAuthorizationLines.titleId], references: [titles.id] }),
+}));
+
+export const returnInspectionLinesRelations = relations(returnInspectionLines, ({ one }) => ({
+  returnsAuth: one(returnsAuthorizations, { fields: [returnInspectionLines.returnsAuthId], references: [returnsAuthorizations.id] }),
+  returnsAuthLine: one(returnsAuthorizationLines, { fields: [returnInspectionLines.returnsAuthLineId], references: [returnsAuthorizationLines.id] }),
+  title: one(titles, { fields: [returnInspectionLines.titleId], references: [titles.id] }),
 }));

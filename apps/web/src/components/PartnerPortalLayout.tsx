@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Outlet, useNavigate } from 'react-router';
 import { getPartnerToken, getPartnerUser, partnerLogout } from '../lib/partner-api';
+import { PartnerNotificationBell } from './PartnerNotificationBell';
 
 const navItems = [
   { name: 'Dashboard', href: '/partner', end: true },
@@ -9,6 +10,7 @@ const navItems = [
 
 const documentItems = [
   { name: 'Invoices', href: '/partner/invoices' },
+  { name: 'Credit Notes', href: '/partner/credit-notes' },
   { name: 'Consignments', href: '/partner/consignments' },
   { name: 'Statements', href: '/partner/statements' },
 ];
@@ -96,6 +98,7 @@ export function PartnerPortalLayout() {
             )}
           </div>
           <div className="flex items-center gap-4">
+            <PartnerNotificationBell />
             <span className="text-sm text-gray-600">{user?.name}</span>
             <button
               onClick={handleSignOut}

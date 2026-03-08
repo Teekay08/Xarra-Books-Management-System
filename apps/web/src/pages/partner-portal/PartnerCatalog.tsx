@@ -28,8 +28,9 @@ interface Branch {
 
 const VAT_RATE = 0.15;
 
-function formatZAR(amount: number | string): string {
-  return `R ${Number(amount).toFixed(2)}`;
+function formatZAR(amount: number | string | null | undefined): string {
+  const num = Number(amount ?? 0);
+  return `R ${(isNaN(num) ? 0 : num).toFixed(2)}`;
 }
 
 export function PartnerCatalog() {
@@ -56,7 +57,7 @@ export function PartnerCatalog() {
   // Quantity inputs per title (before adding to cart)
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
-  const isHQ = user?.role === 'admin' || user?.role === 'hq_admin';
+  const isHQ = !user?.branchId;
 
   const fetchCatalog = useCallback(async (p: number, q: string) => {
     setLoading(true);

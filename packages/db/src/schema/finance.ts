@@ -114,11 +114,19 @@ export const remittances = pgTable('remittances', {
   totalAmount: decimal('total_amount', { precision: 12, scale: 2 }).notNull(),
   parseMethod: varchar('parse_method', { length: 20 }), // PDF_TEXT, OCR, CSV, MANUAL
   parseConfidence: decimal('parse_confidence', { precision: 3, scale: 2 }),
-  status: varchar('status', { length: 20 }).notNull().default('PENDING'), // PENDING, MATCHED, DISPUTED
+  status: varchar('status', { length: 20 }).notNull().default('PENDING'), // PENDING, UNDER_REVIEW, VERIFIED, APPROVED, DISPUTED
   sourceDocUrl: varchar('source_doc_url', { length: 500 }),
+  // Review workflow
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewNotes: text('review_notes'),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  // Legacy match (kept for backward compat)
   matchedBy: uuid('matched_by').references(() => users.id),
   matchedAt: timestamp('matched_at', { withTimezone: true }),
   notes: text('notes'),
+  createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_remittances_partner_id').on(t.partnerId),
@@ -133,6 +141,18 @@ export const remittanceInvoices = pgTable('remittance_invoices', {
 }, (t) => [
   index('idx_remittance_invoices_remittance_id').on(t.remittanceId),
   index('idx_remittance_invoices_invoice_id').on(t.invoiceId),
+]);
+
+// Credit notes applied against invoices within a remittance
+export const remittanceCreditNotes = pgTable('remittance_credit_notes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  remittanceId: uuid('remittance_id').notNull().references(() => remittances.id),
+  creditNoteId: uuid('credit_note_id').notNull().references(() => creditNotes.id),
+  invoiceId: uuid('invoice_id').notNull().references(() => invoices.id), // which invoice this CN offsets
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(), // amount of CN applied (may be partial)
+}, (t) => [
+  index('idx_remittance_cns_remittance_id').on(t.remittanceId),
+  index('idx_remittance_cns_credit_note_id').on(t.creditNoteId),
 ]);
 
 export const debitNotes = pgTable('debit_notes', {
@@ -186,11 +206,18 @@ export const paymentAllocationsRelations = relations(paymentAllocations, ({ one 
 export const remittancesRelations = relations(remittances, ({ one, many }) => ({
   partner: one(channelPartners, { fields: [remittances.partnerId], references: [channelPartners.id] }),
   invoiceAllocations: many(remittanceInvoices),
+  creditNoteAllocations: many(remittanceCreditNotes),
 }));
 
 export const remittanceInvoicesRelations = relations(remittanceInvoices, ({ one }) => ({
   remittance: one(remittances, { fields: [remittanceInvoices.remittanceId], references: [remittances.id] }),
   invoice: one(invoices, { fields: [remittanceInvoices.invoiceId], references: [invoices.id] }),
+}));
+
+export const remittanceCreditNotesRelations = relations(remittanceCreditNotes, ({ one }) => ({
+  remittance: one(remittances, { fields: [remittanceCreditNotes.remittanceId], references: [remittances.id] }),
+  creditNote: one(creditNotes, { fields: [remittanceCreditNotes.creditNoteId], references: [creditNotes.id] }),
+  invoice: one(invoices, { fields: [remittanceCreditNotes.invoiceId], references: [invoices.id] }),
 }));
 
 export const debitNotesRelations = relations(debitNotes, ({ one }) => ({

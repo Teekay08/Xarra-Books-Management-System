@@ -20,8 +20,21 @@ interface ReturnAuth {
 const statusColors: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-600',
   AUTHORIZED: 'bg-blue-100 text-blue-700',
+  IN_TRANSIT: 'bg-indigo-100 text-indigo-700',
   RECEIVED: 'bg-yellow-100 text-yellow-700',
+  INSPECTED: 'bg-purple-100 text-purple-700',
+  VERIFIED: 'bg-teal-100 text-teal-700',
   PROCESSED: 'bg-green-100 text-green-700',
+};
+
+const statusLabels: Record<string, string> = {
+  DRAFT: 'Draft',
+  AUTHORIZED: 'Authorized',
+  IN_TRANSIT: 'In Transit',
+  RECEIVED: 'Received',
+  INSPECTED: 'Inspected',
+  VERIFIED: 'Verified',
+  PROCESSED: 'Processed',
 };
 
 export function ReturnsList() {
@@ -82,7 +95,7 @@ export function ReturnsList() {
                 </td>
                 <td className="px-4 py-3 text-sm">
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[ra.status] ?? ''}`}>
-                    {ra.status}
+                    {statusLabels[ra.status] ?? ra.status}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-500">{new Date(ra.returnDate).toLocaleDateString('en-ZA')}</td>

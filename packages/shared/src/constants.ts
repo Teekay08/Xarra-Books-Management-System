@@ -184,6 +184,25 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   SYSTEM: 'System Notification',
 };
 
+export const PARTNER_NOTIFICATION_TYPES = [
+  'ORDER_STATUS_CHANGED', 'SHIPMENT_UPDATE', 'RETURN_STATUS_CHANGED',
+  'INVOICE_ISSUED', 'STATEMENT_AVAILABLE', 'CONSIGNMENT_DISPATCHED',
+  'PAYMENT_CONFIRMED', 'CREDIT_NOTE_ISSUED', 'SYSTEM',
+] as const;
+export type PartnerNotificationType = (typeof PARTNER_NOTIFICATION_TYPES)[number];
+
+export const PARTNER_NOTIFICATION_TYPE_LABELS: Record<PartnerNotificationType, string> = {
+  ORDER_STATUS_CHANGED: 'Order Update',
+  SHIPMENT_UPDATE: 'Shipment Update',
+  RETURN_STATUS_CHANGED: 'Return Update',
+  INVOICE_ISSUED: 'New Invoice',
+  STATEMENT_AVAILABLE: 'Statement Available',
+  CONSIGNMENT_DISPATCHED: 'Consignment Dispatched',
+  PAYMENT_CONFIRMED: 'Payment Confirmed',
+  CREDIT_NOTE_ISSUED: 'Credit Note Issued',
+  SYSTEM: 'System Notification',
+};
+
 export const DEFAULT_EXPENSE_CATEGORIES = [
   'Office Supplies', 'Printing & Production', 'Shipping & Courier',
   'Marketing & Advertising', 'Software & Subscriptions', 'Travel',

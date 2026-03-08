@@ -43,6 +43,8 @@ interface Invoice {
   voidedAt: string | null;
   voidedReason: string | null;
   amountPaid: string;
+  creditNotesTotal: string;
+  effectiveTotal: string;
   amountDue: string;
   partnerId: string;
   partner: {
@@ -147,12 +149,24 @@ export function InvoiceDetail() {
   });
 
   const creditNoteMutation = useMutation({
-    mutationFn: (body: { reason: string; lines: { invoiceLineId: string; quantity: number }[] }) =>
-      api(`/finance/invoices/${id}/credit-notes`, {
+    mutationFn: (body: { reason: string; lines: { invoiceLineId: string; quantity: number }[] }) => {
+      // Map invoice line IDs to the full line details the backend expects
+      const invData = data?.data;
+      const apiLines = body.lines.map((cl) => {
+        const invLine = invData?.lines.find((l) => l.id === cl.invoiceLineId);
+        return {
+          description: invLine?.description ?? '',
+          quantity: cl.quantity,
+          unitPrice: Number(invLine?.unitPrice ?? 0),
+          discountPct: Number(invLine?.discountPct ?? 0),
+        };
+      });
+      return api(`/finance/invoices/${id}/credit-notes`, {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify({ reason: body.reason, lines: apiLines }),
         headers: { 'X-Idempotency-Key': crypto.randomUUID() },
-      }),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       setShowCreditNoteModal(false);
@@ -165,6 +179,7 @@ export function InvoiceDetail() {
   const inv = data.data;
   const amountDue = Number(inv.amountDue ?? inv.total);
   const amountPaid = Number(inv.amountPaid ?? 0);
+  const creditNotesTotal = Number(inv.creditNotesTotal ?? 0);
 
   return (
     <div>
@@ -379,20 +394,30 @@ export function InvoiceDetail() {
                   <span className="font-mono">{formatR(inv.vatAmount)}</span>
                 </div>
                 <div className="flex justify-between border-t pt-1 font-bold text-base">
-                  <span>Total</span>
+                  <span>Invoice Total</span>
                   <span className="font-mono">{formatR(inv.total)}</span>
                 </div>
+                {creditNotesTotal > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Credit Notes</span>
+                    <span className="font-mono">- {formatR(creditNotesTotal)}</span>
+                  </div>
+                )}
                 {amountPaid > 0 && (
-                  <>
-                    <div className="flex justify-between text-green-700">
-                      <span>Amount Paid</span>
-                      <span className="font-mono">({formatR(amountPaid)})</span>
-                    </div>
-                    <div className="flex justify-between border-t pt-1 font-bold text-base">
-                      <span>Balance Due</span>
-                      <span className="font-mono">{formatR(amountDue)}</span>
-                    </div>
-                  </>
+                  <div className="flex justify-between text-green-700">
+                    <span>Payments Received</span>
+                    <span className="font-mono">- {formatR(amountPaid)}</span>
+                  </div>
+                )}
+                {(creditNotesTotal > 0 || amountPaid > 0) && (
+                  <div className="flex justify-between border-t pt-1 font-bold text-base">
+                    <span className={amountDue > 0 ? 'text-amber-700' : 'text-green-700'}>
+                      Balance Due
+                    </span>
+                    <span className={`font-mono ${amountDue > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                      {formatR(amountDue)}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>

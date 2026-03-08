@@ -3,7 +3,7 @@ import { eq, sql, desc } from 'drizzle-orm';
 import {
   invoices, invoiceLines, creditNotes, debitNotes,
   payments, paymentAllocations, channelPartners,
-  partnerBranches, remittances, remittanceInvoices, companySettings,
+  partnerBranches, remittances, remittanceInvoices, remittanceCreditNotes, companySettings,
   quotations, quotationLines,
   purchaseOrders, purchaseOrderLines,
   inventoryMovements,
@@ -21,6 +21,52 @@ import { renderReceiptHtml } from '../../services/templates/receipt.js';
 import { renderPurchaseOrderHtml } from '../../services/templates/purchase-order.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { sendDocumentEmail } from '../../services/document-email.js';
+import { reconcileInvoiceSales, reconcileRemittanceInvoices } from '../../services/reconciliation.js';
+import { notifyPartner } from '../../services/partner-notifications.js';
+
+/**
+ * Compute the total of active (non-voided) credit notes for an invoice.
+ */
+async function totalCreditNotesForInvoice(db: any, invoiceId: string): Promise<number> {
+  const result = await db.execute(sql`
+    SELECT COALESCE(SUM(total::numeric), 0) AS total
+    FROM credit_notes
+    WHERE invoice_id = ${invoiceId} AND voided_at IS NULL
+  `);
+  return Number(result[0]?.total ?? 0);
+}
+
+/**
+ * Compute the effective amount due on an invoice after payments and credit notes.
+ * effectiveTotal = invoice.total - creditNotes
+ * amountDue = effectiveTotal - amountPaid
+ */
+async function computeInvoiceBalance(db: any, invoiceId: string, invoiceTotal: number) {
+  const [paidResult, creditTotal] = await Promise.all([
+    db.execute(sql`
+      SELECT COALESCE(SUM(amount::numeric), 0) AS total
+      FROM payment_allocations
+      WHERE invoice_id = ${invoiceId}
+    `),
+    totalCreditNotesForInvoice(db, invoiceId),
+  ]);
+  const amountPaid = Number(paidResult[0]?.total ?? 0);
+  const effectiveTotal = Math.max(0, roundAmount(invoiceTotal - creditTotal));
+  const amountDue = Math.max(0, roundAmount(effectiveTotal - amountPaid));
+  return { amountPaid, creditTotal, effectiveTotal, amountDue };
+}
+
+type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'PARTIAL' | 'OVERDUE' | 'VOIDED';
+
+/**
+ * Determine invoice status based on payments + credit notes.
+ */
+function deriveInvoiceStatus(amountPaid: number, effectiveTotal: number): InvoiceStatus {
+  if (effectiveTotal <= 0) return 'PAID'; // fully credited
+  if (amountPaid >= effectiveTotal) return 'PAID';
+  if (amountPaid > 0) return 'PARTIAL';
+  return 'ISSUED';
+}
 
 export async function financeRoutes(app: FastifyInstance) {
   // ==========================================
@@ -43,6 +89,79 @@ export async function financeRoutes(app: FastifyInstance) {
   // ==========================================
   // INVOICES
   // ==========================================
+
+  // Available credit notes for a partner (used by remittance create)
+  app.get('/credit-notes/available', { preHandler: requireAuth }, async (request) => {
+    const { partnerId } = request.query as { partnerId?: string };
+    if (!partnerId) return { data: [] };
+
+    const items = await app.db.query.creditNotes.findMany({
+      where: sql`${creditNotes.partnerId} = ${partnerId} AND ${creditNotes.voidedAt} IS NULL`,
+      with: { invoice: true },
+      orderBy: [desc(creditNotes.createdAt)],
+    });
+
+    // Calculate how much of each credit note has already been applied in approved remittances
+    const result = await Promise.all(items.map(async (cn) => {
+      const appliedResult = await app.db.execute(sql`
+        SELECT COALESCE(SUM(rcn.amount::numeric), 0) AS applied
+        FROM remittance_credit_notes rcn
+        JOIN remittances r ON r.id = rcn.remittance_id
+        WHERE rcn.credit_note_id = ${cn.id}
+          AND r.status IN ('APPROVED', 'MATCHED', 'UNDER_REVIEW', 'PENDING')
+      `);
+      const applied = Number(appliedResult[0]?.applied ?? 0);
+      const available = roundAmount(Number(cn.total) - applied);
+      return {
+        id: cn.id,
+        number: cn.number,
+        invoiceId: cn.invoiceId,
+        invoiceNumber: cn.invoice?.number,
+        total: cn.total,
+        applied: applied.toFixed(2),
+        available: available.toFixed(2),
+        reason: cn.reason,
+        createdAt: cn.createdAt,
+      };
+    }));
+
+    // Only return credit notes that have remaining balance
+    return { data: result.filter((cn) => Number(cn.available) > 0) };
+  });
+
+  // Outstanding balances for a partner (used by remittance create)
+  app.get<{ Querystring: { partnerId: string } }>('/invoices/outstanding', { preHandler: requireAuth }, async (request) => {
+    const { partnerId } = request.query as { partnerId: string };
+    if (!partnerId) return { data: [] };
+
+    // Get all ISSUED or PARTIAL invoices for this partner
+    const items = await app.db.query.invoices.findMany({
+      where: sql`${invoices.partnerId} = ${partnerId} AND ${invoices.status} IN ('ISSUED', 'PARTIAL', 'OVERDUE')`,
+      orderBy: [desc(invoices.invoiceDate)],
+    });
+
+    // Compute balance for each
+    const result = await Promise.all(items.map(async (inv) => {
+      const { amountPaid, creditTotal, effectiveTotal, amountDue } = await computeInvoiceBalance(
+        app.db, inv.id, Number(inv.total),
+      );
+      return {
+        id: inv.id,
+        number: inv.number,
+        invoiceDate: inv.invoiceDate,
+        dueDate: inv.dueDate,
+        status: inv.status,
+        total: inv.total,
+        creditNotesTotal: creditTotal.toFixed(2),
+        amountPaid: amountPaid.toFixed(2),
+        effectiveTotal: effectiveTotal.toFixed(2),
+        amountDue: amountDue.toFixed(2),
+      };
+    }));
+
+    // Only return invoices that still have a balance
+    return { data: result.filter((inv) => Number(inv.amountDue) > 0) };
+  });
 
   // List invoices (paginated)
   app.get('/invoices', { preHandler: requireAuth }, async (request) => {
@@ -87,14 +206,10 @@ export async function financeRoutes(app: FastifyInstance) {
     });
     if (!invoice) return reply.notFound('Invoice not found');
 
-    // Compute amount paid from payment allocations
-    const paidResult = await app.db.execute<{ total: string }>(sql`
-      SELECT COALESCE(SUM(amount::numeric), 0) AS total
-      FROM payment_allocations
-      WHERE invoice_id = ${request.params.id}
-    `);
-    const amountPaid = Number(paidResult[0]?.total ?? 0);
-    const amountDue = Math.max(0, Number(invoice.total) - amountPaid);
+    // Compute balance: invoice total − credit notes − payments
+    const { amountPaid, creditTotal, effectiveTotal, amountDue } = await computeInvoiceBalance(
+      app.db, request.params.id, Number(invoice.total),
+    );
 
     // Get payment allocations with payment details
     const allocations = await app.db.execute<{ paymentId: string; amount: string; paymentDate: string; bankReference: string | null; paymentMethod: string | null }>(sql`
@@ -105,7 +220,16 @@ export async function financeRoutes(app: FastifyInstance) {
       ORDER BY p.payment_date DESC
     `);
 
-    return { data: { ...invoice, amountPaid: String(amountPaid.toFixed(2)), amountDue: String(amountDue.toFixed(2)), paymentHistory: allocations } };
+    return {
+      data: {
+        ...invoice,
+        amountPaid: String(amountPaid.toFixed(2)),
+        creditNotesTotal: String(creditTotal.toFixed(2)),
+        effectiveTotal: String(effectiveTotal.toFixed(2)),
+        amountDue: String(amountDue.toFixed(2)),
+        paymentHistory: allocations,
+      },
+    };
   });
 
   // Create invoice
@@ -672,6 +796,18 @@ export async function financeRoutes(app: FastifyInstance) {
       createdBy: userId,
     }).returning();
 
+    // Recalculate invoice status now that credit note is applied
+    const { amountPaid, effectiveTotal } = await computeInvoiceBalance(
+      app.db, request.params.invoiceId, Number(invoice.total),
+    );
+    const newStatus = deriveInvoiceStatus(amountPaid, effectiveTotal);
+    if (newStatus !== invoice.status) {
+      await app.db.update(invoices).set({
+        status: newStatus,
+        updatedAt: new Date(),
+      }).where(eq(invoices.id, request.params.invoiceId));
+    }
+
     createBroadcastNotification(app, {
       type: 'CREDIT_NOTE_CREATED',
       priority: 'NORMAL',
@@ -681,6 +817,16 @@ export async function financeRoutes(app: FastifyInstance) {
       referenceType: 'CREDIT_NOTE',
       referenceId: cn.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create credit note notification'));
+
+    // Notify partner about the credit note
+    notifyPartner(app, invoice.partnerId, {
+      type: 'CREDIT_NOTE_ISSUED',
+      title: `Credit note ${number} issued`,
+      message: `A credit note of R ${total.toFixed(2)} has been issued against invoice ${invoice.number}.`,
+      actionUrl: '/partner/credit-notes',
+      referenceType: 'CREDIT_NOTE',
+      referenceId: cn.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to notify partner of credit note'));
 
     return reply.status(201).send({ data: cn });
   });
@@ -807,22 +953,17 @@ export async function financeRoutes(app: FastifyInstance) {
           }))
         );
 
-        // Update invoice statuses based on total allocated
+        // Update invoice statuses based on total allocated (payments + credit notes)
         for (const alloc of body.invoiceAllocations) {
-          const totalAllocated = await tx.execute<{ total: string }>(sql`
-            SELECT COALESCE(SUM(amount), 0) AS total
-            FROM payment_allocations
-            WHERE invoice_id = ${alloc.invoiceId}
-          `);
-
           const invoice = await tx.query.invoices.findFirst({
             where: eq(invoices.id, alloc.invoiceId),
           });
 
           if (invoice) {
-            const paidAmount = Number(totalAllocated[0]?.total ?? 0);
-            const invoiceTotal = Number(invoice.total);
-            const newStatus = paidAmount >= invoiceTotal ? 'PAID' : 'PARTIAL';
+            const { amountPaid, effectiveTotal } = await computeInvoiceBalance(
+              tx, alloc.invoiceId, Number(invoice.total),
+            );
+            const newStatus = deriveInvoiceStatus(amountPaid, effectiveTotal);
 
             await tx.update(invoices).set({
               status: newStatus,
@@ -847,6 +988,17 @@ export async function financeRoutes(app: FastifyInstance) {
       referenceType: 'PAYMENT',
       referenceId: result.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create payment notification'));
+
+    // Reconcile any invoices that are now PAID (fire-and-forget)
+    if (body.invoiceAllocations?.length) {
+      Promise.all(
+        body.invoiceAllocations.map((a) =>
+          reconcileInvoiceSales(app, a.invoiceId, userId).catch((err) =>
+            app.log.error({ err, invoiceId: a.invoiceId }, 'Failed to reconcile invoice sales'),
+          ),
+        ),
+      ).catch(() => {});
+    }
 
     return reply.status(201).send({ data: result });
   });
@@ -886,7 +1038,7 @@ export async function financeRoutes(app: FastifyInstance) {
     };
   });
 
-  // Get single remittance with linked invoices
+  // Get single remittance with linked invoices and credit notes
   app.get<{ Params: { id: string } }>('/remittances/:id', { preHandler: requireAuth }, async (request, reply) => {
     const remittance = await app.db.query.remittances.findFirst({
       where: eq(remittances.id, request.params.id),
@@ -899,17 +1051,24 @@ export async function financeRoutes(app: FastifyInstance) {
             },
           },
         },
+        creditNoteAllocations: {
+          with: {
+            creditNote: true,
+            invoice: true,
+          },
+        },
       },
     });
     if (!remittance) return reply.notFound('Remittance not found');
     return { data: remittance };
   });
 
-  // Create remittance with optional invoice allocations
+  // Create remittance with optional invoice and credit note allocations
   app.post('/remittances', {
     preHandler: requireRole('admin', 'finance'),
   }, async (request, reply) => {
     const body = createRemittanceSchema.parse(request.body);
+    const userId = request.session?.user?.id;
 
     const result = await app.db.transaction(async (tx) => {
       const [remittance] = await tx.insert(remittances).values({
@@ -920,12 +1079,24 @@ export async function financeRoutes(app: FastifyInstance) {
         totalAmount: String(body.totalAmount),
         parseMethod: body.parseMethod,
         notes: body.notes,
+        createdBy: userId,
       }).returning();
 
       if (body.invoiceAllocations?.length) {
         await tx.insert(remittanceInvoices).values(
           body.invoiceAllocations.map((a) => ({
             remittanceId: remittance.id,
+            invoiceId: a.invoiceId,
+            amount: String(a.amount),
+          }))
+        );
+      }
+
+      if (body.creditNoteAllocations?.length) {
+        await tx.insert(remittanceCreditNotes).values(
+          body.creditNoteAllocations.map((a) => ({
+            remittanceId: remittance.id,
+            creditNoteId: a.creditNoteId,
             invoiceId: a.invoiceId,
             amount: String(a.amount),
           }))
@@ -965,6 +1136,171 @@ export async function financeRoutes(app: FastifyInstance) {
       referenceType: 'REMITTANCE',
       referenceId: remittance.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create remittance notification'));
+
+    // Reconcile sales for all linked invoices that are now PAID
+    reconcileRemittanceInvoices(app, request.params.id, userId).catch((err) =>
+      app.log.error({ err }, 'Failed to reconcile remittance invoices'),
+    );
+
+    return { data: updated };
+  });
+
+  // Get reconciliation summary for a remittance
+  app.get<{ Params: { id: string } }>('/remittances/:id/reconciliation', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const remittance = await app.db.query.remittances.findFirst({
+      where: eq(remittances.id, request.params.id),
+      with: { invoiceAllocations: { with: { invoice: { with: { lines: true } } } } },
+    });
+    if (!remittance) return reply.notFound('Remittance not found');
+
+    // Gather all title sales from linked invoices
+    const titleSales: Record<string, { titleId: string; description: string; quantity: number; consignmentLineIds: string[] }> = {};
+
+    for (const ri of remittance.invoiceAllocations) {
+      const inv = ri.invoice;
+      if (!inv) continue;
+      for (const line of inv.lines) {
+        if (!line.titleId) continue;
+        const qty = Math.floor(Number(line.quantity));
+        if (!titleSales[line.titleId]) {
+          titleSales[line.titleId] = { titleId: line.titleId, description: line.description, quantity: 0, consignmentLineIds: [] };
+        }
+        titleSales[line.titleId].quantity += qty;
+        if (line.consignmentLineId) {
+          titleSales[line.titleId].consignmentLineIds.push(line.consignmentLineId);
+        }
+      }
+    }
+
+    // Check which invoices are paid vs partial
+    const invoiceStatuses = remittance.invoiceAllocations.map((ri) => ({
+      invoiceId: ri.invoice?.id,
+      invoiceNumber: ri.invoice?.number,
+      status: ri.invoice?.status,
+      amount: ri.amount,
+    }));
+
+    return {
+      data: {
+        remittanceId: remittance.id,
+        status: remittance.status,
+        titleSales: Object.values(titleSales),
+        invoiceStatuses,
+      },
+    };
+  });
+
+  // Review remittance (finance staff verifies the remittance details)
+  app.post<{ Params: { id: string } }>('/remittances/:id/review', {
+    preHandler: requireRole('admin', 'finance'),
+  }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const body = request.body as { reviewNotes?: string };
+
+    const remittance = await app.db.query.remittances.findFirst({
+      where: eq(remittances.id, request.params.id),
+    });
+    if (!remittance) return reply.notFound('Remittance not found');
+    if (remittance.status !== 'PENDING') {
+      return reply.badRequest('Remittance must be in PENDING status to review');
+    }
+
+    const [updated] = await app.db.update(remittances).set({
+      status: 'UNDER_REVIEW',
+      reviewedBy: userId,
+      reviewedAt: new Date(),
+      reviewNotes: body.reviewNotes,
+    }).where(eq(remittances.id, request.params.id)).returning();
+
+    return { data: updated };
+  });
+
+  // Approve remittance (manager sign-off — applies credit notes and reconciles)
+  app.post<{ Params: { id: string } }>('/remittances/:id/approve', {
+    preHandler: requireRole('admin', 'finance'),
+  }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+
+    const remittance = await app.db.query.remittances.findFirst({
+      where: eq(remittances.id, request.params.id),
+      with: {
+        invoiceAllocations: true,
+        creditNoteAllocations: true,
+      },
+    });
+    if (!remittance) return reply.notFound('Remittance not found');
+    if (!['UNDER_REVIEW', 'PENDING', 'MATCHED'].includes(remittance.status)) {
+      return reply.badRequest('Remittance must be pending or under review to approve');
+    }
+
+    // Validate: total invoices - total credit notes should equal totalAmount (with tolerance)
+    const invoiceTotal = remittance.invoiceAllocations.reduce((s, a) => s + Number(a.amount), 0);
+    const cnTotal = remittance.creditNoteAllocations.reduce((s, a) => s + Number(a.amount), 0);
+    const netAmount = roundAmount(invoiceTotal - cnTotal);
+    const declaredAmount = Number(remittance.totalAmount);
+
+    // Allow R 1.00 tolerance for rounding
+    if (Math.abs(netAmount - declaredAmount) > 1) {
+      return reply.badRequest(
+        `Net amount (R ${netAmount.toFixed(2)}) does not match declared total (R ${declaredAmount.toFixed(2)}). ` +
+        `Invoices: R ${invoiceTotal.toFixed(2)}, Credit Notes: R ${cnTotal.toFixed(2)}.`
+      );
+    }
+
+    const [updated] = await app.db.update(remittances).set({
+      status: 'APPROVED',
+      approvedBy: userId,
+      approvedAt: new Date(),
+    }).where(eq(remittances.id, request.params.id)).returning();
+
+    // Fire reconciliation for all linked invoices
+    reconcileRemittanceInvoices(app, request.params.id, userId).catch((err) =>
+      app.log.error({ err }, 'Failed to reconcile remittance invoices'),
+    );
+
+    createBroadcastNotification(app, {
+      type: 'REMITTANCE_MATCHED',
+      priority: 'NORMAL',
+      title: `Remittance ${remittance.partnerRef ?? remittance.id.slice(0, 8)} approved`,
+      message: `R ${declaredAmount.toFixed(2)} remittance approved — reconciliation in progress`,
+      actionUrl: `/finance/remittances/${remittance.id}`,
+      referenceType: 'REMITTANCE',
+      referenceId: remittance.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create remittance notification'));
+
+    // Notify partner
+    notifyPartner(app, remittance.partnerId, {
+      type: 'PAYMENT_CONFIRMED',
+      title: 'Remittance approved',
+      message: `Your remittance of R ${declaredAmount.toFixed(2)} has been reviewed and approved.`,
+      actionUrl: '/partner/invoices',
+      referenceType: 'REMITTANCE',
+      referenceId: remittance.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to notify partner of remittance approval'));
+
+    return { data: updated };
+  });
+
+  // Dispute remittance
+  app.post<{ Params: { id: string } }>('/remittances/:id/dispute', {
+    preHandler: requireRole('admin', 'finance'),
+  }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const body = request.body as { reason: string };
+
+    const remittance = await app.db.query.remittances.findFirst({
+      where: eq(remittances.id, request.params.id),
+    });
+    if (!remittance) return reply.notFound('Remittance not found');
+
+    const [updated] = await app.db.update(remittances).set({
+      status: 'DISPUTED',
+      reviewedBy: userId,
+      reviewedAt: new Date(),
+      reviewNotes: body.reason,
+    }).where(eq(remittances.id, request.params.id)).returning();
 
     return { data: updated };
   });

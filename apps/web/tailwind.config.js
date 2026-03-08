@@ -4,6 +4,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        primary: '#8B1A1A',
         brand: {
           50: '#fef7f0',
           100: '#fcecd8',

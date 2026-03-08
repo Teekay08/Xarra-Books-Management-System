@@ -97,6 +97,7 @@ import { PartnerCatalog } from './pages/partner-portal/PartnerCatalog';
 import { PartnerOrders } from './pages/partner-portal/PartnerOrders';
 import { PartnerOrderDetail } from './pages/partner-portal/PartnerOrderDetail';
 import { PartnerInvoices } from './pages/partner-portal/PartnerInvoices';
+import { PartnerCreditNotes } from './pages/partner-portal/PartnerCreditNotes';
 import { PartnerConsignments } from './pages/partner-portal/PartnerConsignments';
 import { PartnerStatements } from './pages/partner-portal/PartnerStatements';
 import { PartnerReturns } from './pages/partner-portal/PartnerReturns';
@@ -104,6 +105,7 @@ import { PartnerReturnCreate } from './pages/partner-portal/PartnerReturnCreate'
 import { PartnerReturnDetail } from './pages/partner-portal/PartnerReturnDetail';
 import { PartnerShipments } from './pages/partner-portal/PartnerShipments';
 import { PartnerAccount } from './pages/partner-portal/PartnerAccount';
+import { PartnerNotifications } from './pages/partner-portal/PartnerNotifications';
 // Admin partner portal management
 import { PartnerPortalUsers } from './pages/partners/PartnerPortalUsers';
 import { PartnerOrdersAdmin } from './pages/partners/PartnerOrdersAdmin';
@@ -274,12 +276,14 @@ const router = createBrowserRouter([
       { path: 'partner/orders', element: <PartnerOrders /> },
       { path: 'partner/orders/:id', element: <PartnerOrderDetail /> },
       { path: 'partner/invoices', element: <PartnerInvoices /> },
+      { path: 'partner/credit-notes', element: <PartnerCreditNotes /> },
       { path: 'partner/consignments', element: <PartnerConsignments /> },
       { path: 'partner/statements', element: <PartnerStatements /> },
       { path: 'partner/returns', element: <PartnerReturns /> },
       { path: 'partner/returns/new', element: <PartnerReturnCreate /> },
       { path: 'partner/returns/:id', element: <PartnerReturnDetail /> },
       { path: 'partner/shipments', element: <PartnerShipments /> },
+      { path: 'partner/notifications', element: <PartnerNotifications /> },
       { path: 'partner/account', element: <PartnerAccount /> },
     ],
   },

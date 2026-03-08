@@ -32,8 +32,18 @@ export function RemittanceList() {
 
   const statusColors: Record<string, string> = {
     PENDING: 'bg-yellow-100 text-yellow-800',
+    UNDER_REVIEW: 'bg-blue-100 text-blue-800',
+    APPROVED: 'bg-green-100 text-green-800',
     MATCHED: 'bg-green-100 text-green-800',
     DISPUTED: 'bg-red-100 text-red-800',
+  };
+
+  const statusLabels: Record<string, string> = {
+    PENDING: 'Pending',
+    UNDER_REVIEW: 'Under Review',
+    APPROVED: 'Approved',
+    MATCHED: 'Matched',
+    DISPUTED: 'Disputed',
   };
 
   return (
@@ -86,7 +96,7 @@ export function RemittanceList() {
                   <td className="px-4 py-3 text-sm text-right font-mono">R {Number(r.totalAmount).toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`inline-flex px-2 py-0.5 text-xs rounded-full ${statusColors[r.status] ?? 'bg-gray-100'}`}>
-                      {r.status}
+                      {statusLabels[r.status] ?? r.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">

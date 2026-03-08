@@ -75,8 +75,8 @@ export function PurchaseOrderList() {
   return (
     <div>
       <PageHeader
-        title="Purchase Orders"
-        subtitle="Manage supplier purchase orders"
+        title="Supplier Purchase Orders"
+        subtitle="Orders placed by Xarra to external suppliers"
         action={
           <button
             onClick={() => navigate('/finance/purchase-orders/new')}
