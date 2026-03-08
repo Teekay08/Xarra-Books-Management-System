@@ -6,6 +6,7 @@ import {
   partnerBranches, remittances, remittanceInvoices, companySettings,
   quotations, quotationLines,
   purchaseOrders, purchaseOrderLines,
+  inventoryMovements,
 } from '@xarra/db';
 import { createInvoiceSchema, recordPaymentSchema, paginationSchema, createRemittanceSchema, createDebitNoteSchema, sendDocumentSchema, createPurchaseOrderSchema } from '@xarra/shared';
 import { VAT_RATE, roundAmount } from '@xarra/shared';
@@ -18,9 +19,27 @@ import { renderDebitNoteHtml } from '../../services/templates/debit-note.js';
 import { renderQuotationHtml } from '../../services/templates/quotation.js';
 import { renderReceiptHtml } from '../../services/templates/receipt.js';
 import { renderPurchaseOrderHtml } from '../../services/templates/purchase-order.js';
+import { createBroadcastNotification } from '../../services/notifications.js';
 import { sendDocumentEmail } from '../../services/document-email.js';
 
 export async function financeRoutes(app: FastifyInstance) {
+  // ==========================================
+  // NEXT DOCUMENT NUMBER (suggested / preview)
+  // ==========================================
+  app.get<{ Params: { type: string } }>('/next-number/:type', { preHandler: requireAuth }, async (request, reply) => {
+    const generators: Record<string, () => Promise<string>> = {
+      invoice: () => nextInvoiceNumber(app.db as any),
+      quotation: () => nextQuotationNumber(app.db as any),
+      'credit-note': () => nextCreditNoteNumber(app.db as any),
+      'debit-note': () => nextDebitNoteNumber(app.db as any),
+      'purchase-order': () => nextPurchaseOrderNumber(app.db as any),
+    };
+    const gen = generators[request.params.type];
+    if (!gen) return reply.badRequest('Invalid document type');
+    const number = await gen();
+    return { data: { number } };
+  });
+
   // ==========================================
   // INVOICES
   // ==========================================
@@ -29,10 +48,14 @@ export async function financeRoutes(app: FastifyInstance) {
   app.get('/invoices', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search, sortOrder } = query;
+    const { status } = request.query as { status?: string };
     const offset = (page - 1) * limit;
 
-    const where = search
-      ? sql`(${invoices.number} ILIKE ${'%' + search + '%'})`
+    const conditions: ReturnType<typeof sql>[] = [];
+    if (search) conditions.push(sql`(${invoices.number} ILIKE ${'%' + search + '%'})`);
+    if (status) conditions.push(sql`${invoices.status} = ${status}`);
+    const where = conditions.length > 0
+      ? sql.join(conditions, sql` AND `)
       : undefined;
 
     const [items, countResult] = await Promise.all([
@@ -204,6 +227,15 @@ export async function financeRoutes(app: FastifyInstance) {
       updatedAt: new Date(),
     }).where(eq(invoices.id, request.params.id)).returning();
 
+    createBroadcastNotification(app, {
+      type: 'INVOICE_ISSUED',
+      title: `Invoice ${updated.number} issued`,
+      message: `Invoice ${updated.number} for R ${Number(updated.total).toFixed(2)} has been issued`,
+      actionUrl: `/invoices/${updated.id}`,
+      referenceType: 'INVOICE',
+      referenceId: updated.id,
+    });
+
     return { data: updated };
   });
 
@@ -226,6 +258,16 @@ export async function financeRoutes(app: FastifyInstance) {
       voidedReason: reason,
       updatedAt: new Date(),
     }).where(eq(invoices.id, request.params.id)).returning();
+
+    createBroadcastNotification(app, {
+      type: 'INVOICE_VOIDED',
+      priority: 'HIGH',
+      title: `Invoice ${invoice.number} voided`,
+      message: `R ${Number(invoice.total).toFixed(2)} — ${reason}`,
+      actionUrl: `/finance/invoices/${invoice.id}`,
+      referenceType: 'INVOICE',
+      referenceId: invoice.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create void notification'));
 
     return { data: updated };
   });
@@ -630,6 +672,16 @@ export async function financeRoutes(app: FastifyInstance) {
       createdBy: userId,
     }).returning();
 
+    createBroadcastNotification(app, {
+      type: 'CREDIT_NOTE_CREATED',
+      priority: 'NORMAL',
+      title: `Credit note ${number} created`,
+      message: `R ${total.toFixed(2)} against invoice ${invoice.number} — ${reason}`,
+      actionUrl: `/finance/credit-notes/${cn.id}`,
+      referenceType: 'CREDIT_NOTE',
+      referenceId: cn.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create credit note notification'));
+
     return reply.status(201).send({ data: cn });
   });
 
@@ -662,6 +714,16 @@ export async function financeRoutes(app: FastifyInstance) {
         totalPages: Math.ceil(Number(countResult[0].count) / limit),
       },
     };
+  });
+
+  // Get single credit note
+  app.get<{ Params: { id: string } }>('/credit-notes/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const cn = await app.db.query.creditNotes.findFirst({
+      where: eq(creditNotes.id, request.params.id),
+      with: { partner: true, invoice: true },
+    });
+    if (!cn) return reply.notFound('Credit note not found');
+    return { data: cn };
   });
 
   // ==========================================
@@ -697,6 +759,16 @@ export async function financeRoutes(app: FastifyInstance) {
         totalPages: Math.ceil(Number(countResult[0].count) / limit),
       },
     };
+  });
+
+  // Get single payment with allocations
+  app.get<{ Params: { id: string } }>('/payments/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const payment = await app.db.query.payments.findFirst({
+      where: eq(payments.id, request.params.id),
+      with: { partner: true, allocations: { with: { invoice: true } } },
+    });
+    if (!payment) return reply.notFound('Payment not found');
+    return { data: payment };
   });
 
   // Record payment
@@ -762,6 +834,19 @@ export async function financeRoutes(app: FastifyInstance) {
 
       return payment;
     });
+
+    // Get partner name for notification
+    const partner = body.partnerId
+      ? await app.db.query.channelPartners.findFirst({ where: eq(channelPartners.id, body.partnerId) })
+      : null;
+    createBroadcastNotification(app, {
+      type: 'PAYMENT_RECEIVED',
+      title: 'Payment recorded',
+      message: `R ${Number(body.amount).toFixed(2)} received${partner ? ` from ${partner.name}` : ''}${body.bankReference ? ` (Ref: ${body.bankReference})` : ''}`,
+      actionUrl: '/payments',
+      referenceType: 'PAYMENT',
+      referenceId: result.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create payment notification'));
 
     return reply.status(201).send({ data: result });
   });
@@ -871,6 +956,16 @@ export async function financeRoutes(app: FastifyInstance) {
       matchedAt: new Date(),
     }).where(eq(remittances.id, request.params.id)).returning();
 
+    createBroadcastNotification(app, {
+      type: 'REMITTANCE_MATCHED',
+      priority: 'LOW',
+      title: `Remittance ${remittance.partnerRef ?? remittance.id.slice(0, 8)} matched`,
+      message: `R ${Number(remittance.totalAmount).toFixed(2)} matched to payment`,
+      actionUrl: `/finance/remittances/${remittance.id}`,
+      referenceType: 'REMITTANCE',
+      referenceId: remittance.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create remittance notification'));
+
     return { data: updated };
   });
 
@@ -953,6 +1048,16 @@ export async function financeRoutes(app: FastifyInstance) {
       reason: body.reason,
       createdBy: userId,
     }).returning();
+
+    createBroadcastNotification(app, {
+      type: 'DEBIT_NOTE_CREATED',
+      priority: 'NORMAL',
+      title: `Debit note ${number} created`,
+      message: `R ${total.toFixed(2)} — ${body.reason}`,
+      actionUrl: `/finance/debit-notes/${dn.id}`,
+      referenceType: 'DEBIT_NOTE',
+      referenceId: dn.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create debit note notification'));
 
     return reply.status(201).send({ data: dn });
   });
@@ -1141,6 +1246,16 @@ export async function financeRoutes(app: FastifyInstance) {
       convertedInvoiceId: invoice.id,
       updatedAt: new Date(),
     }).where(eq(quotations.id, quotation.id));
+
+    createBroadcastNotification(app, {
+      type: 'QUOTATION_CONVERTED',
+      priority: 'NORMAL',
+      title: `Quotation ${quotation.number} converted`,
+      message: `Created invoice ${invoiceNumber} — R ${Number(quotation.total).toFixed(2)}`,
+      actionUrl: `/finance/invoices/${invoice.id}`,
+      referenceType: 'INVOICE',
+      referenceId: invoice.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create quotation conversion notification'));
 
     return reply.status(201).send({ data: invoice });
   });
@@ -1401,6 +1516,17 @@ export async function financeRoutes(app: FastifyInstance) {
     if (po.status !== 'DRAFT') return reply.badRequest('Only DRAFT purchase orders can be issued');
 
     const [updated] = await app.db.update(purchaseOrders).set({ status: 'ISSUED', updatedAt: new Date() }).where(eq(purchaseOrders.id, request.params.id)).returning();
+
+    createBroadcastNotification(app, {
+      type: 'PURCHASE_ORDER_ISSUED',
+      priority: 'NORMAL',
+      title: `PO ${po.number} issued`,
+      message: `R ${Number(po.total).toFixed(2)}`,
+      actionUrl: `/finance/purchase-orders/${po.id}`,
+      referenceType: 'PURCHASE_ORDER',
+      referenceId: po.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create PO issue notification'));
+
     return { data: updated };
   });
 
@@ -1416,11 +1542,33 @@ export async function financeRoutes(app: FastifyInstance) {
     const { lineReceives } = request.body as { lineReceives: { lineId: string; quantityReceived: number }[] };
     if (!lineReceives?.length) return reply.badRequest('lineReceives is required');
 
+    // Track previous quantities to compute deltas for inventory
+    const previousLines = new Map(po.lines.map((l) => [l.id, Number(l.quantityReceived ?? 0)]));
+
     await app.db.transaction(async (tx) => {
       for (const lr of lineReceives) {
         await tx.update(purchaseOrderLines).set({
           quantityReceived: String(lr.quantityReceived),
         }).where(eq(purchaseOrderLines.id, lr.lineId));
+      }
+
+      // Create inventory movements for newly received quantities
+      for (const lr of lineReceives) {
+        const line = po.lines.find((l) => l.id === lr.lineId);
+        if (!line?.titleId) continue;
+        const prevQty = previousLines.get(lr.lineId) ?? 0;
+        const delta = lr.quantityReceived - prevQty;
+        if (delta > 0) {
+          await tx.insert(inventoryMovements).values({
+            titleId: line.titleId,
+            movementType: 'IN',
+            quantity: delta,
+            toLocation: 'WAREHOUSE',
+            reason: `Received from PO ${po.number}`,
+            referenceType: 'PURCHASE_ORDER',
+            referenceId: po.id,
+          });
+        }
       }
     });
 
@@ -1439,6 +1587,16 @@ export async function financeRoutes(app: FastifyInstance) {
       updatedAt: new Date(),
     }).where(eq(purchaseOrders.id, request.params.id)).returning();
 
+    createBroadcastNotification(app, {
+      type: 'PURCHASE_ORDER_RECEIVED',
+      priority: 'NORMAL',
+      title: `PO ${po.number} — goods ${allReceived ? 'fully' : 'partially'} received`,
+      message: `R ${Number(po.total).toFixed(2)}`,
+      actionUrl: `/finance/purchase-orders/${po.id}`,
+      referenceType: 'PURCHASE_ORDER',
+      referenceId: po.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create PO receive notification'));
+
     return { data: { ...updated, lines: updatedLines } };
   });
 
@@ -1455,6 +1613,16 @@ export async function financeRoutes(app: FastifyInstance) {
       cancelReason: reason,
       updatedAt: new Date(),
     }).where(eq(purchaseOrders.id, request.params.id)).returning();
+
+    createBroadcastNotification(app, {
+      type: 'PURCHASE_ORDER_CANCELLED',
+      priority: 'HIGH',
+      title: `PO ${po.number} cancelled`,
+      message: reason ? `R ${Number(po.total).toFixed(2)} — ${reason}` : `R ${Number(po.total).toFixed(2)}`,
+      actionUrl: `/finance/purchase-orders/${po.id}`,
+      referenceType: 'PURCHASE_ORDER',
+      referenceId: po.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create PO cancel notification'));
 
     return { data: updated };
   });

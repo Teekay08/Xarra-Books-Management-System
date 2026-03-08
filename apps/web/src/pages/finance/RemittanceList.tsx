@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 
 interface Remittance {
   id: string;
@@ -20,6 +23,7 @@ export function RemittanceList() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['remittances', page, search],
@@ -47,7 +51,7 @@ export function RemittanceList() {
         }
       />
 
-      <div className="mb-4">
+      <div className="mb-4 flex gap-3 items-center">
         <input
           type="text"
           placeholder="Search by reference..."
@@ -55,6 +59,9 @@ export function RemittanceList() {
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm"
         />
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       {isLoading ? (
@@ -103,6 +110,12 @@ export function RemittanceList() {
           </div>
         </div>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/remittances', from, to), 'remittances.csv')}
+        title="Export Remittances"
+      />
     </div>
   );
 }

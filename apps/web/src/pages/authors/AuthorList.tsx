@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi } from '../../lib/export';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 
@@ -71,8 +73,13 @@ export function AuthorList() {
         }
       />
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search by name or email..." />
+      <div className="mb-4 flex items-center gap-4">
+        <div className="flex-1">
+          <SearchBar value={search} onChange={handleSearch} placeholder="Search by name or email..." />
+        </div>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => downloadFromApi('/export/authors', 'authors-export.csv') },
+        ]} />
       </div>
 
       {isLoading ? (

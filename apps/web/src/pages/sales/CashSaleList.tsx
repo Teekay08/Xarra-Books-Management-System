@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 
@@ -44,6 +47,7 @@ export function CashSaleList() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('ALL');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['cash-sales', page, search, paymentMethod],
@@ -131,6 +135,9 @@ export function CashSaleList() {
         <div className="flex-1">
           <SearchBar value={search} onChange={handleSearch} placeholder="Search by sale #, customer..." />
         </div>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
         <div className="flex gap-1">
           {PAYMENT_METHODS.map((method) => (
             <button
@@ -168,6 +175,12 @@ export function CashSaleList() {
           )}
         </>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/cash-sales', from, to), 'cash-sales-export.csv')}
+        title="Export Cash Sales"
+      />
     </div>
   );
 }

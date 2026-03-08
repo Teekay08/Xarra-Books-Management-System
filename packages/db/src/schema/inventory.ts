@@ -16,6 +16,10 @@ export const inventoryMovements = pgTable('inventory_movements', {
   quantity: integer('quantity').notNull(),
   referenceId: uuid('reference_id'), // links to consignment, sale, etc.
   referenceType: varchar('reference_type', { length: 50 }), // CONSIGNMENT, SALE, ADJUSTMENT, PRINT_RUN
+  batchNumber: varchar('batch_number', { length: 100 }),
+  supplierName: varchar('supplier_name', { length: 255 }),
+  supplierId: uuid('supplier_id'), // optional FK to channel_partners (used as supplier)
+  receivedDate: timestamp('received_date', { withTimezone: true }),
   reason: varchar('reason', { length: 255 }),
   notes: text('notes'),
   createdBy: uuid('created_by').references(() => users.id),

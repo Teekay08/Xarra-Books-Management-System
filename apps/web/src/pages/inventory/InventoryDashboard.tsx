@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 
@@ -20,6 +23,7 @@ export function InventoryDashboard() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [exportMovementsModalOpen, setExportMovementsModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventory-stock', page, search],
@@ -75,8 +79,14 @@ export function InventoryDashboard() {
         }
       />
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search by title or ISBN..." />
+      <div className="mb-4 flex items-center gap-4">
+        <div className="flex-1">
+          <SearchBar value={search} onChange={handleSearch} placeholder="Search by title or ISBN..." />
+        </div>
+        <ExportButton options={[
+          { label: 'Export Inventory CSV', onClick: () => downloadFromApi('/export/inventory', 'inventory-export.csv') },
+          { label: 'Export Movements CSV', onClick: () => setExportMovementsModalOpen(true) },
+        ]} />
       </div>
 
       {isLoading ? (
@@ -99,6 +109,12 @@ export function InventoryDashboard() {
           )}
         </>
       )}
+      <DateRangeExportModal
+        open={exportMovementsModalOpen}
+        onClose={() => setExportMovementsModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/inventory-movements', from, to), 'inventory-movements-export.csv')}
+        title="Export Inventory Movements"
+      />
     </div>
   );
 }

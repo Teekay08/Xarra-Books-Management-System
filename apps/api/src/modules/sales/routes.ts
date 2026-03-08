@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
-import { cashSales, cashSaleLines, companySettings } from '@xarra/db';
+import { cashSales, cashSaleLines, companySettings, inventoryMovements } from '@xarra/db';
 import { createCashSaleSchema, paginationSchema, VAT_RATE, roundAmount } from '@xarra/shared';
 import { requirePermission } from '../../middleware/require-auth.js';
 import { nextCashSaleNumber } from '../finance/invoice-number.js';
 import { generatePdf } from '../../services/pdf.js';
 import { renderCashSaleReceiptHtml } from '../../services/templates/cash-sale-receipt.js';
+import { createBroadcastNotification } from '../../services/notifications.js';
 
 export async function salesRoutes(app: FastifyInstance) {
   // List cash sales
@@ -99,7 +100,31 @@ export async function salesRoutes(app: FastifyInstance) {
         lineData.map((l) => ({ ...l, cashSaleId: cs.id }))
       ).returning();
 
+      // Create inventory movements for sold titles (deduct stock)
+      for (const line of lines) {
+        if (line.titleId) {
+          await tx.insert(inventoryMovements).values({
+            titleId: line.titleId,
+            movementType: 'SELL',
+            quantity: Number(line.quantity),
+            reason: `Cash sale ${number}`,
+            referenceType: 'CASH_SALE',
+            referenceId: cs.id,
+          });
+        }
+      }
+
       return { ...cs, lines };
+    });
+
+    createBroadcastNotification(app, {
+      type: 'CASH_SALE_CREATED',
+      priority: 'LOW',
+      title: `Cash sale ${result.number}`,
+      message: `R ${Number(result.total).toFixed(2)} — ${body.customerName || 'Walk-in'} (${body.paymentMethod})`,
+      actionUrl: `/sales/cash-sales/${result.id}`,
+      referenceType: 'CASH_SALE',
+      referenceId: result.id,
     });
 
     return reply.status(201).send({ data: result });
@@ -109,6 +134,7 @@ export async function salesRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/cash-sales/:id/void', { preHandler: requirePermission('cashSales', 'void') }, async (request, reply) => {
     const cs = await app.db.query.cashSales.findFirst({
       where: eq(cashSales.id, request.params.id),
+      with: { lines: true },
     });
     if (!cs) return reply.notFound('Cash sale not found');
     if (cs.voidedAt) return reply.badRequest('Cash sale is already voided');
@@ -120,6 +146,20 @@ export async function salesRoutes(app: FastifyInstance) {
       voidedAt: new Date(),
       voidedReason: reason,
     }).where(eq(cashSales.id, request.params.id)).returning();
+
+    // Reverse inventory movements (add stock back)
+    for (const line of cs.lines) {
+      if (line.titleId) {
+        await app.db.insert(inventoryMovements).values({
+          titleId: line.titleId,
+          movementType: 'RETURN',
+          quantity: Number(line.quantity),
+          reason: `Voided cash sale ${cs.number}: ${reason}`,
+          referenceType: 'CASH_SALE',
+          referenceId: cs.id,
+        });
+      }
+    }
 
     return { data: updated };
   });

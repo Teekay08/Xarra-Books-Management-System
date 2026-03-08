@@ -11,6 +11,10 @@ interface DashboardStats {
   activeAuthors: number;
   activePartners: number;
   totalStock: number;
+  openPurchaseOrders: number;
+  pendingExpenseClaims: number;
+  mtdCashSales: number;
+  pendingPartnerOrders: number;
 }
 
 interface PnlSummary {
@@ -75,6 +79,10 @@ export function Dashboard() {
     { label: 'Active Authors', value: stats?.activeAuthors, color: 'bg-green-50 text-green-700', link: '/authors' },
     { label: 'Channel Partners', value: stats?.activePartners, color: 'bg-amber-50 text-amber-700', link: '/partners' },
     { label: 'Total Stock', value: stats?.totalStock, color: 'bg-purple-50 text-purple-700', link: '/inventory' },
+    { label: 'Open POs', value: stats?.openPurchaseOrders, color: 'bg-indigo-50 text-indigo-700', link: '/finance/purchase-orders' },
+    { label: 'Cash Sales MTD', value: stats?.mtdCashSales !== undefined ? formatR(stats.mtdCashSales) : undefined, color: 'bg-teal-50 text-teal-700', link: '/sales/cash-sales', isAmount: true },
+    { label: 'Pending Claims', value: stats?.pendingExpenseClaims, color: 'bg-orange-50 text-orange-700', link: '/expenses/claims' },
+    { label: 'Partner Orders', value: stats?.pendingPartnerOrders, color: 'bg-rose-50 text-rose-700', link: '/partners/portal-orders' },
   ];
 
   return (
@@ -113,7 +121,7 @@ export function Dashboard() {
       )}
 
       {/* Operational stat cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
         {operationalCards.map((stat) => (
           <div
             key={stat.label}
@@ -121,7 +129,7 @@ export function Dashboard() {
             className={`rounded-lg p-5 ${stat.color} cursor-pointer hover:opacity-80 transition-opacity`}
           >
             <p className="text-sm font-medium opacity-80">{stat.label}</p>
-            <p className="text-3xl font-bold mt-1">
+            <p className={`font-bold mt-1 ${(stat as any).isAmount ? 'text-xl' : 'text-3xl'}`}>
               {isLoading ? '...' : stat.value ?? 0}
             </p>
           </div>
@@ -212,7 +220,9 @@ export function Dashboard() {
                 <div key={i} className="flex items-center justify-between py-2 text-sm px-1">
                   <div className="flex items-center gap-2">
                     <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                      a.type === 'INVOICE' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                      a.type === 'INVOICE' ? 'bg-blue-100 text-blue-700' :
+                      a.type === 'CASH SALE' ? 'bg-teal-100 text-teal-700' :
+                      'bg-green-100 text-green-700'
                     }`}>{a.type}</span>
                     <span className="font-mono text-gray-700">{a.reference}</span>
                   </div>

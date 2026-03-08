@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface PnlMonth {
@@ -50,6 +52,19 @@ export function ProfitLoss() {
           <label className="block text-xs text-gray-500 mb-1">To</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={cls} />
         </div>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => {
+            if (pnl?.months) {
+              downloadCsv(pnl.months, [
+                { key: 'month', header: 'Month' },
+                { key: 'revenue', header: 'Revenue' },
+                { key: 'vat', header: 'VAT' },
+                { key: 'expenses', header: 'Expenses' },
+                { key: 'net', header: 'Net Profit' },
+              ], 'profit-loss-report');
+            }
+          }},
+        ]} />
       </div>
 
       {isLoading && <p className="text-gray-400">Loading...</p>}

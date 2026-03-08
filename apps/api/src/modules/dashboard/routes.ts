@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'drizzle-orm';
-import { titles, authors, channelPartners, inventoryMovements, invoices, expenses, expenseCategories } from '@xarra/db';
+import { titles, authors, channelPartners, inventoryMovements, invoices, expenses, expenseCategories, purchaseOrders, cashSales, expenseClaims, requisitions, partnerOrders } from '@xarra/db';
 import { requireAuth } from '../../middleware/require-auth.js';
 
 export async function dashboardRoutes(app: FastifyInstance) {
   // Original stats endpoint
   app.get('/stats', { preHandler: requireAuth }, async () => {
-    const [titleCount, authorCount, partnerCount, stockSummary] = await Promise.all([
+    const [titleCount, authorCount, partnerCount, stockSummary, openPOs, pendingClaims, mtdCashSales, pendingPartnerOrders] = await Promise.all([
       app.db.select({ count: sql<number>`count(*)` }).from(titles),
       app.db.select({ count: sql<number>`count(*)` }).from(authors).where(sql`${authors.isActive} = true`),
       app.db.select({ count: sql<number>`count(*)` }).from(channelPartners).where(sql`${channelPartners.isActive} = true`),
@@ -21,6 +21,10 @@ export async function dashboardRoutes(app: FastifyInstance) {
         ), 0)::int AS "totalStock"
         FROM ${inventoryMovements}
       `),
+      app.db.execute(sql`SELECT count(*)::int AS count FROM purchase_orders WHERE status IN ('DRAFT', 'ISSUED', 'PARTIAL')`),
+      app.db.execute(sql`SELECT count(*)::int AS count FROM expense_claims WHERE status IN ('SUBMITTED')`),
+      app.db.execute(sql`SELECT COALESCE(SUM(total::numeric), 0) AS total FROM cash_sales WHERE voided_at IS NULL AND sale_date >= DATE_TRUNC('month', CURRENT_DATE)`),
+      app.db.execute(sql`SELECT count(*)::int AS count FROM partner_orders WHERE status IN ('SUBMITTED', 'CONFIRMED', 'PROCESSING')`),
     ]);
 
     return {
@@ -29,6 +33,10 @@ export async function dashboardRoutes(app: FastifyInstance) {
         activeAuthors: Number(authorCount[0].count),
         activePartners: Number(partnerCount[0].count),
         totalStock: stockSummary[0]?.totalStock ?? 0,
+        openPurchaseOrders: (openPOs[0] as any)?.count ?? 0,
+        pendingExpenseClaims: (pendingClaims[0] as any)?.count ?? 0,
+        mtdCashSales: Number((mtdCashSales[0] as any)?.total ?? 0),
+        pendingPartnerOrders: (pendingPartnerOrders[0] as any)?.count ?? 0,
       },
     };
   });
@@ -180,7 +188,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const rows = await app.db.execute(sql`
       (
         SELECT 'INVOICE' AS type, number AS reference, total::numeric AS amount,
-               invoice_date AS date, partner_id
+               invoice_date AS date
         FROM invoices
         WHERE status != 'VOIDED'
         ORDER BY created_at DESC LIMIT 10
@@ -188,9 +196,25 @@ export async function dashboardRoutes(app: FastifyInstance) {
       UNION ALL
       (
         SELECT 'PAYMENT' AS type, bank_reference AS reference, amount::numeric AS amount,
-               payment_date AS date, partner_id
+               payment_date AS date
         FROM payments
         ORDER BY created_at DESC LIMIT 10
+      )
+      UNION ALL
+      (
+        SELECT 'CASH SALE' AS type, number AS reference, total::numeric AS amount,
+               sale_date AS date
+        FROM cash_sales
+        WHERE voided_at IS NULL
+        ORDER BY created_at DESC LIMIT 5
+      )
+      UNION ALL
+      (
+        SELECT 'PARTNER ORDER' AS type, number AS reference, total::numeric AS amount,
+               order_date AS date
+        FROM partner_orders
+        WHERE status != 'CANCELLED'
+        ORDER BY created_at DESC LIMIT 5
       )
       ORDER BY date DESC
       LIMIT 15

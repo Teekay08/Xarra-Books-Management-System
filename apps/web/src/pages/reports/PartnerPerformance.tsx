@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 
 interface PartnerRow {
@@ -39,6 +41,23 @@ export function PartnerPerformance() {
       <div className="flex gap-3 mb-6">
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => {
+            if (partners.length > 0) {
+              downloadCsv(partners, [
+                { key: 'name', header: 'Partner' },
+                { key: 'discountPct', header: 'Discount %' },
+                { key: 'invoiceCount', header: 'Invoices' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'totalRevenue', header: 'Revenue' },
+                { key: 'totalPaid', header: 'Paid' },
+                { key: 'outstanding', header: 'Outstanding' },
+                { key: 'overdueAmount', header: 'Overdue Amount' },
+                { key: 'returnRate', header: 'Return %' },
+              ], 'partner-performance-report');
+            }
+          }},
+        ]} />
       </div>
 
       <div className="grid grid-cols-4 gap-4 mb-6">

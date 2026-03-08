@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { SearchableSelect } from '../../components/SearchableSelect';
 import { VAT_RATE, roundAmount } from '@xarra/shared';
 
 interface Title {
@@ -33,6 +35,7 @@ export function CashSaleCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [taxInclusive, setTaxInclusive] = useState(true);
   const [lines, setLines] = useState<LineInput[]>([
     { titleId: '', quantity: 1, unitPrice: 0, discount: 0 },
@@ -42,7 +45,7 @@ export function CashSaleCreate() {
 
   const { data: titlesData } = useQuery({
     queryKey: ['titles-select'],
-    queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=100'),
+    queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=500'),
   });
 
   const titlesMap = useMemo(() => {
@@ -51,6 +54,12 @@ export function CashSaleCreate() {
     return map;
   }, [titlesData]);
 
+  const titleOptions = (titlesData?.data ?? []).map((t) => ({
+    value: t.id,
+    label: t.title,
+    subtitle: t.isbn13 ?? undefined,
+  }));
+
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api<CreateResponse>('/sales/cash-sales', {
@@ -58,6 +67,7 @@ export function CashSaleCreate() {
         body: JSON.stringify(body),
       }),
     onSuccess: (res) => {
+      setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: ['cash-sales'] });
       navigate(`/sales/cash-sales/${res.data.id}`);
     },
@@ -140,9 +150,10 @@ export function CashSaleCreate() {
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="New Cash Sale" subtitle="Record a walk-in or counter sale" />
 
-      <form onSubmit={handleSubmit} className="max-w-4xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-4xl space-y-6">
         {error && (
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
@@ -211,18 +222,12 @@ export function CashSaleCreate() {
               <div key={i} className="grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-5">
                   {i === 0 && <label className="block text-xs text-gray-500 mb-1">Title</label>}
-                  <select
+                  <SearchableSelect
+                    options={titleOptions}
                     value={line.titleId}
-                    onChange={(e) => updateLine(i, 'titleId', e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                  >
-                    <option value="">Select title...</option>
-                    {titlesData?.data.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.title} {t.isbn13 ? `(${t.isbn13})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => updateLine(i, 'titleId', v)}
+                    placeholder="Search titles..."
+                  />
                 </div>
                 <div className="col-span-1">
                   {i === 0 && <label className="block text-xs text-gray-500 mb-1">Qty</label>}

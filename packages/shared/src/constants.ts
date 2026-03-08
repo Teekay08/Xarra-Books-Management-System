@@ -75,6 +75,8 @@ export const DOCUMENT_PREFIXES = {
   GOODS_RECEIVED: 'GRN',
   STOCK_ADJUSTMENT: 'SAJ',
   PACKING_LIST: 'PKL',
+  PARTNER_ORDER: 'POR',
+  PARTNER_RETURN_REQUEST: 'PRR',
 } as const;
 
 export const VAT_RATE = 0.15; // South Africa VAT rate
@@ -111,6 +113,76 @@ export type ExpenseClaimStatus = (typeof EXPENSE_CLAIM_STATUSES)[number];
 
 export const REQUISITION_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'ORDERED'] as const;
 export type RequisitionStatus = (typeof REQUISITION_STATUSES)[number];
+
+export const PARTNER_USER_ROLES = ['ADMIN', 'BRANCH_MANAGER', 'STAFF'] as const;
+export type PartnerUserRole = (typeof PARTNER_USER_ROLES)[number];
+
+export const PARTNER_ORDER_STATUSES = ['DRAFT', 'SUBMITTED', 'CONFIRMED', 'PROCESSING', 'DISPATCHED', 'DELIVERED', 'CANCELLED'] as const;
+export type PartnerOrderStatus = (typeof PARTNER_ORDER_STATUSES)[number];
+
+export const PARTNER_RETURN_REQUEST_STATUSES = [
+  'DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'AUTHORIZED', 'REJECTED',
+  'AWAITING_PICKUP', 'IN_TRANSIT', 'RECEIVED', 'INSPECTED', 'CREDIT_ISSUED',
+] as const;
+export type PartnerReturnRequestStatus = (typeof PARTNER_RETURN_REQUEST_STATUSES)[number];
+
+export const COURIER_STATUSES = ['CREATED', 'PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED', 'FAILED'] as const;
+export type CourierStatus = (typeof COURIER_STATUSES)[number];
+
+export const NOTIFICATION_TYPES = [
+  'PARTNER_ORDER_SUBMITTED', 'PARTNER_ORDER_CANCELLED',
+  'PARTNER_RETURN_SUBMITTED',
+  'INVOICE_OVERDUE', 'INVOICE_PAID', 'INVOICE_ISSUED', 'INVOICE_VOIDED',
+  'PAYMENT_RECEIVED',
+  'INVENTORY_LOW_STOCK', 'INVENTORY_RECEIVED',
+  'CONSIGNMENT_DISPATCHED', 'CONSIGNMENT_EXPIRING', 'CONSIGNMENT_RETURNS_PROCESSED',
+  'EXPENSE_CLAIM_SUBMITTED', 'EXPENSE_CLAIM_APPROVED', 'EXPENSE_CLAIM_REJECTED', 'EXPENSE_CLAIM_PAID',
+  'REQUISITION_SUBMITTED', 'REQUISITION_APPROVED',
+  'QUOTATION_EXPIRED', 'QUOTATION_CONVERTED',
+  'CASH_SALE_CREATED',
+  'CREDIT_NOTE_CREATED', 'DEBIT_NOTE_CREATED',
+  'PURCHASE_ORDER_ISSUED', 'PURCHASE_ORDER_RECEIVED', 'PURCHASE_ORDER_CANCELLED',
+  'REMITTANCE_MATCHED',
+  'RETURN_PROCESSED',
+  'SYSTEM',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const NOTIFICATION_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
+export type NotificationPriority = (typeof NOTIFICATION_PRIORITIES)[number];
+
+export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
+  PARTNER_ORDER_SUBMITTED: 'New Partner Order',
+  PARTNER_ORDER_CANCELLED: 'Partner Order Cancelled',
+  PARTNER_RETURN_SUBMITTED: 'Partner Return Request',
+  INVOICE_OVERDUE: 'Invoice Overdue',
+  INVOICE_PAID: 'Invoice Paid',
+  INVOICE_ISSUED: 'Invoice Issued',
+  INVOICE_VOIDED: 'Invoice Voided',
+  PAYMENT_RECEIVED: 'Payment Received',
+  INVENTORY_LOW_STOCK: 'Low Stock Alert',
+  INVENTORY_RECEIVED: 'Stock Received',
+  CONSIGNMENT_DISPATCHED: 'Consignment Dispatched',
+  CONSIGNMENT_EXPIRING: 'Consignment Expiring',
+  CONSIGNMENT_RETURNS_PROCESSED: 'Consignment Returns Processed',
+  EXPENSE_CLAIM_SUBMITTED: 'Expense Claim Submitted',
+  EXPENSE_CLAIM_APPROVED: 'Expense Claim Approved',
+  EXPENSE_CLAIM_REJECTED: 'Expense Claim Rejected',
+  EXPENSE_CLAIM_PAID: 'Expense Claim Paid',
+  REQUISITION_SUBMITTED: 'Requisition Submitted',
+  REQUISITION_APPROVED: 'Requisition Approved',
+  QUOTATION_EXPIRED: 'Quotation Expired',
+  QUOTATION_CONVERTED: 'Quotation Converted',
+  CASH_SALE_CREATED: 'Cash Sale',
+  CREDIT_NOTE_CREATED: 'Credit Note Created',
+  DEBIT_NOTE_CREATED: 'Debit Note Created',
+  PURCHASE_ORDER_ISSUED: 'Purchase Order Issued',
+  PURCHASE_ORDER_RECEIVED: 'Goods Received',
+  PURCHASE_ORDER_CANCELLED: 'Purchase Order Cancelled',
+  REMITTANCE_MATCHED: 'Remittance Matched',
+  RETURN_PROCESSED: 'Return Processed',
+  SYSTEM: 'System Notification',
+};
 
 export const DEFAULT_EXPENSE_CATEGORIES = [
   'Office Supplies', 'Printing & Production', 'Shipping & Courier',

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 interface ChannelRow { channel: string; saleCount: number; unitsSold: number; revenue: number }
@@ -55,6 +57,28 @@ export function ChannelRevenue() {
       <div className="flex gap-3 mb-6">
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        <ExportButton options={[
+          { label: 'Export Channels CSV', onClick: () => {
+            if (channels.length > 0) {
+              downloadCsv(channels.map((c) => ({ ...c, channelLabel: channelLabels[c.channel] || c.channel })), [
+                { key: 'channelLabel', header: 'Channel' },
+                { key: 'saleCount', header: 'Sales Count' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'revenue', header: 'Revenue' },
+              ], 'channel-revenue-report');
+            }
+          }},
+          { label: 'Export Partners CSV', onClick: () => {
+            if (partners.length > 0) {
+              downloadCsv(partners, [
+                { key: 'partnerName', header: 'Partner' },
+                { key: 'invoiceCount', header: 'Invoices' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'revenue', header: 'Revenue' },
+              ], 'channel-partner-breakdown');
+            }
+          }},
+        ]} />
       </div>
 
       {isLoading ? (

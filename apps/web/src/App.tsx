@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router';
+import { createBrowserRouter, RouterProvider } from 'react-router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { PortalLayout } from './components/PortalLayout';
@@ -28,21 +28,28 @@ import { RemittanceDetail } from './pages/finance/RemittanceDetail';
 import { DebitNoteList } from './pages/finance/DebitNoteList';
 import { DebitNoteCreate } from './pages/finance/DebitNoteCreate';
 import { CreditNoteList } from './pages/finance/CreditNoteList';
+import { CreditNoteDetail } from './pages/finance/CreditNoteDetail';
+import { DebitNoteDetail } from './pages/finance/DebitNoteDetail';
+import { PaymentDetail } from './pages/finance/PaymentDetail';
 import { QuotationList } from './pages/finance/QuotationList';
 import { QuotationCreate } from './pages/finance/QuotationCreate';
 import { QuotationDetail } from './pages/finance/QuotationDetail';
 import { ExpenseList } from './pages/expenses/ExpenseList';
 import { ExpenseCreate } from './pages/expenses/ExpenseCreate';
+import { ExpenseDetail } from './pages/expenses/ExpenseDetail';
 import { ExpenseCategoryManage } from './pages/expenses/ExpenseCategoryManage';
 import { ConsignmentList } from './pages/consignments/ConsignmentList';
 import { ConsignmentCreate } from './pages/consignments/ConsignmentCreate';
 import { ConsignmentDetail } from './pages/consignments/ConsignmentDetail';
+import { SorProformaList } from './pages/consignments/SorProformaList';
 import { StatementGenerate } from './pages/statements/StatementGenerate';
 import { CompanySettings } from './pages/settings/CompanySettings';
 import { LogoManagement } from './pages/settings/LogoManagement';
 import { UserProfile } from './pages/settings/UserProfile';
 import { UserManagement } from './pages/settings/UserManagement';
 import { InvoiceReminders } from './pages/settings/InvoiceReminders';
+import { AutomationScheduling } from './pages/settings/AutomationScheduling';
+import { DataExport } from './pages/settings/DataExport';
 import { PortalDashboard } from './pages/portal/PortalDashboard';
 import { PortalRoyalties } from './pages/portal/PortalRoyalties';
 import { PortalContracts } from './pages/portal/PortalContracts';
@@ -82,163 +89,222 @@ import { DeletionRequests } from './pages/admin/DeletionRequests';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { NotFound } from './pages/NotFound';
+// Partner Portal (public-facing for channel partners)
+import { PartnerPortalLayout } from './components/PartnerPortalLayout';
+import { PartnerLogin } from './pages/partner-portal/PartnerLogin';
+import { PartnerDashboard } from './pages/partner-portal/PartnerDashboard';
+import { PartnerCatalog } from './pages/partner-portal/PartnerCatalog';
+import { PartnerOrders } from './pages/partner-portal/PartnerOrders';
+import { PartnerOrderDetail } from './pages/partner-portal/PartnerOrderDetail';
+import { PartnerInvoices } from './pages/partner-portal/PartnerInvoices';
+import { PartnerConsignments } from './pages/partner-portal/PartnerConsignments';
+import { PartnerStatements } from './pages/partner-portal/PartnerStatements';
+import { PartnerReturns } from './pages/partner-portal/PartnerReturns';
+import { PartnerReturnCreate } from './pages/partner-portal/PartnerReturnCreate';
+import { PartnerReturnDetail } from './pages/partner-portal/PartnerReturnDetail';
+import { PartnerShipments } from './pages/partner-portal/PartnerShipments';
+import { PartnerAccount } from './pages/partner-portal/PartnerAccount';
+// Admin partner portal management
+import { PartnerPortalUsers } from './pages/partners/PartnerPortalUsers';
+import { PartnerOrdersAdmin } from './pages/partners/PartnerOrdersAdmin';
+import { PartnerReturnRequestsAdmin } from './pages/partners/PartnerReturnRequestsAdmin';
+import { CourierShipmentsAdmin } from './pages/partners/CourierShipmentsAdmin';
+import { NotificationList } from './pages/notifications/NotificationList';
+
+const router = createBrowserRouter([
+  { path: '/login', element: <Login /> },
+  { path: '/forgot-password', element: <ForgotPassword /> },
+  { path: '/reset-password', element: <ResetPassword /> },
+
+  // Admin / Staff layout
+  {
+    element: (
+      <ProtectedRoute>
+        <Layout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { index: true, element: <Dashboard /> },
+
+      // Authors
+      { path: 'authors', element: <AuthorList /> },
+      { path: 'authors/new', element: <AuthorForm /> },
+      { path: 'authors/:id', element: <AuthorDetail /> },
+      { path: 'authors/:id/edit', element: <AuthorForm /> },
+
+      // Titles
+      { path: 'titles', element: <TitleList /> },
+      { path: 'titles/new', element: <TitleForm /> },
+      { path: 'titles/:id', element: <TitleDetail /> },
+      { path: 'titles/:id/edit', element: <TitleForm /> },
+
+      // Channel Partners
+      { path: 'partners', element: <PartnerList /> },
+      { path: 'partners/new', element: <PartnerForm /> },
+      { path: 'partners/:id', element: <PartnerDetail /> },
+      { path: 'partners/:id/edit', element: <PartnerForm /> },
+
+      // Inventory
+      { path: 'inventory', element: <InventoryDashboard /> },
+      { path: 'inventory/receive', element: <StockAdjustment mode="receive" /> },
+      { path: 'inventory/adjust', element: <StockAdjustment mode="adjust" /> },
+      { path: 'inventory/:titleId/movements', element: <MovementHistory /> },
+
+      // Invoices
+      { path: 'invoices', element: <InvoiceList /> },
+      { path: 'invoices/new', element: <InvoiceCreate /> },
+      { path: 'invoices/:id', element: <InvoiceDetail /> },
+
+      // Payments
+      { path: 'payments', element: <PaymentList /> },
+      { path: 'payments/new', element: <PaymentCreate /> },
+      { path: 'payments/:id', element: <PaymentDetail /> },
+
+      // Remittances
+      { path: 'remittances', element: <RemittanceList /> },
+      { path: 'remittances/new', element: <RemittanceCreate /> },
+      { path: 'remittances/:id', element: <RemittanceDetail /> },
+
+      // Debit Notes
+      { path: 'debit-notes', element: <DebitNoteList /> },
+      { path: 'debit-notes/new', element: <DebitNoteCreate /> },
+      { path: 'debit-notes/:id', element: <DebitNoteDetail /> },
+
+      // Credit Notes
+      { path: 'credit-notes', element: <CreditNoteList /> },
+      { path: 'credit-notes/:id', element: <CreditNoteDetail /> },
+
+      // Quotations
+      { path: 'quotations', element: <QuotationList /> },
+      { path: 'quotations/new', element: <QuotationCreate /> },
+      { path: 'quotations/:id', element: <QuotationDetail /> },
+
+      // Purchase Orders
+      { path: 'finance/purchase-orders', element: <PurchaseOrderList /> },
+      { path: 'finance/purchase-orders/new', element: <PurchaseOrderCreate /> },
+      { path: 'finance/purchase-orders/:id', element: <PurchaseOrderDetail /> },
+
+      // Cash Sales
+      { path: 'sales/cash-sales', element: <CashSaleList /> },
+      { path: 'sales/cash-sales/new', element: <CashSaleCreate /> },
+      { path: 'sales/cash-sales/:id', element: <CashSaleDetail /> },
+
+      // Expenses
+      { path: 'expenses', element: <ExpenseList /> },
+      { path: 'expenses/new', element: <ExpenseCreate /> },
+      { path: 'expenses/:id', element: <ExpenseDetail /> },
+      { path: 'expenses/categories', element: <ExpenseCategoryManage /> },
+
+      // Expense Claims
+      { path: 'expenses/claims', element: <ExpenseClaimList /> },
+      { path: 'expenses/claims/new', element: <ExpenseClaimCreate /> },
+      { path: 'expenses/claims/:id', element: <ExpenseClaimDetail /> },
+
+      // Requisitions
+      { path: 'procurement/requisitions', element: <RequisitionList /> },
+      { path: 'procurement/requisitions/new', element: <RequisitionCreate /> },
+      { path: 'procurement/requisitions/:id', element: <RequisitionDetail /> },
+
+      // Consignments
+      { path: 'consignments', element: <ConsignmentList /> },
+      { path: 'consignments/new', element: <ConsignmentCreate /> },
+      { path: 'consignments/proformas', element: <SorProformaList /> },
+      { path: 'consignments/:id', element: <ConsignmentDetail /> },
+
+      // Returns
+      { path: 'returns', element: <ReturnsList /> },
+      { path: 'returns/new', element: <ReturnsCreate /> },
+      { path: 'returns/:id', element: <ReturnsDetail /> },
+
+      // Statements
+      { path: 'statements', element: <StatementGenerate /> },
+
+      // Reports
+      { path: 'reports', element: <ReportsDashboard /> },
+      { path: 'reports/profit-loss', element: <ProfitLoss /> },
+      { path: 'reports/sales', element: <SalesReport /> },
+      { path: 'reports/overdue-aging', element: <OverdueAging /> },
+      { path: 'reports/inventory', element: <InventoryReport /> },
+      { path: 'reports/author-royalty', element: <AuthorRoyaltyReport /> },
+      { path: 'reports/title-performance', element: <TitlePerformance /> },
+      { path: 'reports/partner-performance', element: <PartnerPerformance /> },
+      { path: 'reports/channel-revenue', element: <ChannelRevenue /> },
+      { path: 'reports/bestsellers', element: <Bestsellers /> },
+      { path: 'reports/expense-trends', element: <ExpenseTrends /> },
+      { path: 'reports/cash-flow', element: <CashFlowAnalysis /> },
+      { path: 'reports/tax', element: <TaxReport /> },
+
+      // Sync
+      { path: 'sync', element: <SyncDashboard /> },
+
+      // Settings (admin)
+      { path: 'settings', element: <CompanySettings /> },
+      { path: 'settings/logo', element: <LogoManagement /> },
+      { path: 'settings/profile', element: <UserProfile /> },
+      { path: 'settings/users', element: <UserManagement /> },
+      { path: 'settings/reminders', element: <InvoiceReminders /> },
+      { path: 'settings/scheduling', element: <AutomationScheduling /> },
+      { path: 'settings/export', element: <DataExport /> },
+
+      // Partner Portal Management (admin)
+      { path: 'partners/portal-users', element: <PartnerPortalUsers /> },
+      { path: 'partners/portal-orders', element: <PartnerOrdersAdmin /> },
+      { path: 'partners/return-requests', element: <PartnerReturnRequestsAdmin /> },
+      { path: 'partners/courier-shipments', element: <CourierShipmentsAdmin /> },
+
+      // Notifications
+      { path: 'notifications', element: <NotificationList /> },
+
+      // Admin — Audit & Deletion
+      { path: 'admin/audit-log', element: <AuditLog /> },
+      { path: 'admin/deletion-requests', element: <DeletionRequests /> },
+
+      // 404
+      { path: '*', element: <NotFound /> },
+    ],
+  },
+
+  // Partner Portal (channel partners login separately)
+  { path: 'partner/login', element: <PartnerLogin /> },
+  {
+    element: <PartnerPortalLayout />,
+    children: [
+      { path: 'partner', element: <PartnerDashboard /> },
+      { path: 'partner/catalog', element: <PartnerCatalog /> },
+      { path: 'partner/orders', element: <PartnerOrders /> },
+      { path: 'partner/orders/:id', element: <PartnerOrderDetail /> },
+      { path: 'partner/invoices', element: <PartnerInvoices /> },
+      { path: 'partner/consignments', element: <PartnerConsignments /> },
+      { path: 'partner/statements', element: <PartnerStatements /> },
+      { path: 'partner/returns', element: <PartnerReturns /> },
+      { path: 'partner/returns/new', element: <PartnerReturnCreate /> },
+      { path: 'partner/returns/:id', element: <PartnerReturnDetail /> },
+      { path: 'partner/shipments', element: <PartnerShipments /> },
+      { path: 'partner/account', element: <PartnerAccount /> },
+    ],
+  },
+
+  // Author Portal layout
+  {
+    element: (
+      <ProtectedRoute allowedRoles={['author']}>
+        <PortalLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { path: 'portal', element: <PortalDashboard /> },
+      { path: 'portal/royalties', element: <PortalRoyalties /> },
+      { path: 'portal/contracts', element: <PortalContracts /> },
+      { path: 'portal/contracts/:id', element: <PortalContractDetail /> },
+      { path: 'portal/payments', element: <PortalPayments /> },
+    ],
+  },
+]);
 
 export function App() {
   return (
     <ErrorBoundary>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-
-        {/* Admin / Staff layout */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Dashboard />} />
-
-          {/* Authors */}
-          <Route path="authors" element={<AuthorList />} />
-          <Route path="authors/new" element={<AuthorForm />} />
-          <Route path="authors/:id" element={<AuthorDetail />} />
-          <Route path="authors/:id/edit" element={<AuthorForm />} />
-
-          {/* Titles */}
-          <Route path="titles" element={<TitleList />} />
-          <Route path="titles/new" element={<TitleForm />} />
-          <Route path="titles/:id" element={<TitleDetail />} />
-          <Route path="titles/:id/edit" element={<TitleForm />} />
-
-          {/* Channel Partners */}
-          <Route path="partners" element={<PartnerList />} />
-          <Route path="partners/new" element={<PartnerForm />} />
-          <Route path="partners/:id" element={<PartnerDetail />} />
-          <Route path="partners/:id/edit" element={<PartnerForm />} />
-
-          {/* Inventory */}
-          <Route path="inventory" element={<InventoryDashboard />} />
-          <Route path="inventory/receive" element={<StockAdjustment mode="receive" />} />
-          <Route path="inventory/adjust" element={<StockAdjustment mode="adjust" />} />
-          <Route path="inventory/:titleId/movements" element={<MovementHistory />} />
-
-          {/* Invoices */}
-          <Route path="invoices" element={<InvoiceList />} />
-          <Route path="invoices/new" element={<InvoiceCreate />} />
-          <Route path="invoices/:id" element={<InvoiceDetail />} />
-
-          {/* Payments */}
-          <Route path="payments" element={<PaymentList />} />
-          <Route path="payments/new" element={<PaymentCreate />} />
-
-          {/* Remittances */}
-          <Route path="remittances" element={<RemittanceList />} />
-          <Route path="remittances/new" element={<RemittanceCreate />} />
-          <Route path="remittances/:id" element={<RemittanceDetail />} />
-
-          {/* Debit Notes */}
-          <Route path="debit-notes" element={<DebitNoteList />} />
-          <Route path="debit-notes/new" element={<DebitNoteCreate />} />
-
-          {/* Credit Notes */}
-          <Route path="credit-notes" element={<CreditNoteList />} />
-
-          {/* Quotations */}
-          <Route path="quotations" element={<QuotationList />} />
-          <Route path="quotations/new" element={<QuotationCreate />} />
-          <Route path="quotations/:id" element={<QuotationDetail />} />
-
-          {/* Purchase Orders */}
-          <Route path="finance/purchase-orders" element={<PurchaseOrderList />} />
-          <Route path="finance/purchase-orders/new" element={<PurchaseOrderCreate />} />
-          <Route path="finance/purchase-orders/:id" element={<PurchaseOrderDetail />} />
-
-          {/* Cash Sales */}
-          <Route path="sales/cash-sales" element={<CashSaleList />} />
-          <Route path="sales/cash-sales/new" element={<CashSaleCreate />} />
-          <Route path="sales/cash-sales/:id" element={<CashSaleDetail />} />
-
-          {/* Expenses */}
-          <Route path="expenses" element={<ExpenseList />} />
-          <Route path="expenses/new" element={<ExpenseCreate />} />
-          <Route path="expenses/categories" element={<ExpenseCategoryManage />} />
-
-          {/* Expense Claims */}
-          <Route path="expenses/claims" element={<ExpenseClaimList />} />
-          <Route path="expenses/claims/new" element={<ExpenseClaimCreate />} />
-          <Route path="expenses/claims/:id" element={<ExpenseClaimDetail />} />
-
-          {/* Requisitions */}
-          <Route path="procurement/requisitions" element={<RequisitionList />} />
-          <Route path="procurement/requisitions/new" element={<RequisitionCreate />} />
-          <Route path="procurement/requisitions/:id" element={<RequisitionDetail />} />
-
-          {/* Consignments */}
-          <Route path="consignments" element={<ConsignmentList />} />
-          <Route path="consignments/new" element={<ConsignmentCreate />} />
-          <Route path="consignments/:id" element={<ConsignmentDetail />} />
-
-          {/* Returns */}
-          <Route path="returns" element={<ReturnsList />} />
-          <Route path="returns/new" element={<ReturnsCreate />} />
-          <Route path="returns/:id" element={<ReturnsDetail />} />
-
-          {/* Statements */}
-          <Route path="statements" element={<StatementGenerate />} />
-
-          {/* Reports */}
-          <Route path="reports" element={<ReportsDashboard />} />
-          <Route path="reports/profit-loss" element={<ProfitLoss />} />
-          <Route path="reports/sales" element={<SalesReport />} />
-          <Route path="reports/overdue-aging" element={<OverdueAging />} />
-          <Route path="reports/inventory" element={<InventoryReport />} />
-          <Route path="reports/author-royalty" element={<AuthorRoyaltyReport />} />
-          <Route path="reports/title-performance" element={<TitlePerformance />} />
-          <Route path="reports/partner-performance" element={<PartnerPerformance />} />
-          <Route path="reports/channel-revenue" element={<ChannelRevenue />} />
-          <Route path="reports/bestsellers" element={<Bestsellers />} />
-          <Route path="reports/expense-trends" element={<ExpenseTrends />} />
-          <Route path="reports/cash-flow" element={<CashFlowAnalysis />} />
-          <Route path="reports/tax" element={<TaxReport />} />
-
-          {/* Sync */}
-          <Route path="sync" element={<SyncDashboard />} />
-
-          {/* Settings (admin) */}
-          <Route path="settings" element={<CompanySettings />} />
-          <Route path="settings/logo" element={<LogoManagement />} />
-          <Route path="settings/profile" element={<UserProfile />} />
-          <Route path="settings/users" element={<UserManagement />} />
-          <Route path="settings/reminders" element={<InvoiceReminders />} />
-
-          {/* Admin — Audit & Deletion */}
-          <Route path="admin/audit-log" element={<AuditLog />} />
-          <Route path="admin/deletion-requests" element={<DeletionRequests />} />
-
-          {/* 404 */}
-          <Route path="*" element={<NotFound />} />
-        </Route>
-
-        {/* Author Portal layout */}
-        <Route
-          element={
-            <ProtectedRoute allowedRoles={['author']}>
-              <PortalLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="portal" element={<PortalDashboard />} />
-          <Route path="portal/royalties" element={<PortalRoyalties />} />
-          <Route path="portal/contracts" element={<PortalContracts />} />
-          <Route path="portal/contracts/:id" element={<PortalContractDetail />} />
-          <Route path="portal/payments" element={<PortalPayments />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+      <RouterProvider router={router} />
     </ErrorBoundary>
   );
 }

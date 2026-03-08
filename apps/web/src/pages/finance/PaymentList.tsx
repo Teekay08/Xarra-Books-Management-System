@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
@@ -21,6 +24,7 @@ export function PaymentList() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['payments', page, search],
@@ -67,8 +71,13 @@ export function PaymentList() {
         }
       />
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search by bank reference..." />
+      <div className="mb-4 flex gap-3 items-center">
+        <div className="flex-1">
+          <SearchBar value={search} onChange={handleSearch} placeholder="Search by bank reference..." />
+        </div>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       {isLoading ? (
@@ -78,6 +87,7 @@ export function PaymentList() {
           <DataTable
             columns={columns}
             data={data?.data ?? []}
+            onRowClick={(p) => navigate(`/payments/${p.id}`)}
             emptyMessage="No payments recorded"
           />
           {data?.pagination && (
@@ -90,6 +100,12 @@ export function PaymentList() {
           )}
         </>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/payments', from, to), 'payments.csv')}
+        title="Export Payments"
+      />
     </div>
   );
 }

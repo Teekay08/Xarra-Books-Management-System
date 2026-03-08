@@ -17,6 +17,8 @@ export const consignments = pgTable('consignments', {
   sorExpiryDate: timestamp('sor_expiry_date', { withTimezone: true }),
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
   reconciledAt: timestamp('reconciled_at', { withTimezone: true }),
+  proformaNumber: varchar('proforma_number', { length: 30 }), // SOR-YYYY-NNNN
+  partnerPoNumber: varchar('partner_po_number', { length: 50 }), // partner's purchase order reference
   courierCompany: varchar('courier_company', { length: 100 }),
   courierWaybill: varchar('courier_waybill', { length: 100 }),
   status: consignmentStatusEnum('status').notNull().default('DRAFT'),

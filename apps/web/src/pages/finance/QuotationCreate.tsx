@@ -3,10 +3,19 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { RecipientEditModal } from '../../components/RecipientEditModal';
+import { SearchableSelect } from '../../components/SearchableSelect';
+import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
 import { VAT_RATE, roundAmount } from '@xarra/shared';
 
-interface Partner { id: string; name: string; discountPct: string }
-interface Title { id: string; title: string; rrpZar: string }
+interface Partner {
+  id: string; name: string; discountPct: string;
+  contactName: string | null; contactEmail: string | null; contactPhone: string | null;
+  addressLine1: string | null; addressLine2: string | null; city: string | null;
+  province: string | null; postalCode: string | null; vatNumber: string | null;
+}
+interface Title { id: string; title: string; rrpZar: string; isbn13: string | null }
 
 interface LineInput {
   titleId: string;
@@ -16,23 +25,52 @@ interface LineInput {
   discountPct: number;
 }
 
+const VALIDITY_OPTIONS = [
+  { label: '7 days', days: 7 },
+  { label: '14 days', days: 14 },
+  { label: '30 days', days: 30 },
+  { label: '60 days', days: 60 },
+  { label: 'Custom', days: -1 },
+];
+
+const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500';
+
+function addDays(date: string, days: number): string {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
 export function QuotationCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [taxInclusive, setTaxInclusive] = useState(false);
+  const [selectedPartnerId, setSelectedPartnerId] = useState('');
+  const [showRecipientModal, setShowRecipientModal] = useState(false);
+  const [showPartnerCreate, setShowPartnerCreate] = useState(false);
+  const [validityDays, setValidityDays] = useState(30);
+  const [customValidUntil, setCustomValidUntil] = useState('');
+  const today = new Date().toISOString().split('T')[0];
+  const [quotationDate, setQuotationDate] = useState(today);
   const [lines, setLines] = useState<LineInput[]>([
     { titleId: '', description: '', quantity: 1, unitPrice: 0, discountPct: 0 },
   ]);
 
   const { data: partners } = useQuery({
     queryKey: ['partners-select'],
-    queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=100'),
+    queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=500'),
   });
 
   const { data: titlesData } = useQuery({
     queryKey: ['titles-select'],
-    queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=100'),
+    queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=500'),
+  });
+
+  const { data: nextNumber } = useQuery({
+    queryKey: ['next-number', 'quotation'],
+    queryFn: () => api<{ data: { number: string } }>('/finance/next-number/quotation'),
   });
 
   const mutation = useMutation({
@@ -44,9 +82,18 @@ export function QuotationCreate() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      setIsDirty(false);
       navigate('/quotations');
     },
   });
+
+  const selectedPartner = partners?.data.find((p) => p.id === selectedPartnerId);
+  const partnerOptions = (partners?.data ?? []).map((p) => ({ value: p.id, label: p.name }));
+  const titleOptions = (titlesData?.data ?? []).map((t) => ({ value: t.id, label: t.title, subtitle: t.isbn13 ?? undefined }));
+
+  const validUntil = validityDays === -1
+    ? customValidUntil
+    : addDays(quotationDate, validityDays);
 
   function addLine() {
     setLines([...lines, { titleId: '', description: '', quantity: 1, unitPrice: 0, discountPct: 0 }]);
@@ -73,17 +120,15 @@ export function QuotationCreate() {
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
-    const fd = new FormData(e.currentTarget);
-    const partnerId = fd.get('partnerId') as string;
-    if (!partnerId) { setError('Select a partner'); return; }
+    if (!selectedPartnerId) { setError('Select a partner'); return; }
 
-    const partner = partners?.data.find((p) => p.id === partnerId);
-    const partnerDiscount = partner ? Number(partner.discountPct) : 0;
+    const partnerDiscount = selectedPartner ? Number(selectedPartner.discountPct) : 0;
+    const fd = new FormData(e.currentTarget);
 
     mutation.mutate({
-      partnerId,
-      quotationDate: fd.get('quotationDate'),
-      validUntil: fd.get('validUntil') || undefined,
+      partnerId: selectedPartnerId,
+      quotationDate,
+      validUntil: validUntil || undefined,
       taxInclusive,
       lines: lines.map((l) => ({
         titleId: l.titleId || undefined,
@@ -103,34 +148,96 @@ export function QuotationCreate() {
   const subtotal = roundAmount(taxInclusive ? lineGross / (1 + VAT_RATE) : lineGross);
   const vat = roundAmount(taxInclusive ? lineGross - subtotal : lineGross * VAT_RATE);
 
-  const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm';
-  const today = new Date().toISOString().split('T')[0];
-  const thirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
-
   return (
     <div>
-      <PageHeader title="Create Quotation" subtitle="Pro-forma invoice / quotation" />
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
+      <PageHeader title="Create Quotation" subtitle={nextNumber?.data?.number ? `Next: ${nextNumber.data.number}` : 'Pro-forma invoice / quotation'} />
 
-      <form onSubmit={handleSubmit} className="max-w-4xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-4xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Partner *</label>
-            <select name="partnerId" required className={cls}>
-              <option value="">Select partner...</option>
-              {partners?.data.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+            <SearchableSelect
+              options={partnerOptions}
+              value={selectedPartnerId}
+              onChange={(v) => setSelectedPartnerId(v)}
+              placeholder="Search partners..."
+              required
+              onCreateNew={() => setShowPartnerCreate(true)}
+              createNewLabel="Create new partner"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+            <input type="date" required value={quotationDate} onChange={(e) => setQuotationDate(e.target.value)} className={cls} />
+          </div>
+        </div>
+
+        {/* Recipient details card */}
+        {selectedPartner && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium text-gray-700">Recipient Details</h4>
+              <button
+                type="button"
+                onClick={() => setShowRecipientModal(true)}
+                className="inline-flex items-center gap-1 text-xs text-green-700 hover:text-green-800 font-medium"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Edit
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
+              <div>
+                <span className="font-medium text-gray-900">{selectedPartner.name}</span>
+                {selectedPartner.contactName && <p>{selectedPartner.contactName}</p>}
+                {selectedPartner.contactEmail && <p>{selectedPartner.contactEmail}</p>}
+                {selectedPartner.contactPhone && <p>{selectedPartner.contactPhone}</p>}
+              </div>
+              <div>
+                {selectedPartner.addressLine1 && <p>{selectedPartner.addressLine1}</p>}
+                {selectedPartner.addressLine2 && <p>{selectedPartner.addressLine2}</p>}
+                {(selectedPartner.city || selectedPartner.province) && (
+                  <p>{[selectedPartner.city, selectedPartner.province].filter(Boolean).join(', ')}</p>
+                )}
+                {selectedPartner.postalCode && <p>{selectedPartner.postalCode}</p>}
+                {selectedPartner.vatNumber && <p className="text-xs text-gray-500 mt-1">VAT: {selectedPartner.vatNumber}</p>}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Validity */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Valid For</label>
+            <select
+              value={validityDays}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setValidityDays(val);
+                if (val === -1) setCustomValidUntil(addDays(quotationDate, 30));
+              }}
+              className={cls}
+            >
+              {VALIDITY_OPTIONS.map((opt) => (
+                <option key={opt.days} value={opt.days}>{opt.label}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-            <input name="quotationDate" type="date" required defaultValue={today} className={cls} />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Valid Until</label>
-            <input name="validUntil" type="date" defaultValue={thirtyDays} className={cls} />
+            {validityDays === -1 ? (
+              <input type="date" value={customValidUntil} onChange={(e) => setCustomValidUntil(e.target.value)}
+                min={quotationDate} required className={cls} />
+            ) : (
+              <input type="date" value={validUntil} readOnly className={`${cls} bg-gray-50 text-gray-500`} />
+            )}
           </div>
         </div>
 
@@ -147,11 +254,12 @@ export function QuotationCreate() {
               <div key={i} className="grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-4">
                   {i === 0 && <label className="block text-xs text-gray-500 mb-1">Title</label>}
-                  <select value={line.titleId} onChange={(e) => updateLine(i, 'titleId', e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
-                    <option value="">Select title...</option>
-                    {titlesData?.data.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
-                  </select>
+                  <SearchableSelect
+                    options={titleOptions}
+                    value={line.titleId}
+                    onChange={(val) => updateLine(i, 'titleId', val)}
+                    placeholder="Search titles..."
+                  />
                 </div>
                 <div className="col-span-2">
                   {i === 0 && <label className="block text-xs text-gray-500 mb-1">Qty</label>}
@@ -205,6 +313,34 @@ export function QuotationCreate() {
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
         </div>
       </form>
+
+      {/* Recipient Edit Modal */}
+      {showRecipientModal && selectedPartner && (
+        <RecipientEditModal
+          recipient={{
+            partnerId: selectedPartner.id,
+            partnerName: selectedPartner.name,
+            contactName: selectedPartner.contactName,
+            contactEmail: selectedPartner.contactEmail,
+            contactPhone: selectedPartner.contactPhone,
+            addressLine1: selectedPartner.addressLine1,
+            addressLine2: selectedPartner.addressLine2,
+            city: selectedPartner.city,
+            province: selectedPartner.province,
+            postalCode: selectedPartner.postalCode,
+            vatNumber: selectedPartner.vatNumber,
+          }}
+          onClose={() => setShowRecipientModal(false)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['partners-select'] })}
+        />
+      )}
+
+      {showPartnerCreate && (
+        <QuickPartnerCreate
+          onClose={() => setShowPartnerCreate(false)}
+          onCreated={(p) => { setSelectedPartnerId(p.id); setIsDirty(true); }}
+        />
+      )}
     </div>
   );
 }

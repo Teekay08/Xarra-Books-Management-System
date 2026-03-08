@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
@@ -33,6 +36,7 @@ export function PurchaseOrderList() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-orders', page, search, statusFilter],
@@ -97,6 +101,9 @@ export function PurchaseOrderList() {
           <option value="CLOSED">Closed</option>
           <option value="CANCELLED">Cancelled</option>
         </select>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       {isLoading ? (
@@ -119,6 +126,12 @@ export function PurchaseOrderList() {
           )}
         </>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/purchase-orders', from, to), 'purchase-orders.csv')}
+        title="Export Purchase Orders"
+      />
     </div>
   );
 }

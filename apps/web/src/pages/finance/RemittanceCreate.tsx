@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { SearchableSelect } from '../../components/SearchableSelect';
+import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
 
 interface Invoice {
   id: string;
@@ -17,12 +20,14 @@ export function RemittanceCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [partnerId, setPartnerId] = useState('');
   const [selectedInvoices, setSelectedInvoices] = useState<Record<string, number>>({});
+  const [showPartnerCreate, setShowPartnerCreate] = useState(false);
 
   const { data: partners } = useQuery({
-    queryKey: ['partners'],
-    queryFn: () => api<{ data: { id: string; name: string }[] }>('/partners?limit=100'),
+    queryKey: ['partners-select'],
+    queryFn: () => api<{ data: { id: string; name: string }[] }>('/partners?limit=500'),
   });
 
   const { data: invoicesData } = useQuery({
@@ -41,6 +46,7 @@ export function RemittanceCreate() {
       api('/finance/remittances', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['remittances'] });
+      setIsDirty(false);
       navigate('/remittances');
     },
   });
@@ -71,7 +77,7 @@ export function RemittanceCreate() {
     }));
 
     mutation.mutate({
-      partnerId: fd.get('partnerId'),
+      partnerId,
       partnerRef: fd.get('partnerRef') || undefined,
       totalAmount: Number(fd.get('totalAmount')),
       periodFrom: fd.get('periodFrom') || undefined,
@@ -82,25 +88,38 @@ export function RemittanceCreate() {
     }, { onError: (err) => setError(err.message) });
   }
 
+  const partnerOptions = (partners?.data ?? []).map((p) => ({
+    value: p.id,
+    label: p.name,
+  }));
+
+  function handlePartnerChange(id: string) {
+    setPartnerId(id);
+    setSelectedInvoices({});
+  }
+
   const allocatedTotal = Object.values(selectedInvoices).reduce((s, v) => s + v, 0);
   const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500';
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="Record Remittance" subtitle="Record a payment received from a channel partner" />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-2xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Channel Partner *</label>
-          <select name="partnerId" required className={cls} value={partnerId}
-            onChange={(e) => { setPartnerId(e.target.value); setSelectedInvoices({}); }}>
-            <option value="">Select partner...</option>
-            {partners?.data?.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            options={partnerOptions}
+            value={partnerId}
+            onChange={handlePartnerChange}
+            placeholder="Search partners..."
+            required
+            onCreateNew={() => setShowPartnerCreate(true)}
+            createNewLabel="Create new partner"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -193,6 +212,12 @@ export function RemittanceCreate() {
           </button>
         </div>
       </form>
+      {showPartnerCreate && (
+        <QuickPartnerCreate
+          onClose={() => setShowPartnerCreate(false)}
+          onCreated={(p) => handlePartnerChange(p.id)}
+        />
+      )}
     </div>
   );
 }

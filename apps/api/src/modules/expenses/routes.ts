@@ -4,6 +4,7 @@ import { expenses, expenseCategories, expenseClaims, expenseClaimLines, requisit
 import { createExpenseSchema, createExpenseCategorySchema, createExpenseClaimSchema, createRequisitionSchema, paginationSchema } from '@xarra/shared';
 import { VAT_RATE } from '@xarra/shared';
 import { requireAuth, requireRole, requirePermission } from '../../middleware/require-auth.js';
+import { createBroadcastNotification, createNotification } from '../../services/notifications.js';
 import { requireIdempotencyKey, getIdempotencyKey } from '../../middleware/idempotency.js';
 import { nextExpenseClaimNumber, nextRequisitionNumber } from '../finance/invoice-number.js';
 
@@ -71,6 +72,16 @@ export async function expenseRoutes(app: FastifyInstance) {
         totalPages: Math.ceil(Number(countResult[0].count) / limit),
       },
     };
+  });
+
+  // Get single expense
+  app.get<{ Params: { id: string } }>('/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const expense = await app.db.query.expenses.findFirst({
+      where: eq(expenses.id, request.params.id),
+      with: { category: true },
+    });
+    if (!expense) return reply.notFound('Expense not found');
+    return { data: expense };
   });
 
   app.post('/', {
@@ -214,6 +225,16 @@ export async function expenseRoutes(app: FastifyInstance) {
     if (claim.status !== 'DRAFT') return reply.badRequest('Only DRAFT claims can be submitted');
 
     const [updated] = await app.db.update(expenseClaims).set({ status: 'SUBMITTED', updatedAt: new Date() }).where(eq(expenseClaims.id, request.params.id)).returning();
+
+    createBroadcastNotification(app, {
+      type: 'EXPENSE_CLAIM_SUBMITTED',
+      title: 'Expense claim submitted for approval',
+      message: `Claim ${updated.number} submitted — R ${Number(updated.totalAmount).toFixed(2)}`,
+      actionUrl: `/expenses/claims/${updated.id}`,
+      referenceType: 'EXPENSE_CLAIM',
+      referenceId: updated.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create expense notification'));
+
     return { data: updated };
   });
 
@@ -230,6 +251,19 @@ export async function expenseRoutes(app: FastifyInstance) {
       approvedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(expenseClaims.id, request.params.id)).returning();
+
+    if (updated.claimantId) {
+      createNotification(app, {
+        type: 'EXPENSE_CLAIM_APPROVED',
+        title: 'Your expense claim was approved',
+        message: `Claim ${updated.number} has been approved`,
+        userId: updated.claimantId,
+        actionUrl: `/expenses/claims/${updated.id}`,
+        referenceType: 'EXPENSE_CLAIM',
+        referenceId: updated.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create approval notification'));
+    }
+
     return { data: updated };
   });
 
@@ -250,6 +284,19 @@ export async function expenseRoutes(app: FastifyInstance) {
       rejectionReason: reason,
       updatedAt: new Date(),
     }).where(eq(expenseClaims.id, request.params.id)).returning();
+
+    if (updated.claimantId) {
+      createNotification(app, {
+        type: 'EXPENSE_CLAIM_REJECTED',
+        title: 'Your expense claim was rejected',
+        message: `Claim ${updated.number} was rejected: ${reason}`,
+        userId: updated.claimantId,
+        actionUrl: `/expenses/claims/${updated.id}`,
+        referenceType: 'EXPENSE_CLAIM',
+        referenceId: updated.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create rejection notification'));
+    }
+
     return { data: updated };
   });
 
@@ -266,6 +313,21 @@ export async function expenseRoutes(app: FastifyInstance) {
       paidReference: reference,
       updatedAt: new Date(),
     }).where(eq(expenseClaims.id, request.params.id)).returning();
+
+    // Notify the claimant that their claim has been paid
+    if (claim.claimantId) {
+      createNotification(app, {
+        type: 'EXPENSE_CLAIM_PAID',
+        priority: 'NORMAL',
+        title: `Expense claim ${claim.number} paid`,
+        message: `R ${Number(claim.totalAmount).toFixed(2)}${reference ? ` — ref: ${reference}` : ''}`,
+        userId: claim.claimantId,
+        actionUrl: `/expenses/claims/${claim.id}`,
+        referenceType: 'EXPENSE_CLAIM',
+        referenceId: claim.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create expense paid notification'));
+    }
+
     return { data: updated };
   });
 
@@ -354,6 +416,16 @@ export async function expenseRoutes(app: FastifyInstance) {
     if (req.status !== 'DRAFT') return reply.badRequest('Only DRAFT requisitions can be submitted');
 
     const [updated] = await app.db.update(requisitions).set({ status: 'SUBMITTED', updatedAt: new Date() }).where(eq(requisitions.id, request.params.id)).returning();
+
+    createBroadcastNotification(app, {
+      type: 'REQUISITION_SUBMITTED',
+      title: 'Requisition submitted for approval',
+      message: `Requisition ${updated.number} submitted — estimated R ${Number(updated.totalEstimate).toFixed(2)}`,
+      actionUrl: `/procurement/requisitions/${updated.id}`,
+      referenceType: 'REQUISITION',
+      referenceId: updated.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create requisition notification'));
+
     return { data: updated };
   });
 
@@ -370,6 +442,19 @@ export async function expenseRoutes(app: FastifyInstance) {
       approvedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(requisitions.id, request.params.id)).returning();
+
+    if (updated.requestedBy) {
+      createNotification(app, {
+        type: 'REQUISITION_APPROVED',
+        title: 'Your requisition was approved',
+        message: `Requisition ${updated.number} has been approved`,
+        userId: updated.requestedBy,
+        actionUrl: `/procurement/requisitions/${updated.id}`,
+        referenceType: 'REQUISITION',
+        referenceId: updated.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create requisition approval notification'));
+    }
+
     return { data: updated };
   });
 

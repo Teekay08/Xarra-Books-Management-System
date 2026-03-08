@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 interface TitleRow {
@@ -34,6 +36,22 @@ export function TitlePerformance() {
       <div className="flex gap-3 mb-6">
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => {
+            if (titles.length > 0) {
+              downloadCsv(titles, [
+                { key: 'title', header: 'Title' },
+                { key: 'isbn13', header: 'ISBN' },
+                { key: 'rrp', header: 'RRP' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'revenue', header: 'Revenue' },
+                { key: 'avgPrice', header: 'Avg Price' },
+                { key: 'partnerCount', header: 'Partners' },
+                { key: 'currentStock', header: 'Stock' },
+              ], 'title-performance-report');
+            }
+          }},
+        ]} />
       </div>
 
       {/* Summary cards */}

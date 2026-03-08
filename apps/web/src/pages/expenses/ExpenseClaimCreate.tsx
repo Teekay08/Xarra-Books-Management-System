@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { SearchableSelect } from '../../components/SearchableSelect';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 
 interface ClaimLine {
   key: string;
@@ -34,6 +36,7 @@ export function ExpenseClaimCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [claimDate, setClaimDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<ClaimLine[]>([emptyLine()]);
@@ -51,12 +54,18 @@ export function ExpenseClaimCreate() {
         headers: { 'X-Idempotency-Key': crypto.randomUUID() },
       }),
     onSuccess: () => {
+      setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: ['expense-claims'] });
       navigate('/expenses/claims');
     },
   });
 
   const activeCategories = (categories?.data ?? []).filter((c) => c.isActive);
+
+  const categoryOptions = activeCategories.map((c) => ({
+    value: c.id,
+    label: c.name,
+  }));
 
   function updateLine(key: string, field: keyof ClaimLine, value: string) {
     setLines((prev) =>
@@ -105,9 +114,10 @@ export function ExpenseClaimCreate() {
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="New Expense Claim" />
 
-      <form onSubmit={handleSubmit} className="max-w-4xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-4xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         <div className="max-w-xs">
@@ -141,16 +151,12 @@ export function ExpenseClaimCreate() {
                 {lines.map((line) => (
                   <tr key={line.key}>
                     <td className="px-3 py-2">
-                      <select
+                      <SearchableSelect
+                        options={categoryOptions}
                         value={line.categoryId}
-                        onChange={(e) => updateLine(line.key, 'categoryId', e.target.value)}
-                        className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {activeCategories.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => updateLine(line.key, 'categoryId', v)}
+                        placeholder="Search categories..."
+                      />
                     </td>
                     <td className="px-3 py-2">
                       <input

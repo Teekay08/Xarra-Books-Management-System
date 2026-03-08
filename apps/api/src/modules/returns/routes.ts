@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { returnsAuthorizations, returnsAuthorizationLines, inventoryMovements } from '@xarra/db';
 import { paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { createBroadcastNotification } from '../../services/notifications.js';
 import { z } from 'zod';
 
 const createReturnSchema = z.object({
@@ -133,6 +134,17 @@ export async function returnRoutes(app: FastifyInstance) {
       status: 'PROCESSED',
       processedAt: new Date(),
     }).where(eq(returnsAuthorizations.id, ra.id));
+
+    const totalQty = ra.lines.reduce((s, l) => s + l.quantity, 0);
+    createBroadcastNotification(app, {
+      type: 'RETURN_PROCESSED',
+      priority: 'NORMAL',
+      title: `Return ${ra.number} processed`,
+      message: `${totalQty} items returned to warehouse`,
+      actionUrl: `/returns/${ra.id}`,
+      referenceType: 'RETURN',
+      referenceId: ra.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create return processed notification'));
 
     return { data: { message: 'Return processed, inventory updated' } };
   });

@@ -1,9 +1,13 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
+import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { SearchableSelect } from '../../components/SearchableSelect';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { TITLE_FORMATS, TITLE_STATUSES } from '@xarra/shared';
+
+interface Author { id: string; legalName: string; penName: string | null }
 
 interface Title {
   id: string;
@@ -11,6 +15,7 @@ interface Title {
   subtitle: string | null;
   isbn13: string | null;
   asin: string | null;
+  primaryAuthorId: string | null;
   rrpZar: string;
   costPriceZar: string | null;
   formats: string[];
@@ -41,11 +46,19 @@ export function TitleForm() {
         : api('/titles', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['titles'] });
+      setIsDirty(false);
       navigate('/titles');
     },
   });
 
+  const { data: authorsData } = useQuery({
+    queryKey: ['authors-select'],
+    queryFn: () => api<PaginatedResponse<Author>>('/authors?limit=500'),
+  });
+
+  const [isDirty, setIsDirty] = useState(false);
   const [error, setError] = useState('');
+  const [authorId, setAuthorId] = useState('');
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -62,6 +75,7 @@ export function TitleForm() {
       subtitle: fd.get('subtitle') || undefined,
       isbn13: fd.get('isbn13') || undefined,
       asin: fd.get('asin') || undefined,
+      primaryAuthorId: authorId || undefined,
       rrpZar: Number(fd.get('rrpZar')),
       costPriceZar: fd.get('costPriceZar') ? Number(fd.get('costPriceZar')) : undefined,
       formats,
@@ -79,11 +93,22 @@ export function TitleForm() {
 
   const title = existing?.data;
 
+  useEffect(() => {
+    if (title?.primaryAuthorId) setAuthorId(title.primaryAuthorId);
+  }, [title?.primaryAuthorId]);
+
+  const authorOptions = (authorsData?.data ?? []).map((a) => ({
+    value: a.id,
+    label: a.legalName,
+    subtitle: a.penName ?? undefined,
+  }));
+
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title={isEdit ? 'Edit Title' : 'New Title'} />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-2xl space-y-6">
         {error && (
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
@@ -91,6 +116,16 @@ export function TitleForm() {
         <div className="grid grid-cols-2 gap-4">
           <Field label="Title *" name="title" defaultValue={title?.title} required />
           <Field label="Subtitle" name="subtitle" defaultValue={title?.subtitle ?? ''} />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Author</label>
+          <SearchableSelect
+            options={authorOptions}
+            value={authorId}
+            onChange={setAuthorId}
+            placeholder="Search authors..."
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-4">

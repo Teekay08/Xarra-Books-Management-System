@@ -3,6 +3,7 @@ import { eq, sql, desc } from 'drizzle-orm';
 import { inventoryMovements, titles } from '@xarra/db';
 import { stockAdjustmentSchema, paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { createBroadcastNotification } from '../../services/notifications.js';
 
 export async function inventoryRoutes(app: FastifyInstance) {
   // Stock levels per title (aggregated from movements)
@@ -162,6 +163,10 @@ export async function inventoryRoutes(app: FastifyInstance) {
         titleId: string;
         quantity: number;
         location?: string;
+        batchNumber?: string;
+        supplierName?: string;
+        supplierId?: string;
+        receivedDate?: string;
         notes?: string;
       };
       const userId = request.session?.user?.id;
@@ -173,11 +178,26 @@ export async function inventoryRoutes(app: FastifyInstance) {
           movementType: 'IN',
           toLocation: body.location ?? 'XARRA_WAREHOUSE',
           quantity: body.quantity,
+          batchNumber: body.batchNumber,
+          supplierName: body.supplierName,
+          supplierId: body.supplierId,
+          receivedDate: body.receivedDate ? new Date(body.receivedDate) : new Date(),
           referenceType: 'PRINT_RUN',
           notes: body.notes,
           createdBy: userId,
         })
         .returning();
+
+      // Get title name for notification
+      const title = await app.db.query.titles.findFirst({ where: eq(titles.id, body.titleId) });
+      createBroadcastNotification(app, {
+        type: 'INVENTORY_RECEIVED',
+        title: 'Stock received',
+        message: `${body.quantity} units of "${title?.title ?? 'Unknown'}" received at ${body.location ?? 'XARRA_WAREHOUSE'}${body.supplierName ? ` from ${body.supplierName}` : ''}`,
+        actionUrl: `/inventory/${body.titleId}/movements`,
+        referenceType: 'INVENTORY_MOVEMENT',
+        referenceId: movement.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create inventory notification'));
 
       return reply.status(201).send({ data: movement });
     }

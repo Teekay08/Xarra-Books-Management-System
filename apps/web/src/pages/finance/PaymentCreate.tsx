@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { SearchableSelect } from '../../components/SearchableSelect';
+import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
 
 interface Partner { id: string; name: string }
 
@@ -10,11 +13,19 @@ export function PaymentCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [partnerId, setPartnerId] = useState('');
+  const [showPartnerCreate, setShowPartnerCreate] = useState(false);
 
   const { data: partners } = useQuery({
     queryKey: ['partners-select'],
-    queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=100'),
+    queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=500'),
   });
+
+  const partnerOptions = (partners?.data ?? []).map((p) => ({
+    value: p.id,
+    label: p.name,
+  }));
 
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -28,6 +39,7 @@ export function PaymentCreate() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
+      setIsDirty(false);
       navigate('/payments');
     },
   });
@@ -38,7 +50,7 @@ export function PaymentCreate() {
     const fd = new FormData(e.currentTarget);
 
     mutation.mutate({
-      partnerId: fd.get('partnerId'),
+      partnerId,
       amount: Number(fd.get('amount')),
       paymentDate: fd.get('paymentDate'),
       paymentMethod: fd.get('paymentMethod') || 'BANK_TRANSFER',
@@ -49,23 +61,23 @@ export function PaymentCreate() {
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="Record Payment" />
 
-      <form onSubmit={handleSubmit} className="max-w-lg space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-lg space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Partner *</label>
-          <select
-            name="partnerId"
+          <SearchableSelect
+            options={partnerOptions}
+            value={partnerId}
+            onChange={setPartnerId}
+            placeholder="Search partners..."
             required
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-          >
-            <option value="">Select partner...</option>
-            {partners?.data.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+            onCreateNew={() => setShowPartnerCreate(true)}
+            createNewLabel="Create new partner"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -143,6 +155,13 @@ export function PaymentCreate() {
           </button>
         </div>
       </form>
+
+      {showPartnerCreate && (
+        <QuickPartnerCreate
+          onClose={() => setShowPartnerCreate(false)}
+          onCreated={(p) => setPartnerId(p.id)}
+        />
+      )}
     </div>
   );
 }

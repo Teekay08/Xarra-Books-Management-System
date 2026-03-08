@@ -3,12 +3,16 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { SearchableSelect } from '../../components/SearchableSelect';
 import { v4 as uuidv4 } from 'uuid';
 
 export function ExpenseCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [categoryId, setCategoryId] = useState('');
   const [taxInclusive, setTaxInclusive] = useState(false);
 
   const { data: categories } = useQuery({
@@ -24,6 +28,7 @@ export function ExpenseCreate() {
         headers: { 'X-Idempotency-Key': uuidv4() },
       }),
     onSuccess: () => {
+      setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       navigate('/expenses');
     },
@@ -34,7 +39,7 @@ export function ExpenseCreate() {
     setError('');
     const fd = new FormData(e.currentTarget);
     mutation.mutate({
-      categoryId: fd.get('categoryId'),
+      categoryId,
       description: fd.get('description'),
       amount: Number(fd.get('amount')),
       taxAmount: Number(fd.get('taxAmount') || 0),
@@ -47,23 +52,29 @@ export function ExpenseCreate() {
   }
 
   const activeCategories = (categories?.data ?? []).filter((c) => c.isActive);
+  const categoryOptions = activeCategories.map((c) => ({
+    value: c.id,
+    label: c.name,
+  }));
   const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm';
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="Record Expense" />
 
-      <form onSubmit={handleSubmit} className="max-w-xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-          <select name="categoryId" required className={cls}>
-            <option value="">Select category...</option>
-            {activeCategories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            options={categoryOptions}
+            value={categoryId}
+            onChange={setCategoryId}
+            placeholder="Search categories..."
+            required
+          />
         </div>
 
         <div>

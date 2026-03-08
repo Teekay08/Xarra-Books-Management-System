@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { RecipientEditModal } from '../../components/RecipientEditModal';
 
 interface PurchaseOrderLine {
   id: string;
@@ -24,6 +25,19 @@ interface PurchaseOrder {
   contactName: string | null;
   contactEmail: string | null;
   orderDate: string;
+  supplier?: {
+    id: string;
+    name: string;
+    contactName: string | null;
+    contactEmail: string | null;
+    contactPhone: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    province: string | null;
+    postalCode: string | null;
+    vatNumber: string | null;
+  };
   expectedDeliveryDate: string | null;
   deliveryAddress: string | null;
   subtotal: string;
@@ -57,6 +71,7 @@ export function PurchaseOrderDetail() {
   const [showActions, setShowActions] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [showRecipientModal, setShowRecipientModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-order', id],
@@ -195,15 +210,25 @@ export function PurchaseOrderDetail() {
               </div>
               <div>
                 <span className="text-xs text-gray-500 block">Supplier</span>
-                <span>{po.supplierName}</span>
+                <span className="flex items-center gap-1.5">
+                  {po.supplierName}
+                  {po.supplierId && (
+                    <button onClick={() => setShowRecipientModal(true)} title="Edit supplier details"
+                      className="text-gray-400 hover:text-green-700 transition-colors">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  )}
+                </span>
+                {po.contactName && (
+                  <span className="text-xs text-gray-400 block">{po.contactName}</span>
+                )}
+                {po.contactEmail && (
+                  <span className="text-xs text-gray-400 block">{po.contactEmail}</span>
+                )}
               </div>
-              {po.contactName && (
-                <div>
-                  <span className="text-xs text-gray-500 block">Contact</span>
-                  <span>{po.contactName}</span>
-                  {po.contactEmail && <span className="text-xs text-gray-400 block">{po.contactEmail}</span>}
-                </div>
-              )}
               {po.issuedAt && (
                 <div>
                   <span className="text-xs text-gray-500 block">Issued</span>
@@ -311,6 +336,27 @@ export function PurchaseOrderDetail() {
           error={receiveMutation.isError ? (receiveMutation.error as Error).message : ''}
           onClose={() => setShowReceiveModal(false)}
           onSubmit={(lines) => receiveMutation.mutate({ lines })}
+        />
+      )}
+
+      {/* Recipient Edit Modal */}
+      {showRecipientModal && po.supplierId && po.supplier && (
+        <RecipientEditModal
+          recipient={{
+            partnerId: po.supplierId,
+            partnerName: po.supplier.name,
+            contactName: po.supplier.contactName,
+            contactEmail: po.supplier.contactEmail,
+            contactPhone: po.supplier.contactPhone,
+            addressLine1: po.supplier.addressLine1,
+            addressLine2: po.supplier.addressLine2,
+            city: po.supplier.city,
+            province: po.supplier.province,
+            postalCode: po.supplier.postalCode,
+            vatNumber: po.supplier.vatNumber,
+          }}
+          onClose={() => setShowRecipientModal(false)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
-import { pgTable, uuid, varchar, text, timestamp, jsonb, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, jsonb, boolean, index, integer } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { invoices } from './finance';
-import { channelPartners } from './channels';
+import { channelPartners, partnerBranches } from './channels';
 import { users } from './users';
 
 export const companySettings = pgTable('company_settings', {
@@ -38,6 +38,24 @@ export const companySettings = pgTable('company_settings', {
     threeDaysAfter: boolean; // 3 days after due
     sevenDaysAfter: boolean; // 7 days after due
   }>(),
+  // Automation scheduling settings
+  schedulingSettings: jsonb('scheduling_settings').$type<{
+    statementGeneration: {
+      enabled: boolean;
+      dayOfMonth: number;     // 1-28 (day of month to auto-compile statements)
+      timeHour: number;       // 0-23 (hour in SAST, default 6)
+    };
+    sorAutoInvoice: {
+      enabled: boolean;
+      graceDays: number;      // extra days after SOR expiry before auto-invoicing (default 0)
+      timeHour: number;       // 0-23 (hour in SAST, default 8)
+    };
+    invoiceSending: {
+      enabled: boolean;
+      dayOfMonth: number;     // 1-28 (day of month to auto-send approved invoices)
+      timeHour: number;       // 0-23 (hour in SAST, default 9)
+    };
+  }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -73,4 +91,58 @@ export const documentEmails = pgTable('document_emails', {
 
 export const documentEmailsRelations = relations(documentEmails, ({ one }) => ({
   sentByUser: one(users, { fields: [documentEmails.sentBy], references: [users.id] }),
+}));
+
+// ==========================================
+// MONTHLY STATEMENT BATCHES
+// ==========================================
+
+export const statementBatches = pgTable('statement_batches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  periodFrom: timestamp('period_from', { withTimezone: true }).notNull(),
+  periodTo: timestamp('period_to', { withTimezone: true }).notNull(),
+  periodLabel: varchar('period_label', { length: 100 }).notNull(), // e.g. "February 2026"
+  status: varchar('status', { length: 20 }).notNull().default('DRAFT'), // DRAFT, REVIEWED, APPROVED, SENDING, SENT
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  totalItems: integer('total_items').notNull().default(0),
+  totalSent: integer('total_sent').notNull().default(0),
+  totalFailed: integer('total_failed').notNull().default(0),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_statement_batches_period').on(t.periodFrom, t.periodTo),
+  index('idx_statement_batches_status').on(t.status),
+]);
+
+export const statementBatchItems = pgTable('statement_batch_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => statementBatches.id),
+  partnerId: uuid('partner_id').notNull().references(() => channelPartners.id),
+  branchId: uuid('branch_id').references(() => partnerBranches.id), // null = consolidated or single-store
+  recipientEmail: varchar('recipient_email', { length: 255 }),
+  sendToType: varchar('send_to_type', { length: 20 }).notNull(), // DIRECT (single-store), BRANCH (per-branch), HQ_CONSOLIDATED (multi-branch HQ)
+  status: varchar('status', { length: 20 }).notNull().default('PENDING'), // PENDING, EXCLUDED, SENT, FAILED
+  closingBalance: varchar('closing_balance', { length: 20 }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_statement_batch_items_batch').on(t.batchId),
+  index('idx_statement_batch_items_partner').on(t.partnerId),
+]);
+
+export const statementBatchesRelations = relations(statementBatches, ({ one, many }) => ({
+  reviewedByUser: one(users, { fields: [statementBatches.reviewedBy], references: [users.id], relationName: 'reviewer' }),
+  approvedByUser: one(users, { fields: [statementBatches.approvedBy], references: [users.id], relationName: 'approver' }),
+  items: many(statementBatchItems),
+}));
+
+export const statementBatchItemsRelations = relations(statementBatchItems, ({ one }) => ({
+  batch: one(statementBatches, { fields: [statementBatchItems.batchId], references: [statementBatches.id] }),
+  partner: one(channelPartners, { fields: [statementBatchItems.partnerId], references: [channelPartners.id] }),
+  branch: one(partnerBranches, { fields: [statementBatchItems.branchId], references: [partnerBranches.id] }),
 }));

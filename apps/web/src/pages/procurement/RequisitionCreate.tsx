@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 
 interface ReqLine {
   key: string;
@@ -30,6 +31,7 @@ export function RequisitionCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [department, setDepartment] = useState('');
   const [requiredByDate, setRequiredByDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -43,6 +45,7 @@ export function RequisitionCreate() {
         headers: { 'X-Idempotency-Key': crypto.randomUUID() },
       }),
     onSuccess: () => {
+      setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: ['requisitions'] });
       navigate('/procurement/requisitions');
     },
@@ -102,9 +105,10 @@ export function RequisitionCreate() {
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="New Requisition" />
 
-      <form onSubmit={handleSubmit} className="max-w-4xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-4xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         <div className="grid grid-cols-2 gap-4 max-w-lg">

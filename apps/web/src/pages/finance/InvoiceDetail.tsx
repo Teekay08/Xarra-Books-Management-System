@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { RecipientEditModal, type RecipientDetails } from '../../components/RecipientEditModal';
 
 interface InvoiceLine {
   id: string;
@@ -43,7 +44,20 @@ interface Invoice {
   voidedReason: string | null;
   amountPaid: string;
   amountDue: string;
-  partner: { name: string; contactName: string | null; contactEmail: string | null };
+  partnerId: string;
+  partner: {
+    id: string;
+    name: string;
+    contactName: string | null;
+    contactEmail: string | null;
+    contactPhone: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    province: string | null;
+    postalCode: string | null;
+    vatNumber: string | null;
+  };
   lines: InvoiceLine[];
   creditNotes?: { id: string; number: string; total: string; reason: string }[];
   paymentHistory?: PaymentRecord[];
@@ -70,6 +84,7 @@ export function InvoiceDetail() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCreditNoteModal, setShowCreditNoteModal] = useState(false);
+  const [showRecipientModal, setShowRecipientModal] = useState(false);
   const [cnError, setCnError] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -288,7 +303,22 @@ export function InvoiceDetail() {
               </div>
               <div>
                 <span className="text-xs text-gray-500 block">Partner</span>
-                <span>{inv.partner.name}</span>
+                <span className="flex items-center gap-1.5">
+                  {inv.partner.name}
+                  <button onClick={() => setShowRecipientModal(true)} title="Edit recipient details"
+                    className="text-gray-400 hover:text-green-700 transition-colors">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                </span>
+                {inv.partner.contactName && (
+                  <span className="text-xs text-gray-400 block">{inv.partner.contactName}</span>
+                )}
+                {inv.partner.contactEmail && (
+                  <span className="text-xs text-gray-400 block">{inv.partner.contactEmail}</span>
+                )}
               </div>
               {inv.purchaseOrderNumber && (
                 <div>
@@ -476,6 +506,27 @@ export function InvoiceDetail() {
             setCnError('');
             creditNoteMutation.mutate({ reason, lines }, { onError: (err) => setCnError(err.message) });
           }}
+        />
+      )}
+
+      {/* Recipient Edit Modal */}
+      {showRecipientModal && (
+        <RecipientEditModal
+          recipient={{
+            partnerId: inv.partnerId ?? inv.partner.id,
+            partnerName: inv.partner.name,
+            contactName: inv.partner.contactName,
+            contactEmail: inv.partner.contactEmail,
+            contactPhone: inv.partner.contactPhone,
+            addressLine1: inv.partner.addressLine1,
+            addressLine2: inv.partner.addressLine2,
+            city: inv.partner.city,
+            province: inv.partner.province,
+            postalCode: inv.partner.postalCode,
+            vatNumber: inv.partner.vatNumber,
+          }}
+          onClose={() => setShowRecipientModal(false)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['invoice', id] })}
         />
       )}
     </div>

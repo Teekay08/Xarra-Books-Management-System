@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 
 interface DebitNote {
   id: string;
@@ -15,8 +18,10 @@ interface DebitNote {
 }
 
 export function DebitNoteList() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['debit-notes', page, search],
@@ -37,12 +42,15 @@ export function DebitNoteList() {
         }
       />
 
-      <div className="mb-4">
+      <div className="mb-4 flex gap-3 items-center">
         <input
           type="text" placeholder="Search by debit note number..."
           value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm"
         />
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -62,7 +70,7 @@ export function DebitNoteList() {
               <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {data?.data?.map((dn) => (
-              <tr key={dn.id}>
+              <tr key={dn.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/debit-notes/${dn.id}`)}>
                 <td className="px-4 py-3 text-sm font-medium text-green-700">{dn.number}</td>
                 <td className="px-4 py-3 text-sm text-gray-900">{dn.partner.name}</td>
                 <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{dn.reason}</td>
@@ -95,6 +103,12 @@ export function DebitNoteList() {
           </div>
         </div>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/debit-notes', from, to), 'debit-notes.csv')}
+        title="Export Debit Notes"
+      />
     </div>
   );
 }

@@ -11,6 +11,8 @@ import authPlugin from './plugins/auth.js';
 import { createSorExpiryQueue, createSorExpiryWorker, scheduleSorExpiryJob } from './jobs/sor-expiry.js';
 import { createTakealotSyncQueue, createTakealotSyncWorker, scheduleTakealotSyncJob } from './jobs/takealot-sync.js';
 import { createInvoiceReminderQueue, createInvoiceReminderWorker, scheduleInvoiceReminderJob } from './jobs/invoice-reminders.js';
+import { createSorInvoiceQueue, createSorInvoiceWorker, scheduleSorInvoiceJob } from './jobs/sor-invoice.js';
+import { createMonthlyStatementQueue, createMonthlyStatementWorker, scheduleMonthlyStatementJob } from './jobs/monthly-statements.js';
 import { authorRoutes } from './modules/authors/routes.js';
 import { titleRoutes } from './modules/titles/routes.js';
 import { partnerRoutes } from './modules/partners/routes.js';
@@ -30,6 +32,9 @@ import { userRoutes } from './modules/users/routes.js';
 import { returnRoutes } from './modules/returns/routes.js';
 import { auditRoutes } from './modules/audit/routes.js';
 import { salesRoutes } from './modules/sales/routes.js';
+import { exportRoutes } from './modules/export/routes.js';
+import { partnerPortalRoutes, partnerPortalAdminRoutes } from './modules/partner-portal/routes.js';
+import { notificationRoutes } from './modules/notifications/routes.js';
 import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
@@ -98,11 +103,29 @@ export async function buildApp() {
     .then(() => app.log.info('Invoice reminder job scheduled (daily 8:00 AM SAST)'))
     .catch((err) => app.log.warn({ err }, 'Failed to schedule invoice reminder job'));
 
+  // SOR auto-invoice: generate invoices for expired SOR consignments
+  const sorInvoiceQueue = createSorInvoiceQueue(config.redis.url);
+  const sorInvoiceWorker = createSorInvoiceWorker(config.redis.url);
+  scheduleSorInvoiceJob(sorInvoiceQueue)
+    .then(() => app.log.info('SOR auto-invoice job scheduled (daily 8:00 AM SAST)'))
+    .catch((err) => app.log.warn({ err }, 'Failed to schedule SOR auto-invoice job'));
+
+  // Monthly statement compilation: auto-compile statements on 1st of each month
+  const stmtQueue = createMonthlyStatementQueue(config.redis.url);
+  const stmtWorker = createMonthlyStatementWorker(config.redis.url);
+  scheduleMonthlyStatementJob(stmtQueue)
+    .then(() => app.log.info('Monthly statement job scheduled (1st of month, 6:00 AM SAST)'))
+    .catch((err) => app.log.warn({ err }, 'Failed to schedule monthly statement job'));
+
   app.addHook('onClose', async () => {
     await sorWorker.close();
     await sorQueue.close();
     await reminderWorker.close();
     await reminderQueue.close();
+    await sorInvoiceWorker.close();
+    await sorInvoiceQueue.close();
+    await stmtWorker.close();
+    await stmtQueue.close();
     if (takealotWorker) await takealotWorker.close();
     if (takealotQueue) await takealotQueue.close();
   });
@@ -152,6 +175,10 @@ export async function buildApp() {
     api.register(returnRoutes, { prefix: '/returns' });
     api.register(auditRoutes, { prefix: '/audit' });
     api.register(salesRoutes, { prefix: '/sales' });
+    api.register(exportRoutes, { prefix: '/export' });
+    api.register(notificationRoutes, { prefix: '/notifications' });
+    api.register(partnerPortalRoutes, { prefix: '/partner-portal' });
+    api.register(partnerPortalAdminRoutes, { prefix: '/partner-admin' });
   }, { prefix: '/api/v1' });
 
   return app;

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { AUTHOR_TYPES } from '@xarra/shared';
 
 interface Author {
@@ -42,10 +43,12 @@ export function AuthorForm() {
         : api('/authors', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['authors'] });
+      setIsDirty(false);
       navigate('/authors');
     },
   });
 
+  const [isDirty, setIsDirty] = useState(false);
   const [error, setError] = useState('');
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -77,9 +80,10 @@ export function AuthorForm() {
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title={isEdit ? 'Edit Author' : 'New Author'} />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-2xl space-y-6">
         {error && (
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}

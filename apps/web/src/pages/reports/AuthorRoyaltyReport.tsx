@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 
 interface Author {
   id: string;
@@ -151,12 +153,37 @@ export function AuthorRoyaltyReport() {
           <input type="date" value={to} onChange={e => setTo(e.target.value)} className={cls} />
         </div>
         {report && (
-          <button
-            onClick={handleDownloadPdf}
-            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
-          >
-            Download PDF
-          </button>
+          <>
+            <button
+              onClick={handleDownloadPdf}
+              className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
+            >
+              Download PDF
+            </button>
+            <ExportButton options={[
+              { label: 'Export CSV', onClick: () => {
+                if (report.lines.length > 0) {
+                  downloadCsv(report.lines, [
+                    { key: 'bookTitle', header: 'Book Title' },
+                    { key: 'authorName', header: 'Author' },
+                    { key: 'retailPrice', header: 'Retail Price' },
+                    { key: 'salesPeriod', header: 'Sales Period' },
+                    { key: 'qtySorSupplied', header: 'Qty Supplied SOR' },
+                    { key: 'qtySold', header: 'Qty Sold' },
+                    { key: 'qtyReturned', header: 'Qty Returned' },
+                    { key: 'kindleSalesQty', header: 'Kindle Sales Qty' },
+                    { key: 'randAmountReceived', header: 'Rand Amount Received' },
+                    { key: 'totalEbookSalesAmount', header: 'Total Ebook Sales' },
+                    { key: 'totalPhysicalSalesAmount', header: 'Total Physical Sales' },
+                    { key: 'royaltyPayoutPhysical', header: 'Royalty Physical' },
+                    { key: 'royaltyPayoutEbook', header: 'Royalty E-Book' },
+                    { key: 'lessOwingAdvance', header: 'Less Advance' },
+                    { key: 'disbursement', header: 'Disbursement' },
+                  ], 'author-royalty-report');
+                }
+              }},
+            ]} />
+          </>
         )}
       </div>
 

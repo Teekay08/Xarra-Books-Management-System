@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 interface TitleRow { id: string; title: string; isbn13?: string; unitsSold: number; revenue: number }
@@ -48,6 +50,44 @@ export function Bestsellers() {
       <div className="flex gap-3 mb-4">
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => {
+            if (tab === 'revenue' && bestRevenue.length > 0) {
+              downloadCsv(bestRevenue, [
+                { key: 'title', header: 'Title' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'revenue', header: 'Revenue' },
+              ], 'bestsellers-by-revenue');
+            } else if (tab === 'units' && bestUnits.length > 0) {
+              downloadCsv(bestUnits, [
+                { key: 'title', header: 'Title' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'revenue', header: 'Revenue' },
+              ], 'bestsellers-by-units');
+            } else if (tab === 'underperformers' && least.length > 0) {
+              downloadCsv(least, [
+                { key: 'title', header: 'Title' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'revenue', header: 'Revenue' },
+              ], 'underperformers');
+            } else if (tab === 'authors' && authors.length > 0) {
+              downloadCsv(authors, [
+                { key: 'name', header: 'Author' },
+                { key: 'titleCount', header: 'Titles' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'revenue', header: 'Revenue' },
+              ], 'top-authors');
+            } else if (tab === 'profitability' && profit.length > 0) {
+              downloadCsv(profit, [
+                { key: 'title', header: 'Title' },
+                { key: 'revenue', header: 'Revenue' },
+                { key: 'productionCost', header: 'Production Cost' },
+                { key: 'royaltyPaid', header: 'Royalties' },
+                { key: 'netProfit', header: 'Net Profit' },
+              ], 'profitability');
+            }
+          }},
+        ]} />
       </div>
 
       {/* Tabs */}

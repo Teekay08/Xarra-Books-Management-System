@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
 
 interface CategoryRow { category: string; total: number; count: number }
@@ -46,6 +48,26 @@ export function ExpenseTrends() {
       <div className="flex gap-3 mb-6">
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        <ExportButton options={[
+          { label: 'Export by Category CSV', onClick: () => {
+            if (categories.length > 0) {
+              downloadCsv(categories, [
+                { key: 'category', header: 'Category' },
+                { key: 'count', header: 'Count' },
+                { key: 'total', header: 'Total' },
+              ], 'expense-trends-by-category');
+            }
+          }},
+          { label: 'Export Monthly CSV', onClick: () => {
+            if (monthly.length > 0) {
+              downloadCsv(monthly, [
+                { key: 'month', header: 'Month' },
+                { key: 'total', header: 'Total' },
+                { key: 'taxTotal', header: 'VAT Portion' },
+              ], 'expense-trends-monthly');
+            }
+          }},
+        ]} />
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">

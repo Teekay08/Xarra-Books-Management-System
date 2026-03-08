@@ -16,6 +16,8 @@ interface ConLine {
 
 interface Consignment {
   id: string;
+  proformaNumber: string | null;
+  partnerPoNumber: string | null;
   dispatchDate: string | null;
   deliveryDate: string | null;
   sorExpiryDate: string | null;
@@ -88,6 +90,21 @@ export function ConsignmentDetail() {
         subtitle={con.dispatchDate ? `Dispatched ${new Date(con.dispatchDate).toLocaleDateString('en-ZA')}` : 'Draft'}
         action={
           <div className="flex gap-2">
+            <button
+              onClick={() => window.open(`/api/v1/consignments/${id}/proforma-pdf`, '_blank')}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Download PDF
+            </button>
+            <button
+              onClick={() => {
+                const w = window.open(`/api/v1/consignments/${id}/proforma-pdf`, '_blank');
+                w?.addEventListener('load', () => w.print());
+              }}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Print
+            </button>
             {action && (
               <button
                 onClick={() => advanceMutation.mutate(action.endpoint)}
@@ -118,6 +135,26 @@ export function ConsignmentDetail() {
         <SummaryCard label="Returned" value={String(totalReturned + totalDamaged)} />
         <SummaryCard label="Outstanding" value={String(outstanding)} highlight={outstanding > 0} />
       </div>
+
+      {/* Proforma & PO info */}
+      {(con.proformaNumber || con.partnerPoNumber) && (
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 text-sm">
+          <div className="flex gap-6">
+            {con.proformaNumber && (
+              <div>
+                <span className="text-gray-500 font-medium">Pro-forma: </span>
+                <span className="font-mono font-semibold">{con.proformaNumber}</span>
+              </div>
+            )}
+            {con.partnerPoNumber && (
+              <div>
+                <span className="text-gray-500 font-medium">Partner PO: </span>
+                <span className="font-mono font-semibold">{con.partnerPoNumber}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* SOR info */}
       {con.sorExpiryDate && (

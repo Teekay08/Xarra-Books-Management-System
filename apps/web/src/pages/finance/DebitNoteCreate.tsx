@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { VAT_RATE, roundAmount } from '@xarra/shared';
 import { v4 as uuidv4 } from 'uuid';
+import { SearchableSelect } from '../../components/SearchableSelect';
+import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
 
 interface LineItem {
   key: string;
@@ -18,14 +21,22 @@ export function DebitNoteCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [partnerId, setPartnerId] = useState('');
+  const [showPartnerCreate, setShowPartnerCreate] = useState(false);
   const [lines, setLines] = useState<LineItem[]>([
     { key: uuidv4(), description: '', quantity: 1, unitPrice: 0, discountPct: 0 },
   ]);
 
   const { data: partners } = useQuery({
-    queryKey: ['partners'],
-    queryFn: () => api<{ data: { id: string; name: string }[] }>('/partners?limit=100'),
+    queryKey: ['partners-select'],
+    queryFn: () => api<{ data: { id: string; name: string }[] }>('/partners?limit=500'),
   });
+
+  const partnerOptions = (partners?.data ?? []).map((p) => ({
+    value: p.id,
+    label: p.name,
+  }));
 
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -36,6 +47,7 @@ export function DebitNoteCreate() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['debit-notes'] });
+      setIsDirty(false);
       navigate('/debit-notes');
     },
   });
@@ -65,7 +77,7 @@ export function DebitNoteCreate() {
     setError('');
     const fd = new FormData(e.currentTarget);
     mutation.mutate({
-      partnerId: fd.get('partnerId'),
+      partnerId,
       reason: fd.get('reason'),
       lines: lines.map(({ description, quantity, unitPrice, discountPct }) => ({
         description, quantity, unitPrice, discountPct,
@@ -77,20 +89,24 @@ export function DebitNoteCreate() {
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="Create Debit Note" subtitle="Charge a partner for surcharges or adjustments" />
 
-      <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-3xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Channel Partner *</label>
-            <select name="partnerId" required className={cls}>
-              <option value="">Select partner...</option>
-              {partners?.data?.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={partnerOptions}
+              value={partnerId}
+              onChange={setPartnerId}
+              placeholder="Search partners..."
+              required
+              onCreateNew={() => setShowPartnerCreate(true)}
+              createNewLabel="Create new partner"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
@@ -176,6 +192,12 @@ export function DebitNoteCreate() {
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
         </div>
       </form>
+      {showPartnerCreate && (
+        <QuickPartnerCreate
+          onClose={() => setShowPartnerCreate(false)}
+          onCreated={(p) => setPartnerId(p.id)}
+        />
+      )}
     </div>
   );
 }

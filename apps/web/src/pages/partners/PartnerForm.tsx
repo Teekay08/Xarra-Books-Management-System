@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 
 interface Partner {
   id: string;
@@ -38,10 +39,12 @@ export function PartnerForm() {
         : api('/partners', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['partners'] });
+      setIsDirty(false);
       navigate('/partners');
     },
   });
 
+  const [isDirty, setIsDirty] = useState(false);
   const [error, setError] = useState('');
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -76,9 +79,10 @@ export function PartnerForm() {
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title={isEdit ? 'Edit Partner' : 'New Channel Partner'} />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-2xl space-y-6">
         {error && (
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}

@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 
@@ -34,6 +37,7 @@ export function ExpenseClaimList() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['expense-claims', page, search, statusFilter],
@@ -115,6 +119,9 @@ export function ExpenseClaimList() {
           <option value="REJECTED">Rejected</option>
           <option value="PAID">Paid</option>
         </select>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       {isLoading ? (
@@ -137,6 +144,12 @@ export function ExpenseClaimList() {
           )}
         </>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/expense-claims', from, to), 'expense-claims-export.csv')}
+        title="Export Expense Claims"
+      />
     </div>
   );
 }

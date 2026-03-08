@@ -120,6 +120,7 @@ export const updateChannelPartnerSchema = createChannelPartnerSchema.partial();
 export const createConsignmentSchema = z.object({
   partnerId: z.string().uuid(),
   branchId: z.string().uuid().optional(),
+  partnerPoNumber: z.string().max(50).optional(),
   dispatchDate: z.string().or(z.date()),
   courierCompany: z.string().optional(),
   courierWaybill: z.string().optional(),
@@ -182,7 +183,7 @@ export const stockAdjustmentSchema = z.object({
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+  limit: z.coerce.number().int().positive().max(500).default(20),
   search: z.string().optional(),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
@@ -406,4 +407,71 @@ export const sendDocumentSchema = z.object({
   recipientEmail: z.string().email(),
   subject: z.string().optional(),
   message: z.string().optional(),
+});
+
+// === Partner Portal Schemas ===
+
+export const createPartnerUserSchema = z.object({
+  partnerId: z.string().uuid(),
+  branchId: z.string().uuid().optional(),
+  email: z.string().email(),
+  name: z.string().min(1, 'Name is required'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  role: z.enum(['ADMIN', 'BRANCH_MANAGER', 'STAFF']).default('STAFF'),
+  phone: z.string().optional(),
+  isActive: z.boolean().default(true),
+});
+
+export const updatePartnerUserSchema = createPartnerUserSchema
+  .omit({ password: true, partnerId: true })
+  .partial()
+  .extend({ password: z.string().min(8).optional() });
+
+export const partnerLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const createPartnerOrderSchema = z.object({
+  branchId: z.string().uuid().optional(),
+  deliveryAddress: z.string().optional(),
+  lines: z.array(z.object({
+    titleId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+  })).min(1, 'At least one title is required'),
+  notes: z.string().optional(),
+});
+
+export const createPartnerReturnRequestSchema = z.object({
+  branchId: z.string().uuid().optional(),
+  consignmentId: z.string().uuid().optional(),
+  reason: z.string().min(1, 'Reason is required'),
+  lines: z.array(z.object({
+    titleId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+    condition: z.enum(['GOOD', 'DAMAGED', 'UNSALEABLE']).default('GOOD'),
+    reason: z.string().optional(),
+  })).min(1, 'At least one title is required'),
+  notes: z.string().optional(),
+});
+
+export const reviewPartnerReturnRequestSchema = z.object({
+  action: z.enum(['authorize', 'reject']),
+  reviewNotes: z.string().optional(),
+  rejectionReason: z.string().optional(),
+});
+
+export const createCourierShipmentSchema = z.object({
+  courierCompany: z.string().default('FASTWAY'),
+  waybillNumber: z.string().min(1, 'Waybill number is required'),
+  trackingUrl: z.string().url().optional(),
+  consignmentId: z.string().uuid().optional(),
+  partnerOrderId: z.string().uuid().optional(),
+  returnRequestId: z.string().uuid().optional(),
+  recipientName: z.string().optional(),
+  recipientAddress: z.string().optional(),
+  recipientPhone: z.string().optional(),
+  packageCount: z.number().int().positive().default(1),
+  totalWeightKg: z.number().positive().optional(),
+  estimatedDelivery: z.string().or(z.date()).optional(),
 });

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface SalesRow {
@@ -50,6 +52,17 @@ export function SalesReport() {
             <option value="partner">Partner</option>
           </select>
         </div>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => {
+            if (rows.length > 0) {
+              downloadCsv(rows, [
+                { key: 'label', header: groupBy === 'title' ? 'Title' : 'Partner' },
+                { key: 'unitsSold', header: 'Units Sold' },
+                { key: 'revenue', header: 'Revenue' },
+              ], 'sales-report');
+            }
+          }},
+        ]} />
       </div>
 
       {isLoading && <p className="text-gray-400">Loading...</p>}

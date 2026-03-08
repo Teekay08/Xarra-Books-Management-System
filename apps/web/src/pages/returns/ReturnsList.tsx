@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 
 interface ReturnAuth {
   id: string;
@@ -22,8 +25,10 @@ const statusColors: Record<string, string> = {
 };
 
 export function ReturnsList() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['returns', page, search],
@@ -44,10 +49,13 @@ export function ReturnsList() {
         }
       />
 
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-4">
         <input type="text" placeholder="Search by RA number..."
           value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -65,7 +73,7 @@ export function ReturnsList() {
           <tbody className="divide-y divide-gray-200">
             {isLoading && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>}
             {data?.data?.map((ra) => (
-              <tr key={ra.id} className="cursor-pointer hover:bg-gray-50" onClick={() => window.location.href = `/returns/${ra.id}`}>
+              <tr key={ra.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/returns/${ra.id}`)}>
                 <td className="px-4 py-3 text-sm font-medium text-green-700">{ra.number}</td>
                 <td className="px-4 py-3 text-sm text-gray-900">{ra.partner.name}</td>
                 <td className="px-4 py-3 text-sm text-gray-500 max-w-[200px] truncate">{ra.reason}</td>
@@ -98,6 +106,12 @@ export function ReturnsList() {
           </div>
         </div>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/returns', from, to), 'returns-export.csv')}
+        title="Export Returns"
+      />
     </div>
   );
 }

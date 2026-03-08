@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
@@ -33,12 +36,13 @@ export function InvoiceList() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices', page, search],
+    queryKey: ['invoices', page, search, statusFilter],
     queryFn: () =>
       api<PaginatedResponse<Invoice>>(
-        `/finance/invoices?page=${page}&limit=20&search=${encodeURIComponent(search)}`
+        `/finance/invoices?page=${page}&limit=20&search=${encodeURIComponent(search)}${statusFilter ? `&status=${statusFilter}` : ''}`
       ),
   });
 
@@ -100,6 +104,9 @@ export function InvoiceList() {
           <option value="OVERDUE">Overdue</option>
           <option value="VOIDED">Voided</option>
         </select>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       {isLoading ? (
@@ -122,6 +129,12 @@ export function InvoiceList() {
           )}
         </>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/invoices', from, to), 'invoices.csv')}
+        title="Export Invoices"
+      />
     </div>
   );
 }

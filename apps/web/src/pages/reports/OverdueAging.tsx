@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 
 interface AgingData {
   buckets: { current: number; thirtyDays: number; sixtyDays: number; ninetyPlus: number };
@@ -33,6 +35,23 @@ export function OverdueAging() {
   return (
     <div>
       <PageHeader title="Overdue Aging" subtitle="Outstanding invoices by age bucket" />
+
+      <div className="flex items-end gap-4 mb-6">
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => {
+            if (aging?.items && aging.items.length > 0) {
+              downloadCsv(aging.items, [
+                { key: 'number', header: 'Invoice' },
+                { key: 'partnerName', header: 'Partner' },
+                { key: 'dueDate', header: 'Due Date' },
+                { key: 'daysOverdue', header: 'Days Overdue' },
+                { key: 'bucket', header: 'Bucket' },
+                { key: 'total', header: 'Amount' },
+              ], 'overdue-aging-report');
+            }
+          }},
+        ]} />
+      </div>
 
       {isLoading && <p className="text-gray-400">Loading...</p>}
 

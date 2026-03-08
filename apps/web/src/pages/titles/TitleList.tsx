@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi } from '../../lib/export';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 
@@ -12,6 +14,8 @@ interface Title {
   title: string;
   subtitle: string | null;
   isbn13: string | null;
+  authorName: string | null;
+  authorPenName: string | null;
   rrpZar: string;
   formats: string[];
   status: string;
@@ -49,6 +53,9 @@ export function TitleList() {
         {t.subtitle && <p className="text-xs text-gray-500">{t.subtitle}</p>}
       </div>
     )},
+    { key: 'author', header: 'Author', render: (t: Title) =>
+      t.authorPenName || t.authorName || <span className="text-gray-400">—</span>
+    },
     { key: 'isbn13', header: 'ISBN-13' },
     { key: 'rrpZar', header: 'RRP (ZAR)', render: (t: Title) => `R ${Number(t.rrpZar).toFixed(2)}` },
     { key: 'formats', header: 'Formats', render: (t: Title) => t.formats.join(', ') },
@@ -74,8 +81,13 @@ export function TitleList() {
         }
       />
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search by title or ISBN..." />
+      <div className="mb-4 flex items-center gap-4">
+        <div className="flex-1">
+          <SearchBar value={search} onChange={handleSearch} placeholder="Search by title or ISBN..." />
+        </div>
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => downloadFromApi('/export/titles', 'titles-export.csv') },
+        ]} />
       </div>
 
       {isLoading ? (

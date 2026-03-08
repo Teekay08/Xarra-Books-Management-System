@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { RecipientEditModal, type RecipientDetails } from '../../components/RecipientEditModal';
 
 interface QuotationLine {
   id: string;
@@ -24,7 +26,20 @@ interface Quotation {
   total: string;
   status: string;
   notes: string | null;
-  partner: { name: string };
+  partnerId: string;
+  partner: {
+    id: string;
+    name: string;
+    contactName: string | null;
+    contactEmail: string | null;
+    contactPhone: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    province: string | null;
+    postalCode: string | null;
+    vatNumber: string | null;
+  };
   lines: QuotationLine[];
   convertedInvoice: { id: string; number: string } | null;
 }
@@ -41,6 +56,8 @@ export function QuotationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const [showRecipientModal, setShowRecipientModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['quotation', id],
@@ -106,7 +123,22 @@ export function QuotationDetail() {
             </div>
             <div>
               <span className="text-xs text-gray-500 block">Partner</span>
-              <span>{q.partner.name}</span>
+              <span className="flex items-center gap-1.5">
+                {q.partner.name}
+                <button onClick={() => setShowRecipientModal(true)} title="Edit recipient details"
+                  className="text-gray-400 hover:text-green-700 transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              </span>
+              {q.partner.contactName && (
+                <span className="text-xs text-gray-400 block">{q.partner.contactName}</span>
+              )}
+              {q.partner.contactEmail && (
+                <span className="text-xs text-gray-400 block">{q.partner.contactEmail}</span>
+              )}
             </div>
           </div>
 
@@ -170,6 +202,27 @@ export function QuotationDetail() {
           </div>
         )}
       </div>
+
+      {/* Recipient Edit Modal */}
+      {showRecipientModal && (
+        <RecipientEditModal
+          recipient={{
+            partnerId: q.partnerId ?? q.partner.id,
+            partnerName: q.partner.name,
+            contactName: q.partner.contactName,
+            contactEmail: q.partner.contactEmail,
+            contactPhone: q.partner.contactPhone,
+            addressLine1: q.partner.addressLine1,
+            addressLine2: q.partner.addressLine2,
+            city: q.partner.city,
+            province: q.partner.province,
+            postalCode: q.partner.postalCode,
+            vatNumber: q.partner.vatNumber,
+          }}
+          onClose={() => setShowRecipientModal(false)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['quotation', id] })}
+        />
+      )}
     </div>
   );
 }

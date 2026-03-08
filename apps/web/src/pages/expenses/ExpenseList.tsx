@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 
 interface Expense {
   id: string;
@@ -16,8 +19,10 @@ interface Expense {
 }
 
 export function ExpenseList() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', page, search],
@@ -43,10 +48,13 @@ export function ExpenseList() {
         }
       />
 
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-4">
         <input type="text" placeholder="Search expenses..." value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -66,7 +74,7 @@ export function ExpenseList() {
               <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {data?.data?.map((exp) => (
-              <tr key={exp.id}>
+              <tr key={exp.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/expenses/${exp.id}`)}>
                 <td className="px-4 py-3 text-sm text-gray-900">{new Date(exp.expenseDate).toLocaleDateString()}</td>
                 <td className="px-4 py-3 text-sm">
                   <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
@@ -97,6 +105,12 @@ export function ExpenseList() {
           </div>
         </div>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/expenses', from, to), 'expenses-export.csv')}
+        title="Export Expenses"
+      />
     </div>
   );
 }

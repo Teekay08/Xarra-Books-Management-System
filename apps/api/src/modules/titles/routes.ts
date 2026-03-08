@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc, asc } from 'drizzle-orm';
-import { titles, titleProductionCosts } from '@xarra/db';
+import { titles, titleProductionCosts, authors } from '@xarra/db';
 import { createTitleSchema, updateTitleSchema, paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 
@@ -17,8 +17,29 @@ export async function titleRoutes(app: FastifyInstance) {
 
     const [items, countResult] = await Promise.all([
       app.db
-        .select()
+        .select({
+          id: titles.id,
+          title: titles.title,
+          subtitle: titles.subtitle,
+          isbn13: titles.isbn13,
+          asin: titles.asin,
+          primaryAuthorId: titles.primaryAuthorId,
+          rrpZar: titles.rrpZar,
+          costPriceZar: titles.costPriceZar,
+          formats: titles.formats,
+          status: titles.status,
+          description: titles.description,
+          publishDate: titles.publishDate,
+          pageCount: titles.pageCount,
+          weightGrams: titles.weightGrams,
+          coverImageUrl: titles.coverImageUrl,
+          createdAt: titles.createdAt,
+          updatedAt: titles.updatedAt,
+          authorName: authors.legalName,
+          authorPenName: authors.penName,
+        })
         .from(titles)
+        .leftJoin(authors, eq(titles.primaryAuthorId, authors.id))
         .where(where)
         .orderBy(sortOrder === 'asc' ? asc(titles.title) : desc(titles.createdAt))
         .limit(limit)

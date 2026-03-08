@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { downloadCsv } from '../../lib/export';
+import { ExportButton } from '../../components/ExportButton';
 
 interface InventoryRow {
   id: string;
@@ -22,6 +24,22 @@ export function InventoryReport() {
   return (
     <div>
       <PageHeader title="Inventory Report" subtitle="Stock levels and movement summary" />
+
+      <div className="flex items-end gap-4 mb-6">
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => {
+            if (rows.length > 0) {
+              downloadCsv(rows, [
+                { key: 'title', header: 'Title' },
+                { key: 'isbn13', header: 'ISBN' },
+                { key: 'stockOnHand', header: 'Stock on Hand' },
+                { key: 'totalConsigned', header: 'Total Consigned' },
+                { key: 'totalSold', header: 'Total Sold' },
+              ], 'inventory-report');
+            }
+          }},
+        ]} />
+      </div>
 
       {isLoading && <p className="text-gray-400">Loading...</p>}
 

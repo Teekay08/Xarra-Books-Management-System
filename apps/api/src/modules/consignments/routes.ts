@@ -2,10 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc } from 'drizzle-orm';
 import {
   consignments, consignmentLines, channelPartners,
-  inventoryMovements, titles,
+  inventoryMovements, titles, companySettings, partnerBranches,
 } from '@xarra/db';
-import { createConsignmentSchema, paginationSchema } from '@xarra/shared';
+import { createConsignmentSchema, paginationSchema, VAT_RATE, roundAmount } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { createBroadcastNotification } from '../../services/notifications.js';
+import { renderSorProformaHtml } from '../../services/templates/sor-proforma.js';
+import { generatePdf } from '../../services/pdf.js';
 
 export async function consignmentRoutes(app: FastifyInstance) {
   // List consignments (paginated)
@@ -67,9 +70,20 @@ export async function consignmentRoutes(app: FastifyInstance) {
       .where(sql`${titles.id} IN ${titleIds}`);
     const titleMap = new Map(titleRows.map((t) => [t.id, t.rrpZar]));
 
+    // Generate proforma number (SOR-YYYY-NNNN)
+    const yearStr = String(new Date().getFullYear());
+    const countResult = await app.db.execute<{ count: string }>(sql`
+      SELECT COUNT(*) AS count FROM consignments
+      WHERE proforma_number LIKE ${'SOR-' + yearStr + '-%'}
+    `);
+    const nextNum = Number(countResult[0]?.count ?? 0) + 1;
+    const proformaNumber = `SOR-${yearStr}-${String(nextNum).padStart(4, '0')}`;
+
     const result = await app.db.transaction(async (tx) => {
       const [con] = await tx.insert(consignments).values({
         partnerId: body.partnerId,
+        proformaNumber,
+        partnerPoNumber: body.partnerPoNumber,
         dispatchDate: body.dispatchDate ? new Date(body.dispatchDate) : undefined,
         courierCompany: body.courierCompany,
         courierWaybill: body.courierWaybill,
@@ -141,6 +155,16 @@ export async function consignmentRoutes(app: FastifyInstance) {
       with: { partner: true, lines: { with: { title: true } } },
     });
 
+    const totalQty = consignment.lines.reduce((sum, l) => sum + l.qtyDispatched, 0);
+    createBroadcastNotification(app, {
+      type: 'CONSIGNMENT_DISPATCHED',
+      title: `Consignment dispatched to ${consignment.partner.name}`,
+      message: `${totalQty} items dispatched to ${consignment.partner.name}. SOR expires ${sorExpiryDate.toLocaleDateString('en-ZA')}.`,
+      actionUrl: `/consignments/${consignment.id}`,
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    });
+
     return { data: updated };
   });
 
@@ -198,12 +222,35 @@ export async function consignmentRoutes(app: FastifyInstance) {
       return reply.badRequest('Consignment must be DELIVERED or ACKNOWLEDGED to report sales');
     }
 
+    // Fetch existing lines to compute deltas
+    const existingLines = await app.db.query.consignmentLines.findMany({
+      where: eq(consignmentLines.consignmentId, consignment.id),
+    });
+    const prevSold = new Map(existingLines.map((l) => [l.id, l.qtySold]));
+
     for (const line of lines) {
       await app.db.update(consignmentLines).set({
         qtySold: line.qtySold,
         qtyReturned: line.qtyReturned ?? 0,
         qtyDamaged: line.qtyDamaged ?? 0,
       }).where(eq(consignmentLines.id, line.lineId));
+    }
+
+    // Create inventory SELL movements for newly reported sales
+    for (const line of lines) {
+      const existing = existingLines.find((l) => l.id === line.lineId);
+      if (!existing) continue;
+      const delta = line.qtySold - (prevSold.get(line.lineId) ?? 0);
+      if (delta > 0) {
+        await app.db.insert(inventoryMovements).values({
+          titleId: existing.titleId,
+          movementType: 'SELL',
+          quantity: delta,
+          reason: `Consignment sales reported — ${consignment.id.slice(0, 8)}`,
+          referenceType: 'CONSIGNMENT',
+          referenceId: consignment.id,
+        });
+      }
     }
 
     return { success: true };
@@ -267,6 +314,17 @@ export async function consignmentRoutes(app: FastifyInstance) {
       }).where(eq(consignments.id, request.params.id));
     });
 
+    const totalReturned = consignment.lines.reduce((s, l) => s + l.qtyReturned + l.qtyDamaged, 0);
+    createBroadcastNotification(app, {
+      type: 'CONSIGNMENT_RETURNS_PROCESSED',
+      priority: 'NORMAL',
+      title: `Consignment returns processed — ${consignment.partner.name}`,
+      message: `${totalReturned} items returned (incl. damaged)`,
+      actionUrl: `/consignments/${consignment.id}`,
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create consignment returns notification'));
+
     return { success: true };
   });
 
@@ -304,6 +362,154 @@ export async function consignmentRoutes(app: FastifyInstance) {
     }).where(eq(consignments.id, request.params.id)).returning();
 
     return { data: updated };
+  });
+
+  // Generate SOR Pro-forma Invoice PDF
+  app.get<{ Params: { id: string } }>('/:id/proforma-pdf', { preHandler: requireAuth }, async (request, reply) => {
+    const consignment = await app.db.query.consignments.findFirst({
+      where: eq(consignments.id, request.params.id),
+      with: { partner: true, lines: { with: { title: true } } },
+    });
+    if (!consignment) return reply.notFound('Consignment not found');
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    // Get branch info if applicable
+    let branch: { name: string; contactEmail: string | null } | null = null;
+    if (consignment.branchId) {
+      branch = await app.db.query.partnerBranches.findFirst({
+        where: eq(partnerBranches.id, consignment.branchId),
+      }) as any;
+    }
+
+    // Calculate SOR days from partner terms
+    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : 90;
+
+    // Build line items with pricing
+    const isTaxInclusive = true; // SA RRP is always tax-inclusive
+    let subtotal = 0;
+    let totalVat = 0;
+    const lines = consignment.lines.map((line, i) => {
+      const unitRrp = Number(line.unitRrp);
+      const discPct = Number(line.discountPct);
+      const netPrice = roundAmount(unitRrp * (1 - discPct / 100));
+      const lineTotal = roundAmount(line.qtyDispatched * netPrice);
+      const lineTax = roundAmount(lineTotal - (lineTotal / (1 + VAT_RATE)));
+      const lineExVat = roundAmount(lineTotal - lineTax);
+      subtotal += lineExVat;
+      totalVat += lineTax;
+      return {
+        lineNumber: i + 1,
+        description: line.title?.title ?? 'Unknown Title',
+        isbn: line.title?.isbn13 ?? null,
+        quantity: line.qtyDispatched,
+        unitRrp: String(unitRrp),
+        discountPct: String(discPct),
+        netPrice: String(netPrice),
+        lineTotal: String(lineTotal),
+      };
+    });
+
+    subtotal = roundAmount(subtotal);
+    totalVat = roundAmount(totalVat);
+    const total = roundAmount(subtotal + totalVat);
+
+    const html = renderSorProformaHtml({
+      proformaNumber: consignment.proformaNumber ?? consignment.id.slice(0, 8).toUpperCase(),
+      partnerPoNumber: consignment.partnerPoNumber,
+      dispatchDate: (consignment.dispatchDate ?? consignment.createdAt).toISOString(),
+      sorExpiryDate: consignment.sorExpiryDate?.toISOString(),
+      sorDays,
+      courierCompany: consignment.courierCompany,
+      courierWaybill: consignment.courierWaybill,
+      company: settings ? {
+        name: settings.companyName,
+        tradingAs: settings.tradingAs,
+        vatNumber: settings.vatNumber,
+        registrationNumber: settings.registrationNumber,
+        addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2,
+        city: settings.city,
+        province: settings.province,
+        postalCode: settings.postalCode,
+        phone: settings.phone,
+        email: settings.email,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+      recipient: {
+        name: consignment.partner.name,
+        branchName: branch?.name,
+        contactName: consignment.partner.contactName,
+        contactEmail: branch?.contactEmail ?? consignment.partner.contactEmail,
+        addressLine1: consignment.partner.addressLine1,
+        addressLine2: consignment.partner.addressLine2,
+        city: consignment.partner.city,
+        province: consignment.partner.province,
+        postalCode: consignment.partner.postalCode,
+        vatNumber: consignment.partner.vatNumber,
+      },
+      lines,
+      subtotal: String(subtotal),
+      vatAmount: String(totalVat),
+      total: String(total),
+      notes: consignment.notes,
+    });
+
+    const pdf = await generatePdf(html);
+
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `inline; filename="${consignment.proformaNumber ?? 'SOR-Proforma'}.pdf"`)
+      .send(pdf);
+  });
+
+  // List SOR pro-forma invoices (paginated)
+  app.get('/proformas', { preHandler: requireAuth }, async (request) => {
+    const query = paginationSchema.parse(request.query);
+    const { page, limit, search } = query;
+    const offset = (page - 1) * limit;
+
+    const searchFilter = search
+      ? sql`AND (c.proforma_number ILIKE ${'%' + search + '%'} OR cp.name ILIKE ${'%' + search + '%'} OR c.partner_po_number ILIKE ${'%' + search + '%'})`
+      : sql``;
+
+    const items = await app.db.execute(sql`
+      SELECT
+        c.id,
+        c.proforma_number AS "proformaNumber",
+        c.partner_po_number AS "partnerPoNumber",
+        c.partner_id AS "partnerId",
+        cp.name AS "partnerName",
+        c.dispatch_date AS "dispatchDate",
+        c.sor_expiry_date AS "sorExpiryDate",
+        c.status,
+        c.created_at AS "createdAt",
+        COALESCE(SUM(cl.qty_dispatched), 0)::int AS "totalQty",
+        COUNT(cl.id)::int AS "totalTitles"
+      FROM consignments c
+      JOIN channel_partners cp ON cp.id = c.partner_id
+      LEFT JOIN consignment_lines cl ON cl.consignment_id = c.id
+      WHERE c.proforma_number IS NOT NULL
+      ${searchFilter}
+      GROUP BY c.id, cp.name
+      ORDER BY c.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `);
+
+    const countResult = await app.db.execute(sql`
+      SELECT COUNT(DISTINCT c.id)::int AS count
+      FROM consignments c
+      JOIN channel_partners cp ON cp.id = c.partner_id
+      WHERE c.proforma_number IS NOT NULL
+      ${searchFilter}
+    `);
+
+    const total = Number((countResult[0] as any)?.count ?? 0);
+
+    return {
+      data: items,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
   });
 
   // SOR expiry dashboard — active consignments with days remaining

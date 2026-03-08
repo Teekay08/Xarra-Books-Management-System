@@ -23,8 +23,18 @@ const allSections: NavSection[] = [
       { name: 'Channel Partners', href: '/partners', module: 'partners' },
       { name: 'Inventory', href: '/inventory', module: 'inventory' },
       { name: 'Consignments', href: '/consignments', module: 'consignments' },
+      { name: 'SOR Pro-formas', href: '/consignments/proformas', module: 'consignments' },
       { name: 'Returns', href: '/returns', module: 'returns' },
       { name: 'Sync', href: '/sync', module: 'sync' },
+    ],
+  },
+  {
+    label: 'Partner Portal',
+    items: [
+      { name: 'Portal Users', href: '/partners/portal-users', module: 'partnerPortal' },
+      { name: 'Partner Orders', href: '/partners/portal-orders', module: 'partnerPortal' },
+      { name: 'Return Requests', href: '/partners/return-requests', module: 'partnerPortal' },
+      { name: 'Courier Shipments', href: '/partners/courier-shipments', module: 'courierShipments' },
     ],
   },
   {
@@ -63,6 +73,8 @@ const allSections: NavSection[] = [
     items: [
       { name: 'Settings', href: '/settings', module: 'settings' },
       { name: 'User Management', href: '/settings/users', module: 'users' },
+      { name: 'Scheduling', href: '/settings/scheduling', module: 'settings' },
+      { name: 'Data Export', href: '/settings/export', module: 'settings' },
       { name: 'Audit Trail', href: '/admin/audit-log', module: 'auditLogs' },
       { name: 'Deletion Requests', href: '/admin/deletion-requests', module: 'deletionRequests' },
     ],

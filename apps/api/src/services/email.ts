@@ -35,6 +35,35 @@ export async function sendEmail(options: SendEmailOptions) {
   return data;
 }
 
+interface SendEmailWithAttachmentOptions extends SendEmailOptions {
+  attachments: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+  }>;
+}
+
+export async function sendEmailWithAttachment(options: SendEmailWithAttachmentOptions) {
+  const client = getResend();
+  const { data, error } = await client.emails.send({
+    from: config.resend.fromEmail,
+    to: Array.isArray(options.to) ? options.to : [options.to],
+    subject: options.subject,
+    html: options.html,
+    attachments: options.attachments.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+      content_type: a.contentType || 'application/pdf',
+    })),
+  });
+
+  if (error) {
+    throw new Error(`Email send failed: ${error.message}`);
+  }
+
+  return data;
+}
+
 export function isEmailConfigured(): boolean {
   return !!config.resend.apiKey;
 }

@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { SearchableSelect } from '../../components/SearchableSelect';
+import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
 
 interface Partner { id: string; name: string }
 interface Title { id: string; title: string; isbn13: string | null }
@@ -19,19 +22,22 @@ export function ReturnsCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [partnerId, setPartnerId] = useState('');
   const [lines, setLines] = useState<LineInput[]>([
     { titleId: '', quantity: 1, condition: 'GOOD', notes: '' },
   ]);
+  const [showPartnerCreate, setShowPartnerCreate] = useState(false);
+  const [consignmentId, setConsignmentId] = useState('');
 
   const { data: partners } = useQuery({
     queryKey: ['partners-select'],
-    queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=100'),
+    queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=500'),
   });
 
   const { data: titlesData } = useQuery({
     queryKey: ['titles-select'],
-    queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=100'),
+    queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=500'),
   });
 
   const { data: consignments } = useQuery({
@@ -48,6 +54,7 @@ export function ReturnsCreate() {
         headers: { 'X-Idempotency-Key': crypto.randomUUID() },
       }),
     onSuccess: () => {
+      setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: ['returns'] });
       navigate('/returns');
     },
@@ -76,7 +83,7 @@ export function ReturnsCreate() {
 
     mutation.mutate({
       partnerId,
-      consignmentId: fd.get('consignmentId') || undefined,
+      consignmentId: consignmentId || undefined,
       returnDate: fd.get('returnDate'),
       reason: fd.get('reason'),
       lines: lines.filter((l) => l.titleId),
@@ -87,22 +94,47 @@ export function ReturnsCreate() {
   const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm';
   const today = new Date().toISOString().split('T')[0];
 
+  const partnerOptions = (partners?.data ?? []).map((p) => ({
+    value: p.id,
+    label: p.name,
+  }));
+
+  const titleOptions = (titlesData?.data ?? []).map((t) => ({
+    value: t.id,
+    label: t.title,
+    subtitle: t.isbn13 ?? undefined,
+  }));
+
+  const consignmentOptions = (consignments?.data ?? []).map((c) => ({
+    value: c.id,
+    label: `${new Date(c.dispatchDate).toLocaleDateString('en-ZA')} — ${c.status}`,
+  }));
+
+  function handlePartnerChange(id: string) {
+    setPartnerId(id);
+    setConsignmentId('');
+  }
+
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="Create Return Authorization" subtitle="Record books returned by a partner" />
 
-      <form onSubmit={handleSubmit} className="max-w-4xl space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-4xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Partner *</label>
-            <select value={partnerId} onChange={(e) => setPartnerId(e.target.value)} required className={cls}>
-              <option value="">Select partner...</option>
-              {partners?.data.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={partnerOptions}
+              value={partnerId}
+              onChange={handlePartnerChange}
+              placeholder="Search partners..."
+              required
+              onCreateNew={() => setShowPartnerCreate(true)}
+              createNewLabel="Create new partner"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Return Date *</label>
@@ -110,14 +142,13 @@ export function ReturnsCreate() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Consignment (optional)</label>
-            <select name="consignmentId" className={cls} disabled={!partnerId}>
-              <option value="">None</option>
-              {consignments?.data.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {new Date(c.dispatchDate).toLocaleDateString('en-ZA')} — {c.status}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={consignmentOptions}
+              value={consignmentId}
+              onChange={setConsignmentId}
+              placeholder="Select consignment..."
+              disabled={!partnerId}
+            />
           </div>
         </div>
 
@@ -133,11 +164,12 @@ export function ReturnsCreate() {
               <div key={i} className="grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-4">
                   {i === 0 && <label className="block text-xs text-gray-500 mb-1">Title</label>}
-                  <select value={line.titleId} onChange={(e) => updateLine(i, 'titleId', e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
-                    <option value="">Select title...</option>
-                    {titlesData?.data.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
-                  </select>
+                  <SearchableSelect
+                    options={titleOptions}
+                    value={line.titleId}
+                    onChange={(v) => updateLine(i, 'titleId', v)}
+                    placeholder="Search titles..."
+                  />
                 </div>
                 <div className="col-span-2">
                   {i === 0 && <label className="block text-xs text-gray-500 mb-1">Qty</label>}
@@ -181,6 +213,13 @@ export function ReturnsCreate() {
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
         </div>
       </form>
+
+      {showPartnerCreate && (
+        <QuickPartnerCreate
+          onClose={() => setShowPartnerCreate(false)}
+          onCreated={(p) => handlePartnerChange(p.id)}
+        />
+      )}
     </div>
   );
 }

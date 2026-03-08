@@ -100,6 +100,56 @@ export async function settingsRoutes(app: FastifyInstance) {
     return { data: created };
   });
 
+  // Get scheduling settings
+  app.get('/scheduling', { preHandler: requireAuth }, async () => {
+    const settings = await app.db.query.companySettings.findFirst();
+    const defaults = {
+      statementGeneration: { enabled: true, dayOfMonth: 1, timeHour: 6 },
+      sorAutoInvoice: { enabled: true, graceDays: 0, timeHour: 8 },
+      invoiceSending: { enabled: false, dayOfMonth: 25, timeHour: 9 },
+    };
+    return { data: settings?.schedulingSettings ?? defaults };
+  });
+
+  // Update scheduling settings (admin only)
+  app.put('/scheduling', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const body = request.body as {
+      statementGeneration: { enabled: boolean; dayOfMonth: number; timeHour: number };
+      sorAutoInvoice: { enabled: boolean; graceDays: number; timeHour: number };
+      invoiceSending: { enabled: boolean; dayOfMonth: number; timeHour: number };
+    };
+
+    // Validate dayOfMonth (1-28) and timeHour (0-23)
+    for (const key of ['statementGeneration', 'invoiceSending'] as const) {
+      const s = body[key];
+      if (s.dayOfMonth < 1 || s.dayOfMonth > 28) {
+        return reply.badRequest(`${key}.dayOfMonth must be between 1 and 28`);
+      }
+      if (s.timeHour < 0 || s.timeHour > 23) {
+        return reply.badRequest(`${key}.timeHour must be between 0 and 23`);
+      }
+    }
+    if (body.sorAutoInvoice.graceDays < 0 || body.sorAutoInvoice.graceDays > 30) {
+      return reply.badRequest('sorAutoInvoice.graceDays must be between 0 and 30');
+    }
+
+    const existing = await app.db.query.companySettings.findFirst();
+    if (existing) {
+      const [updated] = await app.db
+        .update(companySettings)
+        .set({ schedulingSettings: body, updatedAt: new Date() })
+        .where(eq(companySettings.id, existing.id))
+        .returning();
+      return { data: updated.schedulingSettings };
+    }
+
+    const [created] = await app.db
+      .insert(companySettings)
+      .values({ companyName: 'Xarra Books', schedulingSettings: body })
+      .returning();
+    return { data: created.schedulingSettings };
+  });
+
   // Delete logo (admin only)
   app.delete('/logo', { preHandler: requireRole('admin') }, async (request, reply) => {
     const existing = await app.db.query.companySettings.findFirst();

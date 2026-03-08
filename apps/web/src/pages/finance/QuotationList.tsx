@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 
 interface Quotation {
   id: string;
@@ -23,8 +26,10 @@ const statusColors: Record<string, string> = {
 };
 
 export function QuotationList() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['quotations', page, search],
@@ -45,10 +50,13 @@ export function QuotationList() {
         }
       />
 
-      <div className="mb-4">
+      <div className="mb-4 flex gap-3 items-center">
         <input type="text" placeholder="Search by quotation number..."
           value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        <ExportButton options={[
+          { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
+        ]} />
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -66,7 +74,7 @@ export function QuotationList() {
           <tbody className="divide-y divide-gray-200">
             {isLoading && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>}
             {data?.data?.map((q) => (
-              <tr key={q.id} className="cursor-pointer hover:bg-gray-50" onClick={() => window.location.href = `/quotations/${q.id}`}>
+              <tr key={q.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/quotations/${q.id}`)}>
                 <td className="px-4 py-3 text-sm font-medium text-green-700">{q.number}</td>
                 <td className="px-4 py-3 text-sm text-gray-900">{q.partner.name}</td>
                 <td className="px-4 py-3 text-sm text-gray-900 text-right">R {Number(q.total).toFixed(2)}</td>
@@ -97,6 +105,12 @@ export function QuotationList() {
           </div>
         </div>
       )}
+      <DateRangeExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/quotations', from, to), 'quotations.csv')}
+        title="Export Quotations"
+      />
     </div>
   );
 }

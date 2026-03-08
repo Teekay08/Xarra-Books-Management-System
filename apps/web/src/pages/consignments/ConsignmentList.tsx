@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
+import { ExportButton } from '../../components/ExportButton';
+import { downloadFromApi, exportUrl } from '../../lib/export';
+import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 
@@ -37,6 +40,8 @@ export function ConsignmentList() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [exportConsignModalOpen, setExportConsignModalOpen] = useState(false);
+  const [exportLinesModalOpen, setExportLinesModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['consignments', page, search],
@@ -93,8 +98,14 @@ export function ConsignmentList() {
         }
       />
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search..." />
+      <div className="mb-4 flex items-center gap-4">
+        <div className="flex-1">
+          <SearchBar value={search} onChange={handleSearch} placeholder="Search..." />
+        </div>
+        <ExportButton options={[
+          { label: 'Export Consignments CSV', onClick: () => setExportConsignModalOpen(true) },
+          { label: 'Export Lines CSV', onClick: () => setExportLinesModalOpen(true) },
+        ]} />
       </div>
 
       {isLoading ? (
@@ -117,6 +128,18 @@ export function ConsignmentList() {
           )}
         </>
       )}
+      <DateRangeExportModal
+        open={exportConsignModalOpen}
+        onClose={() => setExportConsignModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/consignments', from, to), 'consignments-export.csv')}
+        title="Export Consignments"
+      />
+      <DateRangeExportModal
+        open={exportLinesModalOpen}
+        onClose={() => setExportLinesModalOpen(false)}
+        onExport={(from, to) => downloadFromApi(exportUrl('/export/consignment-lines', from, to), 'consignment-lines-export.csv')}
+        title="Export Consignment Lines"
+      />
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { SearchableSelect } from '../../components/SearchableSelect';
 import { INVENTORY_LOCATIONS } from '@xarra/shared';
 
 interface Title {
@@ -11,15 +13,31 @@ interface Title {
   isbn13: string | null;
 }
 
+interface Partner {
+  id: string;
+  name: string;
+}
+
+const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500';
+
 export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receive' }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [titleId, setTitleId] = useState(searchParams.get('titleId') ?? '');
+  const [supplierId, setSupplierId] = useState('');
 
   const { data: titlesData } = useQuery({
     queryKey: ['titles-select'],
-    queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=100'),
+    queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=500'),
+  });
+
+  const { data: partnersData } = useQuery({
+    queryKey: ['partners-select'],
+    queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=500'),
+    enabled: mode === 'receive',
   });
 
   const mutation = useMutation({
@@ -30,25 +48,46 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+      setIsDirty(false);
       navigate('/inventory');
     },
   });
+
+  const titleOptions = (titlesData?.data ?? []).map((t) => ({
+    value: t.id,
+    label: t.title,
+    subtitle: t.isbn13 ?? undefined,
+  }));
+
+  const supplierOptions = (partnersData?.data ?? []).map((p) => ({
+    value: p.id,
+    label: p.name,
+  }));
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
     const fd = new FormData(e.currentTarget);
 
+    if (!titleId) { setError('Please select a title'); return; }
+
     if (mode === 'receive') {
+      const selectedSupplier = partnersData?.data.find((p) => p.id === supplierId);
       mutation.mutate({
-        titleId: fd.get('titleId'),
+        titleId,
         quantity: Number(fd.get('quantity')),
         location: fd.get('location') || 'XARRA_WAREHOUSE',
+        receivedDate: fd.get('receivedDate') || undefined,
+        batchNumber: fd.get('batchNumber') || undefined,
+        supplierId: supplierId || undefined,
+        supplierName: supplierId
+          ? selectedSupplier?.name
+          : (fd.get('supplierName') as string) || undefined,
         notes: fd.get('notes') || undefined,
       }, { onError: (err) => setError(err.message) });
     } else {
       mutation.mutate({
-        titleId: fd.get('titleId'),
+        titleId,
         quantity: Number(fd.get('quantity')),
         location: fd.get('location'),
         reason: fd.get('reason'),
@@ -61,29 +100,70 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
 
   return (
     <div>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title={isReceive ? 'Receive Stock' : 'Stock Adjustment'} />
 
-      <form onSubmit={handleSubmit} className="max-w-lg space-y-6">
+      <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-lg space-y-6">
         {error && (
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-          <select
-            name="titleId"
+          <SearchableSelect
+            options={titleOptions}
+            value={titleId}
+            onChange={(v) => { setTitleId(v); if (!isDirty) setIsDirty(true); }}
+            placeholder="Search titles by name or ISBN..."
             required
-            defaultValue={searchParams.get('titleId') ?? ''}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-          >
-            <option value="">Select a title...</option>
-            {titlesData?.data.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title} {t.isbn13 ? `(${t.isbn13})` : ''}
-              </option>
-            ))}
-          </select>
+          />
         </div>
+
+        {isReceive && (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Received Date *</label>
+                <input
+                  name="receivedDate"
+                  type="date"
+                  required
+                  defaultValue={new Date().toISOString().split('T')[0]}
+                  className={cls}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Batch Number</label>
+                <input
+                  name="batchNumber"
+                  className={cls}
+                  placeholder="e.g. BATCH-2026-001"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+              <SearchableSelect
+                options={supplierOptions}
+                value={supplierId}
+                onChange={(v) => { setSupplierId(v); if (!isDirty) setIsDirty(true); }}
+                placeholder="Search suppliers..."
+              />
+            </div>
+
+            {!supplierId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Name (if not in system)</label>
+                <input
+                  name="supplierName"
+                  className={cls}
+                  placeholder="e.g. PrintCo Supplies"
+                />
+              </div>
+            )}
+          </>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -95,7 +175,7 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
               type="number"
               required
               min={isReceive ? 1 : undefined}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              className={cls}
             />
           </div>
 
@@ -105,7 +185,7 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
               name="location"
               required
               defaultValue="XARRA_WAREHOUSE"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              className={cls}
             >
               {INVENTORY_LOCATIONS.map((loc) => (
                 <option key={loc} value={loc}>{loc.replace(/_/g, ' ')}</option>
@@ -120,7 +200,7 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
             <input
               name="reason"
               required
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              className={cls}
               placeholder="e.g., Physical count correction, Damaged stock"
             />
           </div>
@@ -131,7 +211,7 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
           <textarea
             name="notes"
             rows={3}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+            className={cls}
           />
         </div>
 
