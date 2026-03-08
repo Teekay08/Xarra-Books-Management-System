@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { DocumentEmailModal } from '../../components/DocumentEmailModal';
 
 interface ConLine {
   id: string;
@@ -73,22 +74,17 @@ export function ConsignmentDetail() {
   });
 
   const [showEmailModal, setShowEmailModal] = useState(false);
-  const [emailAddress, setEmailAddress] = useState('');
   const [emailSent, setEmailSent] = useState(false);
 
   const emailMutation = useMutation({
-    mutationFn: (email: string) =>
+    mutationFn: (data: { email: string; cc: string; bcc: string; subject: string; message: string }) =>
       api<{ data: { message: string } }>(`/consignments/${id}/send-proforma`, {
         method: 'POST',
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(data),
       }),
-    onSuccess: (res) => {
+    onSuccess: () => {
       setEmailSent(true);
       setShowEmailModal(false);
-      alert(res.data.message);
-    },
-    onError: (err: any) => {
-      alert(err.message || 'Failed to send email');
     },
   });
 
@@ -127,10 +123,7 @@ export function ConsignmentDetail() {
               Print
             </button>
             <button
-              onClick={() => {
-                setEmailAddress(con.partner.contactEmail ?? '');
-                setShowEmailModal(true);
-              }}
+              onClick={() => setShowEmailModal(true)}
               disabled={emailMutation.isPending}
               className="rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
             >
@@ -255,41 +248,17 @@ export function ConsignmentDetail() {
 
       {/* Email Modal */}
       {showEmailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">
-              Email SOR Pro-Forma
-            </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Send <span className="font-mono font-medium">{con.proformaNumber}</span> to the partner as a PDF attachment.
-            </p>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Recipient Email
-            </label>
-            <input
-              type="email"
-              value={emailAddress}
-              onChange={(e) => setEmailAddress(e.target.value)}
-              placeholder="partner@example.com"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => setShowEmailModal(false)}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => emailMutation.mutate(emailAddress)}
-                disabled={!emailAddress || emailMutation.isPending}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {emailMutation.isPending ? 'Sending...' : 'Send Email'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DocumentEmailModal
+          title="Send SOR Pro-Forma Invoice"
+          documentNumber={con.proformaNumber ?? 'SOR-Proforma'}
+          pdfUrl={`/api/v1/consignments/${id}/proforma-pdf`}
+          defaultEmail={con.partner.contactEmail ?? ''}
+          defaultSubject={`SOR Pro-Forma Invoice ${con.proformaNumber ?? ''} — Xarra Books`}
+          isPending={emailMutation.isPending}
+          error={emailMutation.isError ? (emailMutation.error as Error).message : undefined}
+          onClose={() => setShowEmailModal(false)}
+          onSend={(data) => emailMutation.mutate(data)}
+        />
       )}
     </div>
   );

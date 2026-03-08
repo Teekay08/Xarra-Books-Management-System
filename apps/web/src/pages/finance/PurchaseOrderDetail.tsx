@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { RecipientEditModal } from '../../components/RecipientEditModal';
+import { DocumentEmailModal } from '../../components/DocumentEmailModal';
 
 interface PurchaseOrderLine {
   id: string;
@@ -98,8 +99,17 @@ export function PurchaseOrderDetail() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: (body: { recipientEmail: string; subject?: string; message?: string }) =>
-      api(`/finance/purchase-orders/${id}/send`, { method: 'POST', body: JSON.stringify(body) }),
+    mutationFn: (data: { email: string; cc: string; bcc: string; subject: string; message: string }) =>
+      api(`/finance/purchase-orders/${id}/send`, {
+        method: 'POST',
+        body: JSON.stringify({
+          recipientEmail: data.email,
+          cc: data.cc || undefined,
+          bcc: data.bcc || undefined,
+          subject: data.subject,
+          message: data.message || undefined,
+        }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-order', id] });
       setShowSendModal(false);
@@ -318,13 +328,16 @@ export function PurchaseOrderDetail() {
 
       {/* Send Email Modal */}
       {showSendModal && (
-        <SendEmailModal
+        <DocumentEmailModal
+          title="Send Purchase Order via Email"
+          documentNumber={po.number}
+          pdfUrl={`/api/v1/finance/purchase-orders/${id}/pdf`}
           defaultEmail={po.contactEmail ?? ''}
-          poNumber={po.number}
+          defaultSubject={`Purchase Order ${po.number} from Xarra Books`}
           isPending={sendMutation.isPending}
-          error={sendMutation.isError ? (sendMutation.error as Error).message : ''}
+          error={sendMutation.isError ? (sendMutation.error as Error).message : undefined}
           onClose={() => setShowSendModal(false)}
-          onSend={(email, subject, message) => sendMutation.mutate({ recipientEmail: email, subject, message })}
+          onSend={(data) => sendMutation.mutate(data)}
         />
       )}
 
@@ -359,51 +372,6 @@ export function PurchaseOrderDetail() {
           onSaved={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
         />
       )}
-    </div>
-  );
-}
-
-function SendEmailModal({ defaultEmail, poNumber, isPending, error, onClose, onSend }: {
-  defaultEmail: string;
-  poNumber: string;
-  isPending: boolean;
-  error: string;
-  onClose: () => void;
-  onSend: (email: string, subject: string, message: string) => void;
-}) {
-  const [email, setEmail] = useState(defaultEmail);
-  const [subject, setSubject] = useState(`Purchase Order ${poNumber} from Xarra Books`);
-  const [message, setMessage] = useState('');
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 space-y-4">
-        <h3 className="text-lg font-semibold text-gray-900">Send Purchase Order via Email</h3>
-        {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Email *</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-          <input value={subject} onChange={(e) => setSubject(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Message (optional)</label>
-          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="Optional message to include..." />
-        </div>
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
-          <button onClick={() => email && onSend(email, subject, message)} disabled={!email || isPending}
-            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
-            {isPending ? 'Sending...' : 'Send'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

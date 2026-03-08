@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { RecipientEditModal, type RecipientDetails } from '../../components/RecipientEditModal';
+import { DocumentEmailModal } from '../../components/DocumentEmailModal';
 
 interface QuotationLine {
   id: string;
@@ -58,6 +59,7 @@ export function QuotationDetail() {
   const queryClient = useQueryClient();
 
   const [showRecipientModal, setShowRecipientModal] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['quotation', id],
@@ -76,6 +78,24 @@ export function QuotationDetail() {
     },
   });
 
+  const sendMutation = useMutation({
+    mutationFn: (data: { email: string; cc: string; bcc: string; subject: string; message: string }) =>
+      api(`/finance/quotations/${id}/send`, {
+        method: 'POST',
+        body: JSON.stringify({
+          recipientEmail: data.email,
+          cc: data.cc || undefined,
+          bcc: data.bcc || undefined,
+          subject: data.subject,
+          message: data.message || undefined,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotation', id] });
+      setShowSendModal(false);
+    },
+  });
+
   if (isLoading) return <div className="py-12 text-center text-gray-400">Loading...</div>;
   if (!data?.data) return <div className="py-12 text-center text-gray-400">Quotation not found</div>;
 
@@ -89,6 +109,25 @@ export function QuotationDetail() {
         subtitle={q.partner.name}
         action={
           <div className="flex gap-2">
+            <a href={`/api/v1/finance/quotations/${id}/pdf`} target="_blank" rel="noopener noreferrer"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              PDF
+            </a>
+            <button
+              onClick={() => {
+                const w = window.open(`/api/v1/finance/quotations/${id}/pdf`, '_blank');
+                w?.addEventListener('load', () => w.print());
+              }}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Print
+            </button>
+            <button
+              onClick={() => setShowSendModal(true)}
+              className="rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              Email to Partner
+            </button>
             {canConvert && (
               <button
                 onClick={() => {
@@ -202,6 +241,21 @@ export function QuotationDetail() {
           </div>
         )}
       </div>
+
+      {/* Send Email Modal */}
+      {showSendModal && (
+        <DocumentEmailModal
+          title="Send Quotation via Email"
+          documentNumber={q.number}
+          pdfUrl={`/api/v1/finance/quotations/${id}/pdf`}
+          defaultEmail={q.partner.contactEmail ?? ''}
+          defaultSubject={`Quotation ${q.number} from Xarra Books`}
+          isPending={sendMutation.isPending}
+          error={sendMutation.isError ? (sendMutation.error as Error).message : undefined}
+          onClose={() => setShowSendModal(false)}
+          onSend={(data) => sendMutation.mutate(data)}
+        />
+      )}
 
       {/* Recipient Edit Modal */}
       {showRecipientModal && (

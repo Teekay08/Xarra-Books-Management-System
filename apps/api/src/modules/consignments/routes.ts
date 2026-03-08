@@ -11,6 +11,7 @@ import { notifyPartner } from '../../services/partner-notifications.js';
 import { renderSorProformaHtml } from '../../services/templates/sor-proforma.js';
 import { generatePdf } from '../../services/pdf.js';
 import { sendEmailWithAttachment, isEmailConfigured } from '../../services/email.js';
+import { documentEmails } from '@xarra/db';
 
 export async function consignmentRoutes(app: FastifyInstance) {
   // List consignments (paginated)
@@ -483,7 +484,13 @@ export async function consignmentRoutes(app: FastifyInstance) {
       return reply.badRequest('Email service is not configured. Set RESEND_API_KEY in environment.');
     }
 
-    const body = request.body as { email?: string } | undefined;
+    const body = request.body as {
+      email?: string;
+      cc?: string;
+      bcc?: string;
+      subject?: string;
+      message?: string;
+    } | undefined;
 
     const consignment = await app.db.query.consignments.findFirst({
       where: eq(consignments.id, request.params.id),
@@ -582,25 +589,70 @@ export async function consignmentRoutes(app: FastifyInstance) {
     const companyName = settings?.companyName ?? 'Xarra Books';
     const totalQty = consignment.lines.reduce((s, l) => s + l.qtyDispatched, 0);
 
-    await sendEmailWithAttachment({
-      to: recipientEmail,
-      subject: `SOR Pro-Forma Invoice ${proformaNum} — ${companyName}`,
-      html: `
-        <p>Dear ${consignment.partner.contactName ?? consignment.partner.name},</p>
-        <p>Please find attached the SOR Pro-Forma Invoice <strong>${proformaNum}</strong> for ${totalQty} copies.</p>
-        ${consignment.sorExpiryDate ? `<p>SOR Period: ${sorDays} days — expires <strong>${new Date(consignment.sorExpiryDate).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</strong>.</p>` : ''}
-        ${consignment.courierCompany ? `<p>Courier: ${consignment.courierCompany}${consignment.courierWaybill ? ` (Waybill: ${consignment.courierWaybill})` : ''}</p>` : ''}
-        <p>Please print this document and include it with the shipment for your records.</p>
-        <p>Kind regards,<br>${companyName}</p>
-      `,
-      attachments: [{
-        filename: `${proformaNum}.pdf`,
-        content: pdf,
-        contentType: 'application/pdf',
-      }],
-    });
+    const emailSubject = body?.subject || `SOR Pro-Forma Invoice ${proformaNum} — ${companyName}`;
+    const customMessage = body?.message || '';
 
-    return { data: { message: `Pro-forma sent to ${recipientEmail}`, email: recipientEmail } };
+    const emailBody = customMessage
+      ? `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+          <p>${customMessage.replace(/\n/g, '<br>')}</p>
+          <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+          <p style="color:#666;font-size:12px">Attached: ${proformaNum}.pdf</p>
+        </div>`
+      : `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+          <p>Dear ${consignment.partner.contactName ?? consignment.partner.name},</p>
+          <p>Please find attached the SOR Pro-Forma Invoice <strong>${proformaNum}</strong> for ${totalQty} copies.</p>
+          ${consignment.sorExpiryDate ? `<p>SOR Period: ${sorDays} days — expires <strong>${new Date(consignment.sorExpiryDate).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</strong>.</p>` : ''}
+          ${consignment.courierCompany ? `<p>Courier: ${consignment.courierCompany}${consignment.courierWaybill ? ` (Waybill: ${consignment.courierWaybill})` : ''}</p>` : ''}
+          <p>Please print this document and include it with the shipment for your records.</p>
+          <p>Kind regards,<br>${companyName}</p>
+        </div>`;
+
+    // Build recipient list
+    const toEmails = [recipientEmail];
+    const ccEmails = body?.cc ? body.cc.split(',').map((e) => e.trim()).filter(Boolean) : [];
+    const bccEmails = body?.bcc ? body.bcc.split(',').map((e) => e.trim()).filter(Boolean) : [];
+    const allRecipients = [...toEmails, ...ccEmails, ...bccEmails];
+
+    const userId = request.session?.user?.id;
+
+    try {
+      await sendEmailWithAttachment({
+        to: allRecipients,
+        subject: emailSubject,
+        html: emailBody,
+        attachments: [{
+          filename: `${proformaNum}.pdf`,
+          content: pdf,
+          contentType: 'application/pdf',
+        }],
+      });
+
+      // Log success
+      await app.db.insert(documentEmails).values({
+        documentType: 'SOR_PROFORMA',
+        documentId: consignment.id,
+        sentTo: recipientEmail,
+        sentBy: userId,
+        subject: emailSubject,
+        message: customMessage || undefined,
+        status: 'SENT',
+      });
+
+      return { data: { message: `Pro-forma sent to ${recipientEmail}`, email: recipientEmail } };
+    } catch (err: any) {
+      // Log failure
+      await app.db.insert(documentEmails).values({
+        documentType: 'SOR_PROFORMA',
+        documentId: consignment.id,
+        sentTo: recipientEmail,
+        sentBy: userId,
+        subject: emailSubject,
+        message: customMessage || undefined,
+        status: 'FAILED',
+        errorMessage: err.message,
+      });
+      throw err;
+    }
   });
 
   // List SOR pro-forma invoices (paginated)
