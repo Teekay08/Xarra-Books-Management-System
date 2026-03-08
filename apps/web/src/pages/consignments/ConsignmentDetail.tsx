@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
@@ -27,7 +28,7 @@ interface Consignment {
   courierWaybill: string | null;
   status: string;
   notes: string | null;
-  partner: { name: string; discountPct: string };
+  partner: { name: string; discountPct: string; contactEmail: string | null };
   lines: ConLine[];
 }
 
@@ -71,6 +72,26 @@ export function ConsignmentDetail() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['consignment', id] }),
   });
 
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailAddress, setEmailAddress] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
+
+  const emailMutation = useMutation({
+    mutationFn: (email: string) =>
+      api<{ data: { message: string } }>(`/consignments/${id}/send-proforma`, {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+    onSuccess: (res) => {
+      setEmailSent(true);
+      setShowEmailModal(false);
+      alert(res.data.message);
+    },
+    onError: (err: any) => {
+      alert(err.message || 'Failed to send email');
+    },
+  });
+
   if (isLoading) return <div className="py-12 text-center text-gray-400">Loading...</div>;
   if (!data?.data) return <div className="py-12 text-center text-gray-400">Consignment not found</div>;
 
@@ -104,6 +125,16 @@ export function ConsignmentDetail() {
               className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Print
+            </button>
+            <button
+              onClick={() => {
+                setEmailAddress(con.partner.contactEmail ?? '');
+                setShowEmailModal(true);
+              }}
+              disabled={emailMutation.isPending}
+              className="rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+            >
+              {emailMutation.isPending ? 'Sending...' : emailSent ? 'Resend Email' : 'Email to Partner'}
             </button>
             {action && (
               <button
@@ -219,6 +250,45 @@ export function ConsignmentDetail() {
         <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">Notes</h3>
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{con.notes}</p>
+        </div>
+      )}
+
+      {/* Email Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              Email SOR Pro-Forma
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Send <span className="font-mono font-medium">{con.proformaNumber}</span> to the partner as a PDF attachment.
+            </p>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Recipient Email
+            </label>
+            <input
+              type="email"
+              value={emailAddress}
+              onChange={(e) => setEmailAddress(e.target.value)}
+              placeholder="partner@example.com"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => emailMutation.mutate(emailAddress)}
+                disabled={!emailAddress || emailMutation.isPending}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {emailMutation.isPending ? 'Sending...' : 'Send Email'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

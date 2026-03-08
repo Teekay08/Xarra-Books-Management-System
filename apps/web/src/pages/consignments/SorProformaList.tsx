@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 
@@ -152,6 +152,7 @@ export function SorProformaList() {
                           >
                             Print
                           </button>
+                          <SendEmailButton consignmentId={item.id} />
                         </div>
                       </td>
                     </tr>
@@ -187,5 +188,27 @@ export function SorProformaList() {
         </>
       )}
     </div>
+  );
+}
+
+function SendEmailButton({ consignmentId }: { consignmentId: string }) {
+  const mutation = useMutation({
+    mutationFn: () =>
+      api<{ data: { message: string } }>(`/consignments/${consignmentId}/send-proforma`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (res) => alert(res.data.message),
+    onError: (err: any) => alert(err.message || 'Failed to send email'),
+  });
+
+  return (
+    <button
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+      className="text-xs text-green-600 hover:text-green-700 font-medium disabled:opacity-50"
+    >
+      {mutation.isPending ? 'Sending...' : mutation.isSuccess ? 'Sent' : 'Email'}
+    </button>
   );
 }

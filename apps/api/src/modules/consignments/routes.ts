@@ -10,6 +10,7 @@ import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
 import { renderSorProformaHtml } from '../../services/templates/sor-proforma.js';
 import { generatePdf } from '../../services/pdf.js';
+import { sendEmailWithAttachment, isEmailConfigured } from '../../services/email.js';
 
 export async function consignmentRoutes(app: FastifyInstance) {
   // List consignments (paginated)
@@ -472,6 +473,134 @@ export async function consignmentRoutes(app: FastifyInstance) {
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `inline; filename="${consignment.proformaNumber ?? 'SOR-Proforma'}.pdf"`)
       .send(pdf);
+  });
+
+  // Send SOR pro-forma via email to partner
+  app.post<{ Params: { id: string } }>('/:id/send-proforma', {
+    preHandler: requireRole('admin', 'operations', 'finance'),
+  }, async (request, reply) => {
+    if (!isEmailConfigured()) {
+      return reply.badRequest('Email service is not configured. Set RESEND_API_KEY in environment.');
+    }
+
+    const body = request.body as { email?: string } | undefined;
+
+    const consignment = await app.db.query.consignments.findFirst({
+      where: eq(consignments.id, request.params.id),
+      with: { partner: true, lines: { with: { title: true } } },
+    });
+    if (!consignment) return reply.notFound('Consignment not found');
+
+    // Determine recipient email — override from body, or partner contactEmail
+    let branch: { name: string; contactEmail: string | null } | null = null;
+    if (consignment.branchId) {
+      branch = await app.db.query.partnerBranches.findFirst({
+        where: eq(partnerBranches.id, consignment.branchId),
+      }) as any;
+    }
+
+    const recipientEmail = body?.email || branch?.contactEmail || consignment.partner.contactEmail;
+    if (!recipientEmail) {
+      return reply.badRequest('No email address found for this partner. Please provide one.');
+    }
+
+    const settings = await app.db.query.companySettings.findFirst();
+    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : 90;
+
+    // Build line items (same logic as proforma-pdf)
+    let subtotal = 0;
+    let totalVat = 0;
+    const lines = consignment.lines.map((line, i) => {
+      const unitRrp = Number(line.unitRrp);
+      const discPct = Number(line.discountPct);
+      const netPrice = roundAmount(unitRrp * (1 - discPct / 100));
+      const lineTotal = roundAmount(line.qtyDispatched * netPrice);
+      const lineTax = roundAmount(lineTotal - (lineTotal / (1 + VAT_RATE)));
+      const lineExVat = roundAmount(lineTotal - lineTax);
+      subtotal += lineExVat;
+      totalVat += lineTax;
+      return {
+        lineNumber: i + 1,
+        description: line.title?.title ?? 'Unknown Title',
+        isbn: line.title?.isbn13 ?? null,
+        quantity: line.qtyDispatched,
+        unitRrp: String(unitRrp),
+        discountPct: String(discPct),
+        netPrice: String(netPrice),
+        lineTotal: String(lineTotal),
+      };
+    });
+
+    subtotal = roundAmount(subtotal);
+    totalVat = roundAmount(totalVat);
+    const total = roundAmount(subtotal + totalVat);
+
+    const html = renderSorProformaHtml({
+      proformaNumber: consignment.proformaNumber ?? consignment.id.slice(0, 8).toUpperCase(),
+      partnerPoNumber: consignment.partnerPoNumber,
+      dispatchDate: (consignment.dispatchDate ?? consignment.createdAt).toISOString(),
+      sorExpiryDate: consignment.sorExpiryDate?.toISOString(),
+      sorDays,
+      courierCompany: consignment.courierCompany,
+      courierWaybill: consignment.courierWaybill,
+      company: settings ? {
+        name: settings.companyName,
+        tradingAs: settings.tradingAs,
+        vatNumber: settings.vatNumber,
+        registrationNumber: settings.registrationNumber,
+        addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2,
+        city: settings.city,
+        province: settings.province,
+        postalCode: settings.postalCode,
+        phone: settings.phone,
+        email: settings.email,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+      recipient: {
+        name: consignment.partner.name,
+        branchName: branch?.name,
+        contactName: consignment.partner.contactName,
+        contactEmail: branch?.contactEmail ?? consignment.partner.contactEmail,
+        addressLine1: consignment.partner.addressLine1,
+        addressLine2: consignment.partner.addressLine2,
+        city: consignment.partner.city,
+        province: consignment.partner.province,
+        postalCode: consignment.partner.postalCode,
+        vatNumber: consignment.partner.vatNumber,
+      },
+      lines,
+      subtotal: String(subtotal),
+      vatAmount: String(totalVat),
+      total: String(total),
+      notes: consignment.notes,
+    });
+
+    const pdf = await generatePdf(html);
+
+    const proformaNum = consignment.proformaNumber ?? 'SOR-Proforma';
+    const companyName = settings?.companyName ?? 'Xarra Books';
+    const totalQty = consignment.lines.reduce((s, l) => s + l.qtyDispatched, 0);
+
+    await sendEmailWithAttachment({
+      to: recipientEmail,
+      subject: `SOR Pro-Forma Invoice ${proformaNum} — ${companyName}`,
+      html: `
+        <p>Dear ${consignment.partner.contactName ?? consignment.partner.name},</p>
+        <p>Please find attached the SOR Pro-Forma Invoice <strong>${proformaNum}</strong> for ${totalQty} copies.</p>
+        ${consignment.sorExpiryDate ? `<p>SOR Period: ${sorDays} days — expires <strong>${new Date(consignment.sorExpiryDate).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</strong>.</p>` : ''}
+        ${consignment.courierCompany ? `<p>Courier: ${consignment.courierCompany}${consignment.courierWaybill ? ` (Waybill: ${consignment.courierWaybill})` : ''}</p>` : ''}
+        <p>Please print this document and include it with the shipment for your records.</p>
+        <p>Kind regards,<br>${companyName}</p>
+      `,
+      attachments: [{
+        filename: `${proformaNum}.pdf`,
+        content: pdf,
+        contentType: 'application/pdf',
+      }],
+    });
+
+    return { data: { message: `Pro-forma sent to ${recipientEmail}`, email: recipientEmail } };
   });
 
   // List SOR pro-forma invoices (paginated)
