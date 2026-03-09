@@ -13,7 +13,7 @@ interface Title {
   isbn13: string | null;
 }
 
-interface Partner {
+interface Supplier {
   id: string;
   name: string;
 }
@@ -28,15 +28,20 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
   const [isDirty, setIsDirty] = useState(false);
   const [titleId, setTitleId] = useState(searchParams.get('titleId') ?? '');
   const [supplierId, setSupplierId] = useState('');
+  const [showCreateSupplier, setShowCreateSupplier] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState('');
+  const [newSupplierContact, setNewSupplierContact] = useState('');
+  const [newSupplierEmail, setNewSupplierEmail] = useState('');
+  const [newSupplierPhone, setNewSupplierPhone] = useState('');
 
   const { data: titlesData } = useQuery({
     queryKey: ['titles-select'],
     queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=500'),
   });
 
-  const { data: partnersData } = useQuery({
-    queryKey: ['partners-select'],
-    queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=500'),
+  const { data: suppliersData } = useQuery({
+    queryKey: ['suppliers-select'],
+    queryFn: () => api<PaginatedResponse<Supplier>>('/suppliers?limit=500'),
     enabled: mode === 'receive',
   });
 
@@ -53,15 +58,30 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
     },
   });
 
+  const createSupplierMut = useMutation({
+    mutationFn: (body: Record<string, string>) =>
+      api<{ data: Supplier }>('/suppliers', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers-select'] });
+      setSupplierId(res.data.id);
+      setShowCreateSupplier(false);
+      setNewSupplierName('');
+      setNewSupplierContact('');
+      setNewSupplierEmail('');
+      setNewSupplierPhone('');
+      if (!isDirty) setIsDirty(true);
+    },
+  });
+
   const titleOptions = (titlesData?.data ?? []).map((t) => ({
     value: t.id,
     label: t.title,
     subtitle: t.isbn13 ?? undefined,
   }));
 
-  const supplierOptions = (partnersData?.data ?? []).map((p) => ({
-    value: p.id,
-    label: p.name,
+  const supplierOptions = (suppliersData?.data ?? []).map((s) => ({
+    value: s.id,
+    label: s.name,
   }));
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -72,7 +92,7 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
     if (!titleId) { setError('Please select a title'); return; }
 
     if (mode === 'receive') {
-      const selectedSupplier = partnersData?.data.find((p) => p.id === supplierId);
+      const selectedSupplier = suppliersData?.data.find((s) => s.id === supplierId);
       mutation.mutate({
         titleId,
         quantity: Number(fd.get('quantity')),
@@ -80,9 +100,7 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
         receivedDate: fd.get('receivedDate') || undefined,
         batchNumber: fd.get('batchNumber') || undefined,
         supplierId: supplierId || undefined,
-        supplierName: supplierId
-          ? selectedSupplier?.name
-          : (fd.get('supplierName') as string) || undefined,
+        supplierName: selectedSupplier?.name ?? undefined,
         notes: fd.get('notes') || undefined,
       }, { onError: (err) => setError(err.message) });
     } else {
@@ -149,17 +167,91 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
                 value={supplierId}
                 onChange={(v) => { setSupplierId(v); if (!isDirty) setIsDirty(true); }}
                 placeholder="Search suppliers..."
+                onCreateNew={() => setShowCreateSupplier(true)}
+                createNewLabel="Add new supplier"
               />
             </div>
 
-            {!supplierId && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Name (if not in system)</label>
-                <input
-                  name="supplierName"
-                  className={cls}
-                  placeholder="e.g. PrintCo Supplies"
-                />
+            {/* Inline Create Supplier Modal */}
+            {showCreateSupplier && (
+              <div className="rounded-lg border border-green-200 bg-green-50/50 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-gray-900">New Supplier</h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateSupplier(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Supplier Name *</label>
+                  <input
+                    type="text"
+                    value={newSupplierName}
+                    onChange={(e) => setNewSupplierName(e.target.value)}
+                    className={cls}
+                    placeholder="e.g. Paarl Media, Mega Digital"
+                    autoFocus
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Contact Person</label>
+                    <input
+                      type="text"
+                      value={newSupplierContact}
+                      onChange={(e) => setNewSupplierContact(e.target.value)}
+                      className={cls}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={newSupplierEmail}
+                      onChange={(e) => setNewSupplierEmail(e.target.value)}
+                      className={cls}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    value={newSupplierPhone}
+                    onChange={(e) => setNewSupplierPhone(e.target.value)}
+                    className={cls}
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateSupplier(false)}
+                    className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!newSupplierName.trim() || createSupplierMut.isPending}
+                    onClick={() => createSupplierMut.mutate({
+                      name: newSupplierName.trim(),
+                      ...(newSupplierContact && { contactName: newSupplierContact }),
+                      ...(newSupplierEmail && { contactEmail: newSupplierEmail }),
+                      ...(newSupplierPhone && { contactPhone: newSupplierPhone }),
+                    })}
+                    className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:opacity-50"
+                  >
+                    {createSupplierMut.isPending ? 'Creating...' : 'Create Supplier'}
+                  </button>
+                </div>
+                {createSupplierMut.isError && (
+                  <p className="text-xs text-red-600">{(createSupplierMut.error as any)?.message ?? 'Failed to create supplier'}</p>
+                )}
               </div>
             )}
           </>

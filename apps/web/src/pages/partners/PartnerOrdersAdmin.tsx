@@ -64,7 +64,7 @@ export function PartnerOrdersAdmin() {
   const [dispatchModal, setDispatchModal] = useState(false);
   const [deliverModal, setDeliverModal] = useState(false);
   const [linkModal, setLinkModal] = useState(false);
-  const [dispatchForm, setDispatchForm] = useState({ courierCompany: '', waybillNumber: '', trackingUrl: '' });
+  const [dispatchForm, setDispatchForm] = useState({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' });
   const [deliverSignedBy, setDeliverSignedBy] = useState('');
   const [linkForm, setLinkForm] = useState({ consignmentId: '', invoiceId: '', quotationId: '' });
 
@@ -379,7 +379,7 @@ export function PartnerOrdersAdmin() {
                       </button>
                       <button
                         onClick={() => {
-                          setDispatchForm({ courierCompany: '', waybillNumber: '', trackingUrl: '' });
+                          setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' });
                           setDispatchModal(true);
                         }}
                         className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
@@ -391,7 +391,7 @@ export function PartnerOrdersAdmin() {
                   {orderDetail.status === 'PROCESSING' && (
                     <button
                       onClick={() => {
-                        setDispatchForm({ courierCompany: '', waybillNumber: '', trackingUrl: '' });
+                        setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' });
                         setDispatchModal(true);
                       }}
                       className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
@@ -478,8 +478,8 @@ export function PartnerOrdersAdmin() {
                 <label className="mb-1 block text-sm font-medium text-gray-700">Waybill Number</label>
                 <input
                   type="text"
-                  value={dispatchForm.waybillNumber}
-                  onChange={(e) => setDispatchForm((p) => ({ ...p, waybillNumber: e.target.value }))}
+                  value={dispatchForm.courierWaybill}
+                  onChange={(e) => setDispatchForm((p) => ({ ...p, courierWaybill: e.target.value }))}
                   required
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
                 />
@@ -488,8 +488,8 @@ export function PartnerOrdersAdmin() {
                 <label className="mb-1 block text-sm font-medium text-gray-700">Tracking URL</label>
                 <input
                   type="url"
-                  value={dispatchForm.trackingUrl}
-                  onChange={(e) => setDispatchForm((p) => ({ ...p, trackingUrl: e.target.value }))}
+                  value={dispatchForm.courierTrackingUrl}
+                  onChange={(e) => setDispatchForm((p) => ({ ...p, courierTrackingUrl: e.target.value }))}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
                 />
               </div>

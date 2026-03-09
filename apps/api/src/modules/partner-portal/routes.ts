@@ -31,6 +31,8 @@ import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { nextPartnerOrderNumber, nextPartnerReturnRequestNumber } from '../finance/invoice-number.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
+import { renderSorProformaHtml } from '../../services/templates/sor-proforma.js';
+import { generatePdf } from '../../services/pdf.js';
 
 // Password hashing using Node.js built-in scrypt
 function hashPassword(password: string): Promise<string> {
@@ -571,7 +573,7 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     const session = request.partnerSession!;
 
     const branchFilter = session.branchId
-      ? and(eq(consignments.partnerId, session.partnerId), eq(consignments.branchId, session.branchId))
+      ? and(eq(consignments.partnerId, session.partnerId), or(eq(consignments.branchId, session.branchId), isNull(consignments.branchId)))
       : eq(consignments.partnerId, session.partnerId);
 
     const [items, countResult] = await Promise.all([
@@ -600,6 +602,91 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     });
     if (!consignment) return reply.notFound('Consignment not found');
     return { data: consignment };
+  });
+
+  // Partner consignment proforma PDF
+  app.get<{ Params: { id: string } }>('/documents/consignments/:id/proforma-pdf', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    const consignment = await app.db.query.consignments.findFirst({
+      where: and(eq(consignments.id, request.params.id), eq(consignments.partnerId, session.partnerId)),
+      with: { partner: true, lines: { with: { title: true } } },
+    });
+    if (!consignment) return reply.notFound('Consignment not found');
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    let branch: { name: string; contactEmail: string | null } | null = null;
+    if (consignment.branchId) {
+      branch = await app.db.query.partnerBranches.findFirst({
+        where: eq(partnerBranches.id, consignment.branchId),
+      }) as any;
+    }
+
+    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : 90;
+    let subtotal = 0;
+    let totalVat = 0;
+
+    const lines = consignment.lines.map((line, i) => {
+      const unitRrp = Number(line.unitRrp);
+      const discPct = Number(line.discountPct);
+      const netPrice = roundAmount(unitRrp * (1 - discPct / 100));
+      const lineTotal = roundAmount(line.qtyDispatched * netPrice);
+      const lineTax = roundAmount(lineTotal - (lineTotal / (1 + VAT_RATE)));
+      const lineExVat = roundAmount(lineTotal - lineTax);
+      subtotal += lineExVat;
+      totalVat += lineTax;
+      return {
+        lineNumber: i + 1,
+        description: line.title?.title ?? 'Unknown Title',
+        isbn: line.title?.isbn13 ?? null,
+        quantity: line.qtyDispatched,
+        unitRrp: String(unitRrp),
+        discountPct: String(discPct),
+        netPrice: String(netPrice),
+        lineTotal: String(lineTotal),
+      };
+    });
+
+    subtotal = roundAmount(subtotal);
+    totalVat = roundAmount(totalVat);
+    const total = roundAmount(subtotal + totalVat);
+
+    const html = renderSorProformaHtml({
+      proformaNumber: consignment.proformaNumber ?? consignment.id.slice(0, 8).toUpperCase(),
+      partnerPoNumber: consignment.partnerPoNumber,
+      dispatchDate: (consignment.dispatchDate ?? consignment.createdAt).toISOString(),
+      sorExpiryDate: consignment.sorExpiryDate?.toISOString(),
+      sorDays,
+      courierCompany: consignment.courierCompany,
+      courierWaybill: consignment.courierWaybill,
+      company: settings ? {
+        name: settings.companyName, tradingAs: settings.tradingAs, vatNumber: settings.vatNumber,
+        registrationNumber: settings.registrationNumber, addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2, city: settings.city, province: settings.province,
+        postalCode: settings.postalCode, phone: settings.phone, email: settings.email,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+      recipient: {
+        name: consignment.partner.name, branchName: branch?.name,
+        contactName: consignment.partner.contactName,
+        contactEmail: branch?.contactEmail ?? consignment.partner.contactEmail,
+        addressLine1: consignment.partner.addressLine1, addressLine2: consignment.partner.addressLine2,
+        city: consignment.partner.city, province: consignment.partner.province,
+        postalCode: consignment.partner.postalCode, vatNumber: consignment.partner.vatNumber,
+      },
+      lines,
+      subtotal: String(subtotal),
+      vatAmount: String(totalVat),
+      total: String(total),
+      notes: consignment.notes,
+    });
+
+    const pdf = await generatePdf(html);
+
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `inline; filename="${consignment.proformaNumber ?? 'SOR-Proforma'}.pdf"`)
+      .send(pdf);
   });
 
   // ==========================================
@@ -698,8 +785,8 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
   app.get('/shipments', { preHandler: requirePartnerAuth }, async (request) => {
     const session = request.partnerSession!;
 
-    // Get shipments linked to this partner's orders
-    const shipments = await app.db
+    // Get shipments from courier_shipments table
+    const dbShipments = await app.db
       .select()
       .from(courierShipments)
       .where(sql`${courierShipments.partnerOrderId} IN (
@@ -707,7 +794,33 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
       )`)
       .orderBy(desc(courierShipments.createdAt));
 
-    return { data: shipments };
+    // Also include orders with courier info that don't have a courierShipments record
+    const existingOrderIds = new Set(dbShipments.map(s => s.partnerOrderId).filter(Boolean));
+    const ordersWithCourier = await app.db.query.partnerOrders.findMany({
+      where: and(
+        eq(partnerOrders.partnerId, session.partnerId),
+        sql`${partnerOrders.courierWaybill} IS NOT NULL`,
+      ),
+    });
+
+    const fallbackShipments = ordersWithCourier
+      .filter(o => !existingOrderIds.has(o.id))
+      .map(o => ({
+        id: `order-${o.id}`,
+        courierCompany: o.courierCompany ?? 'Unknown',
+        waybillNumber: o.courierWaybill ?? '',
+        trackingUrl: o.courierTrackingUrl ?? null,
+        partnerOrderId: o.id,
+        consignmentId: null,
+        returnRequestId: null,
+        status: o.status === 'DELIVERED' ? 'DELIVERED' : 'IN_TRANSIT',
+        estimatedDelivery: null,
+        deliveredAt: o.deliveredAt?.toISOString() ?? null,
+        deliverySignedBy: null,
+        createdAt: o.dispatchedAt?.toISOString() ?? o.createdAt.toISOString(),
+      }));
+
+    return { data: [...dbShipments, ...fallbackShipments] };
   });
 
   app.get<{ Params: { id: string } }>('/shipments/:id', { preHandler: requirePartnerAuth }, async (request, reply) => {
@@ -1078,7 +1191,7 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       type: 'ORDER_STATUS_CHANGED',
       title: `Order ${order.number} confirmed`,
       message: 'Your order has been confirmed and will be processed shortly.',
-      actionUrl: '/partner/orders',
+      actionUrl: `/partner/orders/${order.id}`,
       referenceType: 'PARTNER_ORDER',
       referenceId: order.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
@@ -1148,13 +1261,25 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       updatedAt: new Date(),
     }).where(eq(partnerOrders.id, order.id));
 
+    // Auto-create courier shipment record for partner tracking
+    if (body?.courierWaybill) {
+      await app.db.insert(courierShipments).values({
+        courierCompany: body.courierCompany || 'FASTWAY',
+        waybillNumber: body.courierWaybill,
+        trackingUrl: body.courierTrackingUrl || null,
+        partnerOrderId: order.id,
+        status: 'IN_TRANSIT',
+        createdBy: request.session?.user?.id,
+      });
+    }
+
     notifyPartner(app, order.partnerId, {
       type: 'ORDER_STATUS_CHANGED',
       title: `Order ${order.number} dispatched`,
       message: body?.courierWaybill
         ? `Your order has been dispatched. Waybill: ${body.courierWaybill}`
         : 'Your order has been dispatched.',
-      actionUrl: '/partner/orders',
+      actionUrl: `/partner/orders/${order.id}`,
       referenceType: 'PARTNER_ORDER',
       referenceId: order.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
@@ -1185,7 +1310,7 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       type: 'ORDER_STATUS_CHANGED',
       title: `Order ${order.number} delivered`,
       message: 'Your order has been delivered.',
-      actionUrl: '/partner/orders',
+      actionUrl: `/partner/orders/${order.id}`,
       referenceType: 'PARTNER_ORDER',
       referenceId: order.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));

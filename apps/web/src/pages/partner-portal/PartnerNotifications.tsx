@@ -49,9 +49,26 @@ export function PartnerNotifications() {
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => partnerApi(`/notifications/${id}/read`, { method: 'PATCH' }),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['partner-notifications'] });
+      await queryClient.cancelQueries({ queryKey: ['partner-notification-count'] });
+
+      queryClient.setQueryData(['partner-notification-count'], (old: any) =>
+        old ? { ...old, data: { unread: Math.max(0, (old.data?.unread ?? 1) - 1) } } : old
+      );
+      queryClient.setQueryData(['partner-notifications', page, filter], (old: any) => {
+        if (!old?.data) return old;
+        return { ...old, data: old.data.map((n: any) => n.id === id ? { ...n, isRead: true } : n) };
+      });
+      queryClient.setQueryData(['partner-notifications-dropdown'], (old: any) => {
+        if (!old?.data) return old;
+        return { ...old, data: old.data.map((n: any) => n.id === id ? { ...n, isRead: true } : n) };
+      });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['partner-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['partner-notification-count'] });
+      queryClient.invalidateQueries({ queryKey: ['partner-notifications-dropdown'] });
     },
   });
 

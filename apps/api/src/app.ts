@@ -35,6 +35,7 @@ import { salesRoutes } from './modules/sales/routes.js';
 import { exportRoutes } from './modules/export/routes.js';
 import { partnerPortalRoutes, partnerPortalAdminRoutes } from './modules/partner-portal/routes.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
+import { supplierRoutes } from './modules/suppliers/routes.js';
 import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
@@ -177,6 +178,7 @@ export async function buildApp() {
     api.register(salesRoutes, { prefix: '/sales' });
     api.register(exportRoutes, { prefix: '/export' });
     api.register(notificationRoutes, { prefix: '/notifications' });
+    api.register(supplierRoutes, { prefix: '/suppliers' });
     api.register(partnerPortalRoutes, { prefix: '/partner-portal' });
     api.register(partnerPortalAdminRoutes, { prefix: '/partner-admin' });
   }, { prefix: '/api/v1' });

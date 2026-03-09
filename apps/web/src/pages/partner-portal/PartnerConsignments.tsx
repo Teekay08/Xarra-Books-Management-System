@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { partnerApi, type PaginatedResponse } from '../../lib/partner-api';
+import { partnerApi, getPartnerToken, type PaginatedResponse } from '../../lib/partner-api';
 
 interface ConsignmentLineTitle {
   id: string;
@@ -215,14 +215,28 @@ function ExpandableRow({
         <td className="px-6 py-3 text-right" onClick={(e) => e.stopPropagation()}>
           <div className="flex gap-2 justify-end">
             <button
-              onClick={() => window.open(`/api/v1/consignments/${consignment.id}/proforma-pdf`, '_blank')}
+              onClick={async () => {
+                const token = getPartnerToken();
+                const res = await fetch(`/api/v1/partner-portal/documents/consignments/${consignment.id}/proforma-pdf`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+              }}
               className="text-xs text-blue-600 hover:text-blue-700 font-medium"
             >
               Download PDF
             </button>
             <button
-              onClick={() => {
-                const w = window.open(`/api/v1/consignments/${consignment.id}/proforma-pdf`, '_blank');
+              onClick={async () => {
+                const token = getPartnerToken();
+                const res = await fetch(`/api/v1/partner-portal/documents/consignments/${consignment.id}/proforma-pdf`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const w = window.open(url, '_blank');
                 w?.addEventListener('load', () => w.print());
               }}
               className="text-xs text-gray-600 hover:text-gray-700 font-medium"

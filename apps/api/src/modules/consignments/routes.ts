@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc } from 'drizzle-orm';
 import {
-  consignments, consignmentLines, channelPartners,
+  consignments, consignmentLines, channelPartners, partnerOrders,
   inventoryMovements, titles, companySettings, partnerBranches,
 } from '@xarra/db';
 import { createConsignmentSchema, paginationSchema, VAT_RATE, roundAmount } from '@xarra/shared';
@@ -235,6 +235,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const consignment = await app.db.query.consignments.findFirst({
       where: eq(consignments.id, request.params.id),
+      with: { partner: true },
     });
     if (!consignment) return reply.notFound('Consignment not found');
     if (consignment.status !== 'DISPATCHED') return reply.badRequest('Only DISPATCHED consignments can be delivered');
@@ -244,6 +245,23 @@ export async function consignmentRoutes(app: FastifyInstance) {
       deliveryDate: new Date(),
       updatedAt: new Date(),
     }).where(eq(consignments.id, request.params.id)).returning();
+
+    // Update linked partner orders to DELIVERED
+    await app.db.update(partnerOrders).set({
+      status: 'DELIVERED',
+      deliveredAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(partnerOrders.consignmentId, consignment.id));
+
+    // Notify partner
+    notifyPartner(app, consignment.partnerId, {
+      type: 'CONSIGNMENT_DISPATCHED',
+      title: 'Consignment delivered',
+      message: `Your consignment has been delivered.`,
+      actionUrl: '/partner/consignments',
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner delivery notification'));
 
     return { data: updated };
   });
@@ -263,6 +281,16 @@ export async function consignmentRoutes(app: FastifyInstance) {
       acknowledgedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(consignments.id, request.params.id)).returning();
+
+    // Notify partner
+    notifyPartner(app, consignment.partnerId, {
+      type: 'CONSIGNMENT_DISPATCHED',
+      title: 'Consignment acknowledged',
+      message: 'Your consignment has been acknowledged and received.',
+      actionUrl: '/partner/consignments',
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner acknowledge notification'));
 
     return { data: updated };
   });
