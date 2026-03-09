@@ -153,7 +153,7 @@ export async function reportRoutes(app: FastifyInstance) {
   app.get('/inventory', { preHandler: requireAuth }, async () => {
     const rows = await app.db.execute(sql`
       SELECT
-        t.id, t.title, t.isbn13,
+        t.id, t.title, t.isbn_13 AS isbn13,
         COALESCE(SUM(
           CASE
             WHEN im.movement_type IN ('IN', 'RETURN') THEN im.quantity
@@ -166,7 +166,7 @@ export async function reportRoutes(app: FastifyInstance) {
         COALESCE(SUM(CASE WHEN im.movement_type = 'SELL' THEN im.quantity ELSE 0 END), 0)::int AS total_sold
       FROM titles t
       LEFT JOIN inventory_movements im ON im.title_id = t.id
-      GROUP BY t.id, t.title, t.isbn13
+      GROUP BY t.id, t.title, t.isbn_13
       ORDER BY t.title ASC
     `);
 
@@ -492,7 +492,7 @@ export async function reportRoutes(app: FastifyInstance) {
       SELECT
         t.id,
         t.title,
-        t.isbn13,
+        t.isbn_13 AS isbn13,
         t.rrp_zar::numeric AS rrp,
         COALESCE(SUM(il.quantity::int), 0) AS units_sold,
         COALESCE(SUM(il.line_total::numeric), 0) AS revenue,
@@ -514,7 +514,7 @@ export async function reportRoutes(app: FastifyInstance) {
         AND i.invoice_date >= ${periodFrom}
         AND i.invoice_date <= ${periodTo}
       LEFT JOIN inventory_movements im ON im.title_id = t.id
-      GROUP BY t.id, t.title, t.isbn13, t.rrp_zar
+      GROUP BY t.id, t.title, t.isbn_13, t.rrp_zar
       ORDER BY revenue DESC
     `);
 
@@ -698,7 +698,7 @@ export async function reportRoutes(app: FastifyInstance) {
     // Best sellers by revenue
     const bestByRevenue = await app.db.execute(sql`
       SELECT
-        t.id, t.title, t.isbn13,
+        t.id, t.title, t.isbn_13 AS isbn13,
         COALESCE(SUM(il.quantity::int), 0) AS units_sold,
         COALESCE(SUM(il.line_total::numeric), 0) AS revenue
       FROM invoice_lines il
@@ -706,7 +706,7 @@ export async function reportRoutes(app: FastifyInstance) {
       JOIN titles t ON t.id = il.title_id
       WHERE i.status != 'VOIDED'
         AND i.invoice_date >= ${periodFrom} AND i.invoice_date <= ${periodTo}
-      GROUP BY t.id, t.title, t.isbn13
+      GROUP BY t.id, t.title, t.isbn_13
       ORDER BY revenue DESC
       LIMIT ${topN}
     `);
@@ -714,7 +714,7 @@ export async function reportRoutes(app: FastifyInstance) {
     // Best sellers by units
     const bestByUnits = await app.db.execute(sql`
       SELECT
-        t.id, t.title, t.isbn13,
+        t.id, t.title, t.isbn_13 AS isbn13,
         COALESCE(SUM(il.quantity::int), 0) AS units_sold,
         COALESCE(SUM(il.line_total::numeric), 0) AS revenue
       FROM invoice_lines il
@@ -722,7 +722,7 @@ export async function reportRoutes(app: FastifyInstance) {
       JOIN titles t ON t.id = il.title_id
       WHERE i.status != 'VOIDED'
         AND i.invoice_date >= ${periodFrom} AND i.invoice_date <= ${periodTo}
-      GROUP BY t.id, t.title, t.isbn13
+      GROUP BY t.id, t.title, t.isbn_13
       ORDER BY units_sold DESC
       LIMIT ${topN}
     `);
@@ -730,7 +730,7 @@ export async function reportRoutes(app: FastifyInstance) {
     // Least performing (titles with zero or lowest sales in the period)
     const leastPerforming = await app.db.execute(sql`
       SELECT
-        t.id, t.title, t.isbn13,
+        t.id, t.title, t.isbn_13 AS isbn13,
         COALESCE(sales.units_sold, 0)::int AS units_sold,
         COALESCE(sales.revenue, 0) AS revenue
       FROM titles t

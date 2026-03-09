@@ -218,6 +218,9 @@ const router = createBrowserRouter([
       { path: 'returns/new', element: <ReturnsCreate /> },
       { path: 'returns/:id', element: <ReturnsDetail /> },
 
+      // Notifications
+      { path: 'notifications', element: <NotificationList /> },
+
       // Statements
       { path: 'statements', element: <StatementGenerate /> },
 

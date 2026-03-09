@@ -1,6 +1,5 @@
 import { pgTable, uuid, varchar, text, timestamp, boolean, index, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
 import { channelPartners, partnerUsers } from './channels';
 
 export const notificationTypeEnum = pgEnum('notification_type', [
@@ -47,7 +46,8 @@ export const notifications = pgTable('notifications', {
   title: varchar('title', { length: 255 }).notNull(),
   message: text('message').notNull(),
   // Who should see this notification (null = all admins)
-  userId: uuid('user_id').references(() => users.id),
+  // Uses text type because Better Auth generates string IDs, not UUIDs
+  userId: text('user_id'),
   // Optional link to navigate to when clicked
   actionUrl: varchar('action_url', { length: 500 }),
   // Reference to the related entity
@@ -66,12 +66,7 @@ export const notifications = pgTable('notifications', {
   index('idx_notifications_reference').on(t.referenceType, t.referenceId),
 ]);
 
-export const notificationsRelations = relations(notifications, ({ one }) => ({
-  user: one(users, {
-    fields: [notifications.userId],
-    references: [users.id],
-  }),
-}));
+// No relations defined — userId is a Better Auth string ID, not a FK to the app's users table
 
 // ==========================================
 // PARTNER NOTIFICATIONS

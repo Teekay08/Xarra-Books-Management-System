@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, text, boolean, timestamp, decimal, pgEnum, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { user } from './auth';
 import { titles } from './titles';
 
 export const authorTypeEnum = pgEnum('author_type', ['HYBRID', 'TRADITIONAL']);
@@ -25,7 +25,7 @@ export const authors = pgTable('authors', {
   bankDetails: jsonb('bank_details'), // { bankName, accountNumber, branchCode, accountType }
   taxNumber: varchar('tax_number', { length: 50 }), // SARS tax number
   isActive: boolean('is_active').notNull().default(true),
-  portalUserId: uuid('portal_user_id').references(() => users.id),
+  portalUserId: text('portal_user_id'),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -61,9 +61,9 @@ export const authorContracts = pgTable('author_contracts', {
 
 export const authorsRelations = relations(authors, ({ many, one }) => ({
   contracts: many(authorContracts),
-  portalUser: one(users, {
+  portalUser: one(user, {
     fields: [authors.portalUserId],
-    references: [users.id],
+    references: [user.id],
   }),
 }));
 

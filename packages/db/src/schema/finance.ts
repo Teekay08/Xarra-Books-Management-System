@@ -3,7 +3,7 @@ import { relations } from 'drizzle-orm';
 import { channelPartners, partnerBranches } from './channels';
 import { consignments } from './consignments';
 import { titles } from './titles';
-import { users } from './users';
+import { user } from './auth';
 
 export const invoiceStatusEnum = pgEnum('invoice_status', [
   'DRAFT', 'ISSUED', 'PAID', 'PARTIAL', 'OVERDUE', 'VOIDED',
@@ -33,7 +33,7 @@ export const invoices = pgTable('invoices', {
   voidedAt: timestamp('voided_at', { withTimezone: true }),
   voidedReason: text('voided_reason'),
   idempotencyKey: varchar('idempotency_key', { length: 64 }).unique(),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -72,7 +72,7 @@ export const creditNotes = pgTable('credit_notes', {
   pdfUrl: varchar('pdf_url', { length: 500 }),
   voidedAt: timestamp('voided_at', { withTimezone: true }),
   voidedReason: text('voided_reason'),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_credit_notes_invoice_id').on(t.invoiceId),
@@ -89,7 +89,7 @@ export const payments = pgTable('payments', {
   bankReference: varchar('bank_reference', { length: 100 }).notNull(),
   notes: text('notes'),
   idempotencyKey: varchar('idempotency_key', { length: 64 }).unique(),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_payments_partner_id').on(t.partnerId),
@@ -117,16 +117,16 @@ export const remittances = pgTable('remittances', {
   status: varchar('status', { length: 20 }).notNull().default('PENDING'), // PENDING, UNDER_REVIEW, VERIFIED, APPROVED, DISPUTED
   sourceDocUrl: varchar('source_doc_url', { length: 500 }),
   // Review workflow
-  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedBy: text('reviewed_by'),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   reviewNotes: text('review_notes'),
-  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedBy: text('approved_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   // Legacy match (kept for backward compat)
-  matchedBy: uuid('matched_by').references(() => users.id),
+  matchedBy: text('matched_by'),
   matchedAt: timestamp('matched_at', { withTimezone: true }),
   notes: text('notes'),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_remittances_partner_id').on(t.partnerId),
@@ -167,7 +167,7 @@ export const debitNotes = pgTable('debit_notes', {
   pdfUrl: varchar('pdf_url', { length: 500 }),
   voidedAt: timestamp('voided_at', { withTimezone: true }),
   voidedReason: text('voided_reason'),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_debit_notes_invoice_id').on(t.invoiceId),
@@ -178,7 +178,7 @@ export const debitNotes = pgTable('debit_notes', {
 export const invoicesRelations = relations(invoices, ({ one, many }) => ({
   partner: one(channelPartners, { fields: [invoices.partnerId], references: [channelPartners.id] }),
   consignment: one(consignments, { fields: [invoices.consignmentId], references: [consignments.id] }),
-  createdByUser: one(users, { fields: [invoices.createdBy], references: [users.id] }),
+  createdByUser: one(user, { fields: [invoices.createdBy], references: [user.id] }),
   lines: many(invoiceLines),
   creditNotes: many(creditNotes),
   debitNotes: many(debitNotes),
@@ -248,7 +248,7 @@ export const quotations = pgTable('quotations', {
   convertedInvoiceId: uuid('converted_invoice_id').references(() => invoices.id),
   notes: text('notes'),
   pdfUrl: varchar('pdf_url', { length: 500 }),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -301,7 +301,7 @@ export const purchaseOrders = pgTable('purchase_orders', {
   receivedAt: timestamp('received_at', { withTimezone: true }),
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   cancelReason: text('cancel_reason'),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -327,7 +327,7 @@ export const purchaseOrderLines = pgTable('purchase_order_lines', {
 
 export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
   supplier: one(channelPartners, { fields: [purchaseOrders.supplierId], references: [channelPartners.id] }),
-  createdByUser: one(users, { fields: [purchaseOrders.createdBy], references: [users.id] }),
+  createdByUser: one(user, { fields: [purchaseOrders.createdBy], references: [user.id] }),
   lines: many(purchaseOrderLines),
 }));
 
@@ -353,7 +353,7 @@ export const cashSales = pgTable('cash_sales', {
   notes: text('notes'),
   voidedAt: timestamp('voided_at', { withTimezone: true }),
   voidedReason: text('voided_reason'),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_cash_sales_sale_date').on(t.saleDate),
@@ -375,7 +375,7 @@ export const cashSaleLines = pgTable('cash_sale_lines', {
 ]);
 
 export const cashSalesRelations = relations(cashSales, ({ one, many }) => ({
-  createdByUser: one(users, { fields: [cashSales.createdBy], references: [users.id] }),
+  createdByUser: one(user, { fields: [cashSales.createdBy], references: [user.id] }),
   lines: many(cashSaleLines),
 }));
 

@@ -2,7 +2,7 @@ import { pgTable, uuid, varchar, text, timestamp, decimal, integer, boolean, pgE
 import { relations } from 'drizzle-orm';
 import { authors, authorContracts, royaltyTriggerEnum } from './authors';
 import { titles } from './titles';
-import { users } from './users';
+import { user } from './auth';
 
 // ==========================================
 // ROYALTY LEDGER — append-only calculation entries
@@ -28,7 +28,7 @@ export const royaltyLedger = pgTable('royalty_ledger', {
   statementPdfUrl: varchar('statement_pdf_url', { length: 500 }),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
 }, (t) => [
   index('idx_royalty_author_id').on(t.authorId),
   index('idx_royalty_title_id').on(t.titleId),
@@ -64,10 +64,10 @@ export const authorPayments = pgTable('author_payments', {
   statementPdfUrl: varchar('statement_pdf_url', { length: 500 }),
   notes: text('notes'),
   idempotencyKey: varchar('idempotency_key', { length: 64 }).unique(),
-  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedBy: text('approved_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
-  processedBy: uuid('processed_by').references(() => users.id),
-  createdBy: uuid('created_by').references(() => users.id),
+  processedBy: text('processed_by'),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -116,9 +116,9 @@ export const authorPaymentsRelations = relations(authorPayments, ({ one, many })
   author: one(authors, { fields: [authorPayments.authorId], references: [authors.id] }),
   lines: many(authorPaymentLines),
   ledgerEntries: many(royaltyLedger),
-  approvedByUser: one(users, { fields: [authorPayments.approvedBy], references: [users.id] }),
-  processedByUser: one(users, { fields: [authorPayments.processedBy], references: [users.id] }),
-  createdByUser: one(users, { fields: [authorPayments.createdBy], references: [users.id] }),
+  approvedByUser: one(user, { fields: [authorPayments.approvedBy], references: [user.id] }),
+  processedByUser: one(user, { fields: [authorPayments.processedBy], references: [user.id] }),
+  createdByUser: one(user, { fields: [authorPayments.createdBy], references: [user.id] }),
 }));
 
 export const authorPaymentLinesRelations = relations(authorPaymentLines, ({ one }) => ({

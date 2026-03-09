@@ -2,7 +2,7 @@ import { pgTable, uuid, varchar, text, timestamp, integer, decimal, pgEnum, inde
 import { relations } from 'drizzle-orm';
 import { channelPartners, partnerBranches } from './channels';
 import { titles } from './titles';
-import { users } from './users';
+
 
 export const consignmentStatusEnum = pgEnum('consignment_status', [
   'DRAFT', 'DISPATCHED', 'DELIVERED', 'ACKNOWLEDGED', 'PARTIAL_RETURN', 'RECONCILED', 'CLOSED',
@@ -93,16 +93,16 @@ export const returnsAuthorizations = pgTable('returns_authorizations', {
   courierWaybill: varchar('courier_waybill', { length: 100 }),
   // Warehouse receiving
   receivedAt: timestamp('received_at', { withTimezone: true }),
-  receivedBy: uuid('received_by').references(() => users.id),
+  receivedBy: text('received_by'),
   deliverySignedBy: varchar('delivery_signed_by', { length: 255 }),
   // Inspection
   inspectedAt: timestamp('inspected_at', { withTimezone: true }),
-  inspectedBy: uuid('inspected_by').references(() => users.id),
+  inspectedBy: text('inspected_by'),
   inspectionNotes: text('inspection_notes'),
   // Verification (manager sign-off)
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
-  verifiedBy: uuid('verified_by').references(() => users.id),
-  createdBy: uuid('created_by').references(() => users.id),
+  verifiedBy: text('verified_by'),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_returns_auth_partner_id').on(t.partnerId),

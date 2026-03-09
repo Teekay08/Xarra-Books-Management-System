@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, text, timestamp, jsonb, pgEnum, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { user } from './auth';
 
 // ==========================================
 // AUDIT LOGS — Immutable, append-only
@@ -13,7 +13,7 @@ export const auditActionEnum = pgEnum('audit_action', [
 
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id),
+  userId: text('user_id').notNull(),
   action: auditActionEnum('action').notNull(),
   entityType: varchar('entity_type', { length: 50 }).notNull(), // e.g. 'invoice', 'payment', 'consignment'
   entityId: uuid('entity_id'),
@@ -33,7 +33,7 @@ export const auditLogs = pgTable('audit_logs', {
 ]);
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
-  user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
+  user: one(user, { fields: [auditLogs.userId], references: [user.id] }),
 }));
 
 // ==========================================
@@ -46,9 +46,9 @@ export const deletionStatusEnum = pgEnum('deletion_status', [
 
 export const deletionRequests = pgTable('deletion_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
-  requestedBy: uuid('requested_by').notNull().references(() => users.id),
-  approvedBy: uuid('approved_by').references(() => users.id),
-  rejectedBy: uuid('rejected_by').references(() => users.id),
+  requestedBy: text('requested_by').notNull(),
+  approvedBy: text('approved_by'),
+  rejectedBy: text('rejected_by'),
   entityType: varchar('entity_type', { length: 50 }).notNull(),
   entityId: uuid('entity_id').notNull(),
   entitySnapshot: jsonb('entity_snapshot').$type<Record<string, unknown>>().notNull(),
@@ -65,7 +65,7 @@ export const deletionRequests = pgTable('deletion_requests', {
 ]);
 
 export const deletionRequestsRelations = relations(deletionRequests, ({ one }) => ({
-  requester: one(users, { fields: [deletionRequests.requestedBy], references: [users.id], relationName: 'requester' }),
-  approver: one(users, { fields: [deletionRequests.approvedBy], references: [users.id], relationName: 'approver' }),
-  rejector: one(users, { fields: [deletionRequests.rejectedBy], references: [users.id], relationName: 'rejector' }),
+  requester: one(user, { fields: [deletionRequests.requestedBy], references: [user.id], relationName: 'requester' }),
+  approver: one(user, { fields: [deletionRequests.approvedBy], references: [user.id], relationName: 'approver' }),
+  rejector: one(user, { fields: [deletionRequests.rejectedBy], references: [user.id], relationName: 'rejector' }),
 }));

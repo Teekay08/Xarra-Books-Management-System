@@ -1,7 +1,7 @@
 import { pgTable, uuid, varchar, text, timestamp, integer, pgEnum, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { titles } from './titles';
-import { users } from './users';
+import { user } from './auth';
 
 export const movementTypeEnum = pgEnum('movement_type', [
   'IN', 'CONSIGN', 'SELL', 'RETURN', 'ADJUST', 'WRITEOFF',
@@ -22,7 +22,7 @@ export const inventoryMovements = pgTable('inventory_movements', {
   receivedDate: timestamp('received_date', { withTimezone: true }),
   reason: varchar('reason', { length: 255 }),
   notes: text('notes'),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_inventory_title_id').on(t.titleId),
@@ -36,8 +36,8 @@ export const inventoryMovementsRelations = relations(inventoryMovements, ({ one 
     fields: [inventoryMovements.titleId],
     references: [titles.id],
   }),
-  createdByUser: one(users, {
+  createdByUser: one(user, {
     fields: [inventoryMovements.createdBy],
-    references: [users.id],
+    references: [user.id],
   }),
 }));

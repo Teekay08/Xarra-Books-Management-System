@@ -2,7 +2,7 @@ import { pgTable, uuid, varchar, text, timestamp, jsonb, boolean, index, integer
 import { relations } from 'drizzle-orm';
 import { invoices } from './finance';
 import { channelPartners, partnerBranches } from './channels';
-import { users } from './users';
+import { user } from './auth';
 
 export const companySettings = pgTable('company_settings', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -79,7 +79,7 @@ export const documentEmails = pgTable('document_emails', {
   documentType: varchar('document_type', { length: 30 }).notNull(), // INVOICE, QUOTATION, PURCHASE_ORDER, CREDIT_NOTE, DEBIT_NOTE, STATEMENT
   documentId: uuid('document_id').notNull(),
   sentTo: varchar('sent_to', { length: 255 }).notNull(),
-  sentBy: uuid('sent_by').references(() => users.id),
+  sentBy: text('sent_by'),
   subject: varchar('subject', { length: 500 }).notNull(),
   message: text('message'),
   status: varchar('status', { length: 20 }).notNull().default('SENT'), // SENT, FAILED
@@ -90,7 +90,7 @@ export const documentEmails = pgTable('document_emails', {
 ]);
 
 export const documentEmailsRelations = relations(documentEmails, ({ one }) => ({
-  sentByUser: one(users, { fields: [documentEmails.sentBy], references: [users.id] }),
+  sentByUser: one(user, { fields: [documentEmails.sentBy], references: [user.id] }),
 }));
 
 // ==========================================
@@ -103,9 +103,9 @@ export const statementBatches = pgTable('statement_batches', {
   periodTo: timestamp('period_to', { withTimezone: true }).notNull(),
   periodLabel: varchar('period_label', { length: 100 }).notNull(), // e.g. "February 2026"
   status: varchar('status', { length: 20 }).notNull().default('DRAFT'), // DRAFT, REVIEWED, APPROVED, SENDING, SENT
-  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedBy: text('reviewed_by'),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
-  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedBy: text('approved_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   sentAt: timestamp('sent_at', { withTimezone: true }),
   totalItems: integer('total_items').notNull().default(0),
@@ -136,8 +136,8 @@ export const statementBatchItems = pgTable('statement_batch_items', {
 ]);
 
 export const statementBatchesRelations = relations(statementBatches, ({ one, many }) => ({
-  reviewedByUser: one(users, { fields: [statementBatches.reviewedBy], references: [users.id], relationName: 'reviewer' }),
-  approvedByUser: one(users, { fields: [statementBatches.approvedBy], references: [users.id], relationName: 'approver' }),
+  reviewedByUser: one(user, { fields: [statementBatches.reviewedBy], references: [user.id], relationName: 'reviewer' }),
+  approvedByUser: one(user, { fields: [statementBatches.approvedBy], references: [user.id], relationName: 'approver' }),
   items: many(statementBatchItems),
 }));
 

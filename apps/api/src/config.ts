@@ -16,7 +16,7 @@ const envSchema = z.object({
   S3_BUCKET: z.string().default('xarra-documents'),
   AWS_REGION: z.string().default('af-south-1'),
   RESEND_API_KEY: z.string().default(''),
-  FROM_EMAIL: z.string().email().default('noreply@xarrabooks.com'),
+  FROM_EMAIL: z.string().email().default('onboarding@resend.dev'),
   TAKEALOT_API_KEY: z.string().default(''),
 });
 

@@ -53,7 +53,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
     return { data: consignment };
   });
 
-  // Create consignment (DRAFT)
+  // Create consignment — auto-dispatches when dispatchDate is provided
   app.post('/', {
     preHandler: requireRole('admin', 'operations'),
   }, async (request, reply) => {
@@ -82,15 +82,25 @@ export async function consignmentRoutes(app: FastifyInstance) {
     const nextNum = Number(countResult[0]?.count ?? 0) + 1;
     const proformaNumber = `SOR-${yearStr}-${String(nextNum).padStart(4, '0')}`;
 
+    const userId = request.session?.user?.id;
+    const shouldAutoDispatch = !!body.dispatchDate;
+    const dispatchDate = body.dispatchDate ? new Date(body.dispatchDate) : undefined;
+
+    // Calculate SOR expiry if dispatching
+    const sorDays = partner.sorDays ? Number(partner.sorDays) : 90;
+    const sorExpiryDate = dispatchDate ? new Date(dispatchDate) : undefined;
+    if (sorExpiryDate) sorExpiryDate.setDate(sorExpiryDate.getDate() + sorDays);
+
     const result = await app.db.transaction(async (tx) => {
       const [con] = await tx.insert(consignments).values({
         partnerId: body.partnerId,
         proformaNumber,
         partnerPoNumber: body.partnerPoNumber,
-        dispatchDate: body.dispatchDate ? new Date(body.dispatchDate) : undefined,
+        dispatchDate,
+        sorExpiryDate,
         courierCompany: body.courierCompany,
         courierWaybill: body.courierWaybill,
-        status: 'DRAFT',
+        status: shouldAutoDispatch ? 'DISPATCHED' : 'DRAFT',
         notes: body.notes,
       }).returning();
 
@@ -104,8 +114,46 @@ export async function consignmentRoutes(app: FastifyInstance) {
         }))
       ).returning();
 
+      // Auto-dispatch: create inventory movements
+      if (shouldAutoDispatch) {
+        for (const l of body.lines) {
+          await tx.insert(inventoryMovements).values({
+            titleId: l.titleId,
+            movementType: 'CONSIGN',
+            fromLocation: 'XARRA_WAREHOUSE',
+            toLocation: `CONSIGNED_${partner.name.toUpperCase().replace(/\s+/g, '_')}`,
+            quantity: l.qtyDispatched,
+            referenceId: con.id,
+            referenceType: 'CONSIGNMENT',
+            createdBy: userId,
+          });
+        }
+      }
+
       return { ...con, lines };
     });
+
+    // Notifications for auto-dispatched consignment
+    if (shouldAutoDispatch) {
+      const totalQty = body.lines.reduce((sum, l) => sum + l.qtyDispatched, 0);
+      createBroadcastNotification(app, {
+        type: 'CONSIGNMENT_DISPATCHED',
+        title: `Consignment dispatched to ${partner.name}`,
+        message: `${totalQty} items dispatched to ${partner.name}. SOR expires ${sorExpiryDate!.toLocaleDateString('en-ZA')}.`,
+        actionUrl: `/consignments/${result.id}`,
+        referenceType: 'CONSIGNMENT',
+        referenceId: result.id,
+      });
+
+      notifyPartner(app, partner.id, {
+        type: 'CONSIGNMENT_DISPATCHED',
+        title: `Consignment ${proformaNumber} dispatched`,
+        message: `${totalQty} items have been dispatched to you. SOR period: ${sorDays} days.`,
+        actionUrl: '/partner/consignments',
+        referenceType: 'CONSIGNMENT',
+        referenceId: result.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
+    }
 
     return reply.status(201).send({ data: result });
   });

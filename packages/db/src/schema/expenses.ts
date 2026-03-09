@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, text, timestamp, decimal, boolean, index, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { user } from './auth';
 
 export const expenseCategories = pgTable('expense_categories', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -22,7 +22,7 @@ export const expenses = pgTable('expenses', {
   reference: varchar('reference', { length: 100 }),
   receiptUrl: varchar('receipt_url', { length: 500 }),
   notes: text('notes'),
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   idempotencyKey: varchar('idempotency_key', { length: 64 }).unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -37,7 +37,7 @@ export const expenseCategoriesRelations = relations(expenseCategories, ({ many }
 
 export const expensesRelations = relations(expenses, ({ one }) => ({
   category: one(expenseCategories, { fields: [expenses.categoryId], references: [expenseCategories.id] }),
-  createdByUser: one(users, { fields: [expenses.createdBy], references: [users.id] }),
+  createdByUser: one(user, { fields: [expenses.createdBy], references: [user.id] }),
 }));
 
 // ==========================================
@@ -51,13 +51,13 @@ export const expenseClaimStatusEnum = pgEnum('expense_claim_status', [
 export const expenseClaims = pgTable('expense_claims', {
   id: uuid('id').primaryKey().defaultRandom(),
   number: varchar('number', { length: 20 }).notNull().unique(), // EC-YYYY-NNNN
-  claimantId: uuid('claimant_id').notNull().references(() => users.id),
+  claimantId: text('claimant_id').notNull(),
   claimDate: timestamp('claim_date', { withTimezone: true }).notNull(),
   totalAmount: decimal('total_amount', { precision: 12, scale: 2 }).notNull(),
   status: expenseClaimStatusEnum('status').notNull().default('DRAFT'),
-  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedBy: text('approved_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
-  rejectedBy: uuid('rejected_by').references(() => users.id),
+  rejectedBy: text('rejected_by'),
   rejectedAt: timestamp('rejected_at', { withTimezone: true }),
   rejectionReason: text('rejection_reason'),
   paidAt: timestamp('paid_at', { withTimezone: true }),
@@ -84,8 +84,8 @@ export const expenseClaimLines = pgTable('expense_claim_lines', {
 ]);
 
 export const expenseClaimsRelations = relations(expenseClaims, ({ one, many }) => ({
-  claimant: one(users, { fields: [expenseClaims.claimantId], references: [users.id], relationName: 'claimant' }),
-  approvedByUser: one(users, { fields: [expenseClaims.approvedBy], references: [users.id], relationName: 'approver' }),
+  claimant: one(user, { fields: [expenseClaims.claimantId], references: [user.id], relationName: 'claimant' }),
+  approvedByUser: one(user, { fields: [expenseClaims.approvedBy], references: [user.id], relationName: 'approver' }),
   lines: many(expenseClaimLines),
 }));
 
@@ -105,14 +105,14 @@ export const requisitionStatusEnum = pgEnum('requisition_status', [
 export const requisitions = pgTable('requisitions', {
   id: uuid('id').primaryKey().defaultRandom(),
   number: varchar('number', { length: 20 }).notNull().unique(), // REQ-YYYY-NNNN
-  requestedBy: uuid('requested_by').notNull().references(() => users.id),
+  requestedBy: text('requested_by').notNull(),
   department: varchar('department', { length: 100 }),
   requiredByDate: timestamp('required_by_date', { withTimezone: true }),
   totalEstimate: decimal('total_estimate', { precision: 12, scale: 2 }).notNull(),
   status: requisitionStatusEnum('status').notNull().default('DRAFT'),
-  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedBy: text('approved_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
-  rejectedBy: uuid('rejected_by').references(() => users.id),
+  rejectedBy: text('rejected_by'),
   rejectedAt: timestamp('rejected_at', { withTimezone: true }),
   rejectionReason: text('rejection_reason'),
   convertedPurchaseOrderId: uuid('converted_purchase_order_id'),
@@ -137,8 +137,8 @@ export const requisitionLines = pgTable('requisition_lines', {
 ]);
 
 export const requisitionsRelations = relations(requisitions, ({ one, many }) => ({
-  requester: one(users, { fields: [requisitions.requestedBy], references: [users.id], relationName: 'requester' }),
-  approvedByUser: one(users, { fields: [requisitions.approvedBy], references: [users.id], relationName: 'reqApprover' }),
+  requester: one(user, { fields: [requisitions.requestedBy], references: [user.id], relationName: 'requester' }),
+  approvedByUser: one(user, { fields: [requisitions.approvedBy], references: [user.id], relationName: 'reqApprover' }),
   lines: many(requisitionLines),
 }));
 

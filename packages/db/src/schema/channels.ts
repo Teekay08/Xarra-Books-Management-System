@@ -1,7 +1,7 @@
 import { pgTable, uuid, varchar, text, boolean, timestamp, decimal, integer, index, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { titles } from './titles';
-import { users } from './users';
+import { user } from './auth';
 
 export const channelPartners = pgTable('channel_partners', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -126,7 +126,7 @@ export const partnerOrders = pgTable('partner_orders', {
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   deliverySignedBy: varchar('delivery_signed_by', { length: 255 }),
   // Admin fields
-  confirmedById: uuid('confirmed_by_id').references(() => users.id),
+  confirmedById: text('confirmed_by_id'),
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   cancelReason: text('cancel_reason'),
@@ -176,7 +176,7 @@ export const partnerReturnRequests = pgTable('partner_return_requests', {
   reason: text('reason').notNull(),
   status: partnerReturnRequestStatusEnum('status').notNull().default('DRAFT'),
   // Processing by Xarra
-  reviewedById: uuid('reviewed_by_id').references(() => users.id),
+  reviewedById: text('reviewed_by_id'),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   reviewNotes: text('review_notes'),
   rejectionReason: text('rejection_reason'),
@@ -240,7 +240,7 @@ export const courierShipments = pgTable('courier_shipments', {
   deliveryProofUrl: varchar('delivery_proof_url', { length: 500 }),
   failureReason: text('failure_reason'),
   // Metadata
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -264,7 +264,7 @@ export const partnerOrdersRelations = relations(partnerOrders, ({ one, many }) =
   partner: one(channelPartners, { fields: [partnerOrders.partnerId], references: [channelPartners.id] }),
   branch: one(partnerBranches, { fields: [partnerOrders.branchId], references: [partnerBranches.id] }),
   placedBy: one(partnerUsers, { fields: [partnerOrders.placedById], references: [partnerUsers.id] }),
-  confirmedBy: one(users, { fields: [partnerOrders.confirmedById], references: [users.id] }),
+  confirmedBy: one(user, { fields: [partnerOrders.confirmedById], references: [user.id] }),
   lines: many(partnerOrderLines),
 }));
 
@@ -277,7 +277,7 @@ export const partnerReturnRequestsRelations = relations(partnerReturnRequests, (
   partner: one(channelPartners, { fields: [partnerReturnRequests.partnerId], references: [channelPartners.id] }),
   branch: one(partnerBranches, { fields: [partnerReturnRequests.branchId], references: [partnerBranches.id] }),
   requestedBy: one(partnerUsers, { fields: [partnerReturnRequests.requestedById], references: [partnerUsers.id] }),
-  reviewedBy: one(users, { fields: [partnerReturnRequests.reviewedById], references: [users.id] }),
+  reviewedBy: one(user, { fields: [partnerReturnRequests.reviewedById], references: [user.id] }),
   lines: many(partnerReturnRequestLines),
 }));
 

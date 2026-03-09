@@ -89,28 +89,52 @@ export function PartnerOrdersAdmin() {
 
   const orderDetail = detailQuery.data?.data ?? selectedOrder;
 
-  function actionMutation(action: string) {
-    return useMutation({
-      mutationFn: (body?: Record<string, unknown> | void) =>
-        api(`/partner-admin/orders/${selectedOrder!.id}/${action}`, {
-          method: 'POST',
-          body: JSON.stringify(body || {}),
-        }),
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['partner-admin-orders'] });
-        queryClient.invalidateQueries({ queryKey: ['partner-admin-order', selectedOrder?.id] });
-        setSelectedOrder(null);
-        setDispatchModal(false);
-        setDeliverModal(false);
-      },
-    });
-  }
+  const confirmMut = useMutation({
+    mutationFn: () =>
+      api(`/partner-admin/orders/${selectedOrder!.id}/confirm`, { method: 'POST', body: '{}' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-order', selectedOrder?.id] });
+    },
+  });
 
-  const confirmMut = actionMutation('confirm');
-  const cancelMut = actionMutation('cancel');
-  const processMut = actionMutation('process');
-  const dispatchMut = actionMutation('dispatch');
-  const deliverMut = actionMutation('deliver');
+  const cancelMut = useMutation({
+    mutationFn: () =>
+      api(`/partner-admin/orders/${selectedOrder!.id}/cancel`, { method: 'POST', body: '{}' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-order', selectedOrder?.id] });
+    },
+  });
+
+  const processMut = useMutation({
+    mutationFn: () =>
+      api(`/partner-admin/orders/${selectedOrder!.id}/process`, { method: 'POST', body: '{}' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-order', selectedOrder?.id] });
+    },
+  });
+
+  const dispatchMut = useMutation({
+    mutationFn: (body?: Record<string, unknown>) =>
+      api(`/partner-admin/orders/${selectedOrder!.id}/dispatch`, { method: 'POST', body: JSON.stringify(body || {}) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-order', selectedOrder?.id] });
+      setDispatchModal(false);
+    },
+  });
+
+  const deliverMut = useMutation({
+    mutationFn: (body?: Record<string, unknown>) =>
+      api(`/partner-admin/orders/${selectedOrder!.id}/deliver`, { method: 'POST', body: JSON.stringify(body || {}) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['partner-admin-order', selectedOrder?.id] });
+      setDeliverModal(false);
+    },
+  });
 
   const linkMut = useMutation({
     mutationFn: (body: Record<string, string>) =>
@@ -414,7 +438,7 @@ export function PartnerOrdersAdmin() {
                     <button
                       onClick={() => {
                         // Navigate to invoice create with partner order context
-                        navigate(`/finance/invoices/new?partnerId=${orderDetail.partner.id}&partnerOrderId=${orderDetail.id}&branchId=${orderDetail.branch?.id ?? ''}`);
+                        navigate(`/invoices/new?partnerId=${orderDetail.partner.id}&partnerOrderId=${orderDetail.id}&branchId=${orderDetail.branch?.id ?? ''}`);
                       }}
                       className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
                     >

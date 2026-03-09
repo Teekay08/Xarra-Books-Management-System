@@ -16,35 +16,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       ? sql`${titles.title} ILIKE ${'%' + search + '%'} OR ${titles.isbn13} ILIKE ${'%' + search + '%'}`
       : undefined;
 
-    // Aggregate stock by title and location
-    const stockQuery = sql`
-      SELECT
-        t.id AS "titleId",
-        t.title,
-        t.isbn13,
-        COALESCE(im.to_location, im.from_location) AS location,
-        SUM(
-          CASE
-            WHEN im.to_location = COALESCE(im.to_location, im.from_location) THEN im.quantity
-            WHEN im.from_location = COALESCE(im.to_location, im.from_location) THEN -im.quantity
-            ELSE 0
-          END
-        )::int AS "stockOnHand"
-      FROM ${titles} t
-      LEFT JOIN ${inventoryMovements} im ON im.title_id = t.id
-      ${where ? sql`WHERE ${where}` : sql``}
-      GROUP BY t.id, t.title, t.isbn13, COALESCE(im.to_location, im.from_location)
-      HAVING SUM(
-        CASE
-          WHEN im.to_location = COALESCE(im.to_location, im.from_location) THEN im.quantity
-          WHEN im.from_location = COALESCE(im.to_location, im.from_location) THEN -im.quantity
-          ELSE 0
-        END
-      ) != 0
-      ORDER BY t.title, location
-    `;
-
-    // Simpler approach: net stock per title
+    // Net stock per title
     const summaryItems = await app.db.execute<{
       titleId: string;
       title: string;
@@ -56,7 +28,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       SELECT
         t.id AS "titleId",
         t.title,
-        t.isbn13,
+        t.isbn_13 AS "isbn13",
         COALESCE(SUM(CASE WHEN im.movement_type = 'IN' OR im.movement_type = 'RETURN' THEN im.quantity ELSE 0 END), 0)::int AS "totalIn",
         COALESCE(SUM(CASE WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') THEN im.quantity ELSE 0 END), 0)::int AS "totalOut",
         COALESCE(SUM(
@@ -70,7 +42,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       FROM ${titles} t
       LEFT JOIN ${inventoryMovements} im ON im.title_id = t.id
       ${where ? sql`WHERE ${where}` : sql``}
-      GROUP BY t.id, t.title, t.isbn13
+      GROUP BY t.id, t.title, t.isbn_13
       ORDER BY t.title
       LIMIT ${limit} OFFSET ${offset}
     `);
