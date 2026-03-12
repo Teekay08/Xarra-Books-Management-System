@@ -166,6 +166,28 @@ export async function inventoryRoutes(app: FastifyInstance) {
           if (!body.toLocation) {
             return reply.status(400).send({ error: 'toLocation is required for TRANSFER adjustments' });
           }
+
+          // Check available stock at source location
+          const stockResult = await app.db.execute<{ available: number }>(sql`
+            SELECT COALESCE(SUM(
+              CASE
+                WHEN movement_type IN ('IN', 'RETURN') AND to_location = ${body.location} THEN quantity
+                WHEN movement_type = 'ADJUST' AND to_location = ${body.location} THEN quantity
+                WHEN movement_type = 'ADJUST' AND from_location = ${body.location} THEN quantity
+                WHEN movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') AND from_location = ${body.location} THEN -quantity
+                ELSE 0
+              END
+            ), 0)::int AS available
+            FROM ${inventoryMovements}
+            WHERE title_id = ${body.titleId}
+          `);
+          const available = stockResult[0]?.available ?? 0;
+          if (body.quantity > available) {
+            return reply.status(400).send({
+              error: `Insufficient stock. Only ${available} unit(s) available at ${body.location.replace(/_/g, ' ')}.`,
+            });
+          }
+
           // Negative movement from source
           const [outMovement] = await app.db
             .insert(inventoryMovements)
