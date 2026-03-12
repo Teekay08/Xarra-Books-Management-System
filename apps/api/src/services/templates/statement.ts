@@ -76,6 +76,10 @@ function formatShortDate(date: string): string {
 export function renderStatementHtml(data: StatementData): string {
   const company = data.company ?? { name: 'Xarra Books' };
 
+  const logoHtml = company.logoUrl
+    ? `<img src="${company.logoUrl}" alt="${company.name}" style="max-height:60px;max-width:200px;margin-bottom:8px">`
+    : '';
+
   const typeLabels: Record<string, string> = {
     INVOICE: 'Invoice',
     PAYMENT: 'Payment',
@@ -145,6 +149,7 @@ export function renderStatementHtml(data: StatementData): string {
 <body>
   <div class="header">
     <div>
+      ${logoHtml}
       <div class="company">${company.name}</div>
       ${(company as any).addressLine1 ? `<div class="company-sub">${(company as any).addressLine1}</div>` : '<div class="company-sub">Midrand, Gauteng, South Africa</div>'}
       ${company.vatNumber ? `<div class="company-sub">VAT: ${company.vatNumber}</div>` : ''}
