@@ -502,8 +502,8 @@ export async function returnRoutes(app: FastifyInstance) {
   });
 
   // Regenerate credit note with line items for existing processed returns
-  app.post<{ Params: { id: string } }>('/:id/regenerate-credit-note', { preHandler: requireRole(['ADMIN', 'FINANCE_MANAGER']) }, async (request, reply) => {
-    const userId = (request.user as any).email || (request.user as any).id;
+  app.post<{ Params: { id: string } }>('/:id/regenerate-credit-note', { preHandler: requireRole('admin', 'finance') }, async (request, reply) => {
+    const userId = request.session?.user?.id;
     
     const ra = await app.db.query.returnsAuthorizations.findFirst({
       where: eq(returnsAuthorizations.id, request.params.id),

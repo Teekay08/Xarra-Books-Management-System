@@ -14,13 +14,29 @@ interface CreditNote {
   number: string;
   total: string;
   reason: string;
+  status: string;
   voidedAt: string | null;
   createdAt: string;
   partner: { name: string };
   invoice: { number: string };
-  status?: string;
   lines?: any[];
 }
+
+const STATUS_STYLES: Record<string, string> = {
+  DRAFT: 'bg-gray-100 text-gray-700',
+  PENDING_REVIEW: 'bg-yellow-100 text-yellow-800',
+  APPROVED: 'bg-green-100 text-green-700',
+  SENT: 'bg-blue-100 text-blue-700',
+  VOIDED: 'bg-red-100 text-red-700',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Draft',
+  PENDING_REVIEW: 'Pending Review',
+  APPROVED: 'Approved',
+  SENT: 'Sent',
+  VOIDED: 'Voided',
+};
 
 export function CreditNoteList() {
   const navigate = useNavigate();
@@ -79,30 +95,30 @@ export function CreditNoteList() {
             {isLoading && (
               <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
-            {data?.data?.items?.map((cn) => (
-              <tr key={cn.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/credit-notes/${cn.id}`)}>
-                <td className="px-4 py-3 text-sm font-medium text-amber-700">{cn.number}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{cn.invoice.number}</td>
-                <td className="px-4 py-3 text-sm text-gray-900">{cn.partner.name}</td>
-                <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{cn.reason}</td>
-                <td className="px-4 py-3 text-sm text-gray-900 text-right">R {Number(cn.total).toFixed(2)}</td>
-                <td className="px-4 py-3 text-sm">
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                    cn.voidedAt ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    {cn.voidedAt ? 'VOIDED' : 'ACTIVE'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500">{new Date(cn.createdAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
-                  <ActionMenu items={[
-                    { label: 'View Details', onClick: () => navigate(`/credit-notes/${cn.id}`) },
-                    { label: 'Download PDF', onClick: () => window.open(`/api/v1/finance/credit-notes/${cn.id}/pdf`, '_blank') },
-                    { label: 'Void', onClick: () => { if (confirm('Void this credit note?')) navigate(`/credit-notes/${cn.id}`); }, variant: 'danger', hidden: !!cn.voidedAt },
-                  ]} />
-                </td>
-              </tr>
-            ))}
+            {data?.data?.items?.map((cn) => {
+              const status = cn.voidedAt ? 'VOIDED' : (cn.status || 'DRAFT');
+              return (
+                <tr key={cn.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/credit-notes/${cn.id}`)}>
+                  <td className="px-4 py-3 text-sm font-medium text-amber-700">{cn.number}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{cn.invoice?.number}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">{cn.partner?.name}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{cn.reason}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right">R {Number(cn.total).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status] || 'bg-gray-100 text-gray-700'}`}>
+                      {STATUS_LABELS[status] || status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{new Date(cn.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
+                    <ActionMenu items={[
+                      { label: 'View Details', onClick: () => navigate(`/credit-notes/${cn.id}`) },
+                      { label: 'Download PDF', onClick: () => window.open(`/api/v1/finance/credit-notes/${cn.id}/pdf`, '_blank') },
+                    ]} />
+                  </td>
+                </tr>
+              );
+            })}
             {!isLoading && data?.data?.items?.length === 0 && (
               <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No credit notes found.</td></tr>
             )}

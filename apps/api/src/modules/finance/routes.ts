@@ -793,8 +793,33 @@ export async function financeRoutes(app: FastifyInstance) {
       vatAmount: String(vatAmount),
       total: String(total),
       reason,
+      status: 'DRAFT',
       createdBy: userId,
     }).returning();
+
+    // Persist line items
+    if (lines.length > 0) {
+      await app.db.insert(creditNoteLines).values(
+        lines.map((line, idx) => {
+          const lineSubtotal = roundAmount(line.quantity * line.unitPrice);
+          const discount = roundAmount(lineSubtotal * (line.discountPct / 100));
+          const lineTotal = roundAmount(lineSubtotal - discount);
+          const lineTax = roundAmount(isTaxInclusive
+            ? lineTotal - (lineTotal / (1 + VAT_RATE))
+            : lineTotal * VAT_RATE);
+          return {
+            creditNoteId: cn.id,
+            lineNumber: idx + 1,
+            titleId: line.titleId || null,
+            description: line.description,
+            quantity: String(line.quantity),
+            unitPrice: String(line.unitPrice),
+            lineTotal: String(lineTotal),
+            lineTax: String(lineTax),
+          };
+        }),
+      );
+    }
 
     // Recalculate invoice status now that credit note is applied
     const { amountPaid, effectiveTotal } = await computeInvoiceBalance(
@@ -1964,13 +1989,13 @@ export async function financeRoutes(app: FastifyInstance) {
   });
 
   // Review credit note (PENDING_REVIEW → DRAFT or APPROVED)
-  app.post<{ Params: { id: string } }>('/credit-notes/:id/review', { preHandler: requireRole(['ADMIN', 'FINANCE_MANAGER']) }, async (request, reply) => {
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/review', { preHandler: requireRole('admin', 'finance') }, async (request, reply) => {
     const body = request.body as { approve: boolean; notes?: string };
     const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
     if (!cn) return reply.notFound('Credit note not found');
     if (cn.status !== 'PENDING_REVIEW') return reply.badRequest('Credit note is not in PENDING_REVIEW status');
 
-    const userId = (request.user as any).email || (request.user as any).id;
+    const userId = request.session?.user?.id;
     const newStatus = body.approve ? 'APPROVED' : 'DRAFT';
     const updates: Record<string, any> = {
       status: newStatus,
@@ -2028,7 +2053,7 @@ export async function financeRoutes(app: FastifyInstance) {
   });
 
   // Void credit note (any status except already VOIDED)
-  app.post<{ Params: { id: string } }>('/credit-notes/:id/void', { preHandler: requireRole(['ADMIN', 'FINANCE_MANAGER']) }, async (request, reply) => {
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/void', { preHandler: requireRole('admin', 'finance') }, async (request, reply) => {
     const body = request.body as { reason: string };
     if (!body.reason) return reply.badRequest('Void reason is required');
 
