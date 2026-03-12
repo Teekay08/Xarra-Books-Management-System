@@ -160,7 +160,7 @@ export function RemittanceDetail() {
 
   return (
     <div>
-      <PageHeader title="Remittance Detail" subtitle={`From ${r.partner.name}`} />
+      <PageHeader title="Remittance Detail" subtitle={`From ${r.partner.name}`} backTo={{ label: 'Back to Remittances', href: '/remittances' }} />
 
       {/* Status Stepper */}
       <div className="mb-6">
@@ -490,10 +490,6 @@ export function RemittanceDetail() {
           </div>
         </>
       )}
-
-      <Link to="/remittances" className="text-sm text-green-700 hover:underline">
-        &larr; Back to Remittances
-      </Link>
     </div>
   );
 }

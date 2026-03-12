@@ -200,7 +200,7 @@ export function ReturnsDetail() {
 
   return (
     <div>
-      <PageHeader title={ra.number} subtitle={ra.partner.name} />
+      <PageHeader title={ra.number} subtitle={ra.partner.name} backTo={{ label: 'Back to Returns', href: '/returns' }} />
 
       <div className="max-w-4xl space-y-6">
         {/* Status stepper */}

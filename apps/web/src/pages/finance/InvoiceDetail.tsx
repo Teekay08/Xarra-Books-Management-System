@@ -196,6 +196,7 @@ export function InvoiceDetail() {
       <PageHeader
         title={inv.number}
         subtitle={inv.partner.name}
+        backTo={{ label: 'Back to Invoices', href: '/finance/invoices' }}
         action={
           <div className="flex gap-2 items-center">
             {inv.status === 'DRAFT' && (

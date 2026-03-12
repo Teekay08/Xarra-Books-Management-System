@@ -133,6 +133,7 @@ export function PurchaseOrderDetail() {
       <PageHeader
         title={po.number}
         subtitle={po.supplierName}
+        backTo={{ label: 'Back to Purchase Orders', href: '/finance/purchase-orders' }}
         action={
           <div className="flex gap-2 items-center">
             {po.status === 'DRAFT' && (

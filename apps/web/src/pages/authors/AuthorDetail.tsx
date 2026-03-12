@@ -72,6 +72,7 @@ export function AuthorDetail() {
       <PageHeader
         title={author.legalName}
         subtitle={author.penName ? `Writing as "${author.penName}"` : undefined}
+        backTo={{ label: 'Back to Authors', href: '/authors' }}
         action={
           <div className="flex gap-2">
             <button

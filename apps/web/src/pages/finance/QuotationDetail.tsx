@@ -113,6 +113,7 @@ export function QuotationDetail() {
       <PageHeader
         title={q.number}
         subtitle={q.partner.name}
+        backTo={{ label: 'Back to Quotations', href: '/finance/quotations' }}
         action={
           <div className="flex gap-2">
             <a href={`/api/v1/finance/quotations/${id}/pdf`} target="_blank" rel="noopener noreferrer"

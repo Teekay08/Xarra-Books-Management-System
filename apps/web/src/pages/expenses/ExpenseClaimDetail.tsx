@@ -104,6 +104,7 @@ export function ExpenseClaimDetail() {
       <PageHeader
         title={claim.number}
         subtitle={claim.claimant.name}
+        backTo={{ label: 'Back to Expense Claims', href: '/expenses/claims' }}
         action={
           <div className="flex gap-2">
             {claim.status === 'DRAFT' && (

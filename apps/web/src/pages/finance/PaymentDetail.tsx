@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router';
+import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
@@ -44,6 +44,7 @@ export function PaymentDetail() {
       <PageHeader
         title="Payment Detail"
         subtitle={p.bankReference ? `Ref: ${p.bankReference}` : 'No reference'}
+        backTo={{ label: 'Back to Payments', href: '/payments' }}
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -94,9 +95,6 @@ export function PaymentDetail() {
         </div>
       )}
 
-      <Link to="/payments" className="text-sm text-green-700 hover:underline">
-        &larr; Back to Payments
-      </Link>
     </div>
   );
 }

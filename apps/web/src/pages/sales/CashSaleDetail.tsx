@@ -85,6 +85,7 @@ export function CashSaleDetail() {
           month: 'long',
           day: 'numeric',
         })}
+        backTo={{ label: 'Back to Cash Sales', href: '/sales/cash-sales' }}
         action={
           <div className="flex gap-2">
             <a
@@ -206,13 +207,6 @@ export function CashSaleDetail() {
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{sale.notes}</p>
         </div>
       )}
-
-      <button
-        onClick={() => navigate('/sales/cash-sales')}
-        className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-      >
-        Back to Cash Sales
-      </button>
 
       {/* Void Modal */}
       {showVoidModal && (

@@ -66,6 +66,7 @@ export function PartnerDetail() {
       <PageHeader
         title={partner.name}
         subtitle={`${Number(partner.discountPct)}% discount`}
+        backTo={{ label: 'Back to Partners', href: '/partners' }}
         action={
           <div className="flex gap-2">
             <button

@@ -118,6 +118,7 @@ export function CreditNoteDetail() {
       <PageHeader
         title={cn.number}
         subtitle={`Credit Note for ${cn.partner.name}`}
+        backTo={{ label: 'Back to Credit Notes', href: '/credit-notes' }}
         action={
           <div className="flex gap-2 items-center flex-wrap">
             {cn.pdfUrl && (
@@ -296,10 +297,6 @@ export function CreditNoteDetail() {
       )}
 
       {cn.voidedAt && <VoidedBanner voidedAt={cn.voidedAt} voidedReason={cn.voidedReason} />}
-
-      <Link to="/credit-notes" className="text-sm text-green-700 hover:underline">
-        &larr; Back to Credit Notes
-      </Link>
 
       {showVoidModal && (
         <VoidReasonModal

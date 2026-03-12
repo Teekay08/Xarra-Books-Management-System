@@ -203,6 +203,7 @@ export function TitleDetail() {
       <PageHeader
         title={title.title}
         subtitle={title.subtitle ?? undefined}
+        backTo={{ label: 'Back to Titles', href: '/titles' }}
         action={
           <button
             onClick={() => navigate(`/titles/${id}/edit`)}

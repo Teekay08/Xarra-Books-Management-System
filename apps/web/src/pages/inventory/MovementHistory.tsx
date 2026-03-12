@@ -63,7 +63,7 @@ export function MovementHistory() {
 
   return (
     <div>
-      <PageHeader title="Movement History" subtitle={`Title: ${titleId}`} />
+      <PageHeader title="Movement History" subtitle={`Title: ${titleId}`} backTo={{ label: 'Back to Inventory', href: '/inventory' }} />
 
       {isLoading ? (
         <div className="py-12 text-center text-gray-400">Loading...</div>

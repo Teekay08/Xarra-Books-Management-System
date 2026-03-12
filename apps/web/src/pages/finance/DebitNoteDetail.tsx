@@ -61,6 +61,7 @@ export function DebitNoteDetail() {
       <PageHeader
         title={dn.number}
         subtitle={`Debit Note for ${dn.partner.name}`}
+        backTo={{ label: 'Back to Debit Notes', href: '/debit-notes' }}
         action={
           <div className="flex gap-2 items-center">
             {dn.pdfUrl && (
@@ -110,10 +111,6 @@ export function DebitNoteDetail() {
       </div>
 
       {isVoided && <VoidedBanner voidedAt={dn.voidedAt!} voidedReason={dn.voidedReason} />}
-
-      <Link to="/debit-notes" className="text-sm text-green-700 hover:underline">
-        &larr; Back to Debit Notes
-      </Link>
 
       {showVoidModal && (
         <VoidReasonModal

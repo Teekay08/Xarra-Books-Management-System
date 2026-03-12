@@ -133,6 +133,7 @@ export function ConsignmentDetail() {
       <PageHeader
         title={`Consignment — ${con.partner.name}`}
         subtitle={con.dispatchDate ? `Dispatched ${new Date(con.dispatchDate).toLocaleDateString('en-ZA')}` : 'Draft'}
+        backTo={{ label: 'Back to Consignments', href: '/consignments' }}
         action={
           <div className="flex gap-2">
             <button

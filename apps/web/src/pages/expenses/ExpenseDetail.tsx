@@ -35,7 +35,7 @@ export function ExpenseDetail() {
 
   return (
     <div>
-      <PageHeader title="Expense Detail" subtitle={e.description} />
+      <PageHeader title="Expense Detail" subtitle={e.description} backTo={{ label: 'Back to Expenses', href: '/expenses' }} />
 
       <div className="max-w-3xl space-y-6">
         {/* Meta info */}
@@ -95,12 +95,6 @@ export function ExpenseDetail() {
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{e.notes}</p>
           </div>
         )}
-      </div>
-
-      <div className="mt-6">
-        <Link to="/expenses" className="text-sm text-green-700 hover:underline">
-          &larr; Back to Expenses
-        </Link>
       </div>
     </div>
   );
