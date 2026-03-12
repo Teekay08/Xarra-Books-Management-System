@@ -12,9 +12,18 @@ export async function titleRoutes(app: FastifyInstance) {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search, sortOrder } = query;
     const offset = (page - 1) * limit;
+    const authorId = (request.query as Record<string, string>).authorId;
 
-    const where = search
-      ? sql`(${titles.title} ILIKE ${'%' + search + '%'} OR ${titles.subtitle} ILIKE ${'%' + search + '%'} OR ${titles.isbn13} ILIKE ${'%' + search + '%'})`
+    const conditions: ReturnType<typeof sql>[] = [];
+    if (search) {
+      conditions.push(sql`(${titles.title} ILIKE ${'%' + search + '%'} OR ${titles.subtitle} ILIKE ${'%' + search + '%'} OR ${titles.isbn13} ILIKE ${'%' + search + '%'})`);
+    }
+    if (authorId) {
+      conditions.push(sql`${titles.primaryAuthorId} = ${authorId}`);
+    }
+
+    const where = conditions.length > 0
+      ? conditions.length === 1 ? conditions[0] : sql`${conditions[0]} AND ${conditions[1]}`
       : undefined;
 
     const [items, countResult] = await Promise.all([

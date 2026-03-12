@@ -236,8 +236,8 @@ function ContractModal({
   onSuccess: () => void;
 }) {
   const { data: titlesData } = useQuery({
-    queryKey: ['titles-all'],
-    queryFn: () => api<{ data: TitleOption[] }>('/titles?limit=200'),
+    queryKey: ['titles-by-author', authorId],
+    queryFn: () => api<{ data: TitleOption[] }>(`/titles?limit=200&authorId=${authorId}`),
   });
 
   const { data: templatesData } = useQuery({
