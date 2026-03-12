@@ -1557,7 +1557,7 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const order = await app.db.query.partnerOrders.findFirst({
       where: eq(partnerOrders.id, request.params.id),
-      with: { lines: true },
+      with: { lines: true, partner: true },
     });
     if (!order) return reply.notFound('Order not found');
     if (!['CONFIRMED', 'PROCESSING'].includes(order.status)) {
@@ -1578,6 +1578,8 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
         await app.db.insert(inventoryMovements).values({
           titleId: line.titleId,
           movementType: 'CONSIGN',
+          fromLocation: 'XARRA_WAREHOUSE',
+          toLocation: `CONSIGNED_${order.partner.name.toUpperCase().replace(/\s+/g, '_')}`,
           quantity: qtyDispatched,
           reason: `Partner order ${order.number} dispatched`,
           referenceType: 'PARTNER_ORDER',
@@ -1896,7 +1898,7 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
             titleId: line.titleId,
             movementType: 'RETURN',
             quantity: qty,
-            toLocation: 'WAREHOUSE',
+            toLocation: 'XARRA_WAREHOUSE',
             reason: `Partner return ${rr.number} — ${line.condition} (${qty} of ${line.quantity} accepted)`,
             referenceType: 'RETURN',
             referenceId: rr.id,

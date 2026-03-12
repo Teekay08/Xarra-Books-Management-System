@@ -89,9 +89,13 @@ export function StockTake() {
     setError('');
     try {
       const result = await stockQuery.refetch();
+      if (result.error) {
+        setError(result.error instanceof Error ? result.error.message : 'Failed to load stock data');
+        return;
+      }
       const rows = result.data?.data ?? [];
       if (rows.length === 0) {
-        setError('No stock found at this location.');
+        setError('No stock found at this location. Please check that inventory has been received here.');
         return;
       }
       setLines(
