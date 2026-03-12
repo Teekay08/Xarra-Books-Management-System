@@ -38,6 +38,7 @@ interface SalesEntry {
   lineId: string;
   qtySold: number;
   qtyReturned: number;
+  qtyDamaged: number;
 }
 
 const statusColors: Record<string, string> = {
@@ -117,8 +118,9 @@ export function ConsignmentDetail() {
 
   const con = data.data;
   const action = nextAction[con.status];
-  const canRecordSales = ['DELIVERED', 'ACKNOWLEDGED'].includes(con.status);
+  const canRecordSales = ['DELIVERED', 'ACKNOWLEDGED', 'PARTIAL_RETURN'].includes(con.status);
   const canExtendSor = ['DELIVERED', 'ACKNOWLEDGED'].includes(con.status) && !!con.sorExpiryDate;
+  const hasReturnsToProcess = con.lines.some((l) => l.qtyReturned > 0 || l.qtyDamaged > 0);
 
   const totalDispatched = con.lines.reduce((s, l) => s + l.qtyDispatched, 0);
   const totalSold = con.lines.reduce((s, l) => s + l.qtySold, 0);
@@ -180,7 +182,7 @@ export function ConsignmentDetail() {
                 {action.label}
               </button>
             )}
-            {['ACKNOWLEDGED', 'PARTIAL_RETURN'].includes(con.status) && (
+            {['ACKNOWLEDGED', 'PARTIAL_RETURN'].includes(con.status) && hasReturnsToProcess && (
               <button
                 onClick={() => returnsMutation.mutate()}
                 disabled={returnsMutation.isPending}
@@ -377,6 +379,7 @@ function RecordSalesModal({
       lineId: l.id,
       qtySold: l.qtySold,
       qtyReturned: l.qtyReturned,
+      qtyDamaged: l.qtyDamaged,
     }))
   );
 
@@ -397,7 +400,7 @@ function RecordSalesModal({
     },
   });
 
-  const updateLine = (lineId: string, field: 'qtySold' | 'qtyReturned', value: number) => {
+  const updateLine = (lineId: string, field: 'qtySold' | 'qtyReturned' | 'qtyDamaged', value: number) => {
     setSalesData((prev) =>
       prev.map((entry) =>
         entry.lineId === lineId ? { ...entry, [field]: value } : entry
@@ -412,15 +415,15 @@ function RecordSalesModal({
     for (const entry of salesData) {
       const line = lines.find((l) => l.id === entry.lineId);
       if (!line) continue;
-      const total = entry.qtySold + entry.qtyReturned + line.qtyDamaged;
+      const total = entry.qtySold + entry.qtyReturned + entry.qtyDamaged;
       if (total > line.qtyDispatched) {
         const titleName = line.title?.title ?? 'Unknown';
         setError(
-          `"${titleName}": Sold (${entry.qtySold}) + Returned (${entry.qtyReturned}) + Damaged (${line.qtyDamaged}) = ${total} exceeds dispatched quantity of ${line.qtyDispatched}.`
+          `"${titleName}": Sold (${entry.qtySold}) + Returned (${entry.qtyReturned}) + Damaged (${entry.qtyDamaged}) = ${total} exceeds dispatched quantity of ${line.qtyDispatched}.`
         );
         return;
       }
-      if (entry.qtySold < 0 || entry.qtyReturned < 0) {
+      if (entry.qtySold < 0 || entry.qtyReturned < 0 || entry.qtyDamaged < 0) {
         setError('Quantities cannot be negative.');
         return;
       }
@@ -430,7 +433,7 @@ function RecordSalesModal({
     const changedLines = salesData.filter((entry) => {
       const original = lines.find((l) => l.id === entry.lineId);
       if (!original) return false;
-      return entry.qtySold !== original.qtySold || entry.qtyReturned !== original.qtyReturned;
+      return entry.qtySold !== original.qtySold || entry.qtyReturned !== original.qtyReturned || entry.qtyDamaged !== original.qtyDamaged;
     });
 
     if (changedLines.length === 0) {
@@ -444,6 +447,7 @@ function RecordSalesModal({
   // Calculate totals for the new values
   const newTotalSold = salesData.reduce((s, e) => s + e.qtySold, 0);
   const newTotalReturned = salesData.reduce((s, e) => s + e.qtyReturned, 0);
+  const newTotalDamaged = salesData.reduce((s, e) => s + e.qtyDamaged, 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -482,13 +486,14 @@ function RecordSalesModal({
                 <th className="pb-2 text-right">Already Sold</th>
                 <th className="pb-2 text-center">New Sold Qty</th>
                 <th className="pb-2 text-center">Returned Qty</th>
+                <th className="pb-2 text-center">Damaged Qty</th>
                 <th className="pb-2 text-right">Remaining</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {lines.map((line) => {
                 const entry = salesData.find((e) => e.lineId === line.id)!;
-                const remaining = line.qtyDispatched - entry.qtySold - entry.qtyReturned - line.qtyDamaged;
+                const remaining = line.qtyDispatched - entry.qtySold - entry.qtyReturned - entry.qtyDamaged;
                 const isOverflow = remaining < 0;
 
                 return (
@@ -529,6 +534,20 @@ function RecordSalesModal({
                         } focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none`}
                       />
                     </td>
+                    <td className="py-3">
+                      <input
+                        type="number"
+                        min={0}
+                        max={line.qtyDispatched}
+                        value={entry.qtyDamaged}
+                        onChange={(e) =>
+                          updateLine(line.id, 'qtyDamaged', Math.max(0, parseInt(e.target.value) || 0))
+                        }
+                        className={`mx-auto block w-20 rounded-md border px-2 py-1 text-center text-sm font-mono ${
+                          isOverflow ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                        } focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none`}
+                      />
+                    </td>
                     <td className={`py-3 text-right font-mono font-semibold ${
                       isOverflow ? 'text-red-600' : remaining > 0 ? 'text-amber-600' : 'text-gray-500'
                     }`}>
@@ -549,11 +568,12 @@ function RecordSalesModal({
                 </td>
                 <td className="pt-3 text-center font-mono text-green-700">{newTotalSold}</td>
                 <td className="pt-3 text-center font-mono text-blue-600">{newTotalReturned}</td>
+                <td className="pt-3 text-center font-mono text-red-600">{newTotalDamaged}</td>
                 <td className="pt-3 text-right font-mono">
                   {lines.reduce((s, l) => s + l.qtyDispatched, 0) -
                     newTotalSold -
                     newTotalReturned -
-                    lines.reduce((s, l) => s + l.qtyDamaged, 0)}
+                    newTotalDamaged}
                 </td>
               </tr>
             </tfoot>

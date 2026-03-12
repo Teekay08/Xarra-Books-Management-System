@@ -323,10 +323,11 @@ export async function consignmentRoutes(app: FastifyInstance) {
 
     const consignment = await app.db.query.consignments.findFirst({
       where: eq(consignments.id, request.params.id),
+      with: { partner: true },
     });
     if (!consignment) return reply.notFound('Consignment not found');
-    if (!['DELIVERED', 'ACKNOWLEDGED'].includes(consignment.status)) {
-      return reply.badRequest('Consignment must be DELIVERED or ACKNOWLEDGED to report sales');
+    if (!['DELIVERED', 'ACKNOWLEDGED', 'PARTIAL_RETURN'].includes(consignment.status)) {
+      return reply.badRequest('Consignment must be DELIVERED, ACKNOWLEDGED or PARTIAL_RETURN to report sales');
     }
 
     // Fetch existing lines to compute deltas
@@ -344,6 +345,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
     }
 
     // Create inventory SELL movements for newly reported sales
+    const partnerLocation = `CONSIGNED_${consignment.partner.name.toUpperCase().replace(/\s+/g, '_')}`;
     for (const line of lines) {
       const existing = existingLines.find((l) => l.id === line.lineId);
       if (!existing) continue;
@@ -352,6 +354,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
         await app.db.insert(inventoryMovements).values({
           titleId: existing.titleId,
           movementType: 'SELL',
+          fromLocation: partnerLocation,
           quantity: delta,
           reason: `Consignment sales reported — ${consignment.id.slice(0, 8)}`,
           referenceType: 'CONSIGNMENT',
