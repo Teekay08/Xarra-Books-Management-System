@@ -25,6 +25,18 @@ interface CreditNote {
   createdAt: string;
   partner: { name: string };
   invoice: { number: string };
+  status?: string;
+  lines?: Array<{
+    id: string;
+    lineNumber: number;
+    titleId: string | null;
+    description: string;
+    quantity: string;
+    unitPrice: string;
+    lineTotal: string;
+    lineTax: string;
+    title?: { title: string; isbn: string };
+  }>;
 }
 
 export function CreditNoteDetail() {

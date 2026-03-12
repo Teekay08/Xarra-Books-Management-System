@@ -18,6 +18,8 @@ interface CreditNote {
   createdAt: string;
   partner: { name: string };
   invoice: { number: string };
+  status?: string;
+  lines?: any[];
 }
 
 export function CreditNoteList() {
@@ -29,7 +31,7 @@ export function CreditNoteList() {
   const { data, isLoading } = useQuery({
     queryKey: ['credit-notes', page, search],
     queryFn: () =>
-      api<{ data: CreditNote[]; pagination: { page: number; totalPages: number; total: number } }>(
+      api<{ data: { items: CreditNote[]; total: number; page: number; limit: number } }>(
         `/finance/credit-notes?page=${page}&limit=20&search=${search}`,
       ),
   });
@@ -77,7 +79,7 @@ export function CreditNoteList() {
             {isLoading && (
               <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
-            {data?.data?.map((cn) => (
+            {data?.data?.items?.map((cn) => (
               <tr key={cn.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/credit-notes/${cn.id}`)}>
                 <td className="px-4 py-3 text-sm font-medium text-amber-700">{cn.number}</td>
                 <td className="px-4 py-3 text-sm text-gray-500">{cn.invoice.number}</td>
@@ -101,15 +103,15 @@ export function CreditNoteList() {
                 </td>
               </tr>
             ))}
-            {!isLoading && data?.data?.length === 0 && (
+            {!isLoading && data?.data?.items?.length === 0 && (
               <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No credit notes found.</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {data?.pagination && data.pagination.totalPages > 1 && (
-        <Pagination page={page} totalPages={data.pagination.totalPages} total={data.pagination.total} onPageChange={setPage} />
+      {data?.data && Math.ceil(data.data.total / data.data.limit) > 1 && (
+        <Pagination page={page} totalPages={Math.ceil(data.data.total / data.data.limit)} total={data.data.total} onPageChange={setPage} />
       )}
       <DateRangeExportModal
         open={exportModalOpen}
