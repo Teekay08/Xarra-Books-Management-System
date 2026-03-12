@@ -11,10 +11,36 @@ export async function inventoryRoutes(app: FastifyInstance) {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search } = query;
     const offset = (page - 1) * limit;
+    const location = (request.query as Record<string, string>).location;
 
-    const where = search
-      ? sql`${titles.title} ILIKE ${'%' + search + '%'} OR ${titles.isbn13} ILIKE ${'%' + search + '%'}`
-      : undefined;
+    const conditions: ReturnType<typeof sql>[] = [];
+    if (search) {
+      conditions.push(sql`(t.title ILIKE ${'%' + search + '%'} OR t.isbn_13 ILIKE ${'%' + search + '%'})`);
+    }
+
+    // When filtering by location, calculate stock at that specific location
+    const stockCalc = location
+      ? sql`
+        COALESCE(SUM(
+          CASE
+            WHEN im.movement_type IN ('IN', 'RETURN') AND im.to_location = ${location} THEN im.quantity
+            WHEN im.movement_type = 'ADJUST' AND im.to_location = ${location} THEN im.quantity
+            WHEN im.movement_type = 'ADJUST' AND im.from_location = ${location} THEN im.quantity
+            WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') AND im.from_location = ${location} THEN -im.quantity
+            ELSE 0
+          END
+        ), 0)::int`
+      : sql`
+        COALESCE(SUM(
+          CASE
+            WHEN im.movement_type IN ('IN', 'RETURN') THEN im.quantity
+            WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') THEN -im.quantity
+            WHEN im.movement_type = 'ADJUST' THEN im.quantity
+            ELSE 0
+          END
+        ), 0)::int`;
+
+    const whereClause = conditions.length > 0 ? sql`WHERE ${conditions[0]}` : sql``;
 
     // Net stock per title
     const summaryItems = await app.db.execute<{
@@ -31,26 +57,32 @@ export async function inventoryRoutes(app: FastifyInstance) {
         t.isbn_13 AS "isbn13",
         COALESCE(SUM(CASE WHEN im.movement_type = 'IN' OR im.movement_type = 'RETURN' THEN im.quantity ELSE 0 END), 0)::int AS "totalIn",
         COALESCE(SUM(CASE WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') THEN im.quantity ELSE 0 END), 0)::int AS "totalOut",
-        COALESCE(SUM(
-          CASE
-            WHEN im.movement_type IN ('IN', 'RETURN') THEN im.quantity
-            WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') THEN -im.quantity
-            WHEN im.movement_type = 'ADJUST' THEN im.quantity
-            ELSE 0
-          END
-        ), 0)::int AS "stockOnHand"
+        ${stockCalc} AS "stockOnHand"
       FROM ${titles} t
       LEFT JOIN ${inventoryMovements} im ON im.title_id = t.id
-      ${where ? sql`WHERE ${where}` : sql``}
+      ${whereClause}
       GROUP BY t.id, t.title, t.isbn_13
+      ${location ? sql`HAVING ${stockCalc} != 0` : sql``}
       ORDER BY t.title
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    const countResult = await app.db
-      .select({ count: sql<number>`count(*)` })
-      .from(titles)
-      .where(where);
+    // For location-filtered queries, count titles with non-zero stock at that location
+    const countResult = location
+      ? await app.db.execute<{ count: number }>(sql`
+          SELECT count(*)::int AS count FROM (
+            SELECT t.id
+            FROM ${titles} t
+            LEFT JOIN ${inventoryMovements} im ON im.title_id = t.id
+            ${whereClause}
+            GROUP BY t.id
+            HAVING ${stockCalc} != 0
+          ) sub
+        `)
+      : await app.db
+          .select({ count: sql<number>`count(*)` })
+          .from(titles)
+          .where(search ? sql`${titles.title} ILIKE ${'%' + search + '%'} OR ${titles.isbn13} ILIKE ${'%' + search + '%'}` : undefined);
 
     return {
       data: summaryItems,

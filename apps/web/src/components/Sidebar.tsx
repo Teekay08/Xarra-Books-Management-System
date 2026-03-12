@@ -78,6 +78,7 @@ const allSections: NavSection[] = [
       { name: 'System Config', href: '/settings/system', module: 'settings' },
       { name: 'Email Settings', href: '/settings/email', module: 'settings' },
       { name: 'Document Series', href: '/settings/document-series', module: 'settings' },
+      { name: 'Contract Templates', href: '/settings/contract-templates', module: 'settings' },
       { name: 'Scheduling', href: '/settings/scheduling', module: 'settings' },
       { name: 'Data Export', href: '/settings/export', module: 'settings' },
       { name: 'Audit Trail', href: '/admin/audit-log', module: 'auditLogs' },

@@ -4,14 +4,19 @@ import { api } from '../../lib/api';
 
 interface Contract {
   id: string;
-  title: string;
-  advanceAmount: string;
-  advanceRecovered: string;
-  advanceRemaining: number;
+  titleId: string;
   royaltyRatePrint: string;
   royaltyRateEbook: string | null;
-  status: string;
-  signedDate: string | null;
+  advanceAmount: string;
+  advanceRecovered: string;
+  isSigned: boolean;
+  signedAt: string | null;
+  startDate: string;
+  endDate: string | null;
+  contractTermsSnapshot: string | null;
+  contractTemplateId: string | null;
+  title: { title: string; isbn13: string | null };
+  template: { name: string; authorType: string } | null;
 }
 
 export function PortalContracts() {
@@ -33,6 +38,7 @@ export function PortalContracts() {
           const advance = Number(c.advanceAmount);
           const recovered = Number(c.advanceRecovered);
           const pct = advance > 0 ? Math.min(100, (recovered / advance) * 100) : 100;
+          const hasTerms = !!(c.contractTermsSnapshot || c.contractTemplateId);
 
           return (
             <Link
@@ -41,14 +47,22 @@ export function PortalContracts() {
               className="block rounded-lg border border-gray-200 bg-white p-5 hover:border-gray-300 transition-colors"
             >
               <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium text-gray-900">{c.title}</h3>
-                <span
-                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                    c.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {c.status}
-                </span>
+                <h3 className="font-medium text-gray-900">{c.title?.title ?? 'Unknown Title'}</h3>
+                <div className="flex items-center gap-2">
+                  {c.isSigned ? (
+                    <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">
+                      Signed {c.signedAt ? new Date(c.signedAt).toLocaleDateString() : ''}
+                    </span>
+                  ) : hasTerms ? (
+                    <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">
+                      Awaiting Signature
+                    </span>
+                  ) : (
+                    <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
+                      Draft
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-3">
@@ -62,12 +76,10 @@ export function PortalContracts() {
                     <p className="font-medium">{(Number(c.royaltyRateEbook) * 100).toFixed(1)}%</p>
                   </div>
                 )}
-                {c.signedDate && (
-                  <div>
-                    <p className="text-xs text-gray-500">Signed</p>
-                    <p className="font-medium">{new Date(c.signedDate).toLocaleDateString()}</p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-xs text-gray-500">Start Date</p>
+                  <p className="font-medium">{new Date(c.startDate).toLocaleDateString()}</p>
+                </div>
                 {advance > 0 && (
                   <div>
                     <p className="text-xs text-gray-500">Advance</p>
@@ -88,6 +100,12 @@ export function PortalContracts() {
                       style={{ width: `${pct}%` }}
                     />
                   </div>
+                </div>
+              )}
+
+              {hasTerms && !c.isSigned && (
+                <div className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  This contract has terms ready for your review and signature. Click to view and sign.
                 </div>
               )}
             </Link>

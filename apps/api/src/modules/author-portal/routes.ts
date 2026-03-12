@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, sql, desc } from 'drizzle-orm';
-import { authors, authorContracts, royaltyLedger, authorPayments } from '@xarra/db';
+import { eq, sql, desc, and } from 'drizzle-orm';
+import { authors, authorContracts, contractTemplates, royaltyLedger, authorPayments } from '@xarra/db';
 import { paginationSchema, roundAmount } from '@xarra/shared';
 import { requireRole } from '../../middleware/require-auth.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
@@ -191,7 +191,7 @@ export async function authorPortalRoutes(app: FastifyInstance) {
 
     const contracts = await app.db.query.authorContracts.findMany({
       where: eq(authorContracts.authorId, author.id),
-      with: { title: true },
+      with: { title: true, template: true },
     });
 
     return { data: contracts };
@@ -204,7 +204,7 @@ export async function authorPortalRoutes(app: FastifyInstance) {
 
     const contract = await app.db.query.authorContracts.findFirst({
       where: eq(authorContracts.id, request.params.id),
-      with: { title: true },
+      with: { title: true, template: true },
     });
 
     if (!contract || contract.authorId !== author.id) {
@@ -218,13 +218,64 @@ export async function authorPortalRoutes(app: FastifyInstance) {
       limit: 20,
     });
 
+    // The contract terms to show: use snapshot if available, otherwise current template content
+    const contractTerms = contract.contractTermsSnapshot
+      ?? contract.template?.content
+      ?? null;
+
     return {
       data: {
         ...contract,
+        contractTerms,
         advanceRemaining: Math.max(0, Number(contract.advanceAmount) - Number(contract.advanceRecovered)),
         royaltyHistory: royalties,
       },
     };
+  });
+
+  // Sign contract (author accepts terms)
+  app.post<{ Params: { id: string } }>('/contracts/:id/sign', { preHandler }, async (request, reply) => {
+    const author = await getAuthorForUser(app, request.session!.user.id);
+    if (!author) return reply.notFound('Author profile not found');
+
+    const contract = await app.db.query.authorContracts.findFirst({
+      where: eq(authorContracts.id, request.params.id),
+      with: { template: true },
+    });
+
+    if (!contract || contract.authorId !== author.id) {
+      return reply.notFound('Contract not found');
+    }
+
+    if (contract.isSigned) {
+      return reply.badRequest('Contract is already signed');
+    }
+
+    // Ensure there are terms to sign
+    const terms = contract.contractTermsSnapshot ?? contract.template?.content;
+    if (!terms) {
+      return reply.badRequest('No contract terms available to sign');
+    }
+
+    // Get IP from request for audit trail
+    const ip = (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+      || request.ip
+      || 'unknown';
+
+    const [updated] = await app.db
+      .update(authorContracts)
+      .set({
+        isSigned: true,
+        signedAt: new Date(),
+        signedByIp: ip.substring(0, 50),
+        // If no snapshot yet, capture it now
+        contractTermsSnapshot: contract.contractTermsSnapshot ?? terms,
+        updatedAt: new Date(),
+      })
+      .where(eq(authorContracts.id, request.params.id))
+      .returning();
+
+    return { data: updated };
   });
 
   // Payment history — from author_payments table (comprehensive payment records)

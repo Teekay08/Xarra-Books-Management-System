@@ -1,10 +1,94 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, sql, desc, asc } from 'drizzle-orm';
-import { authors, authorContracts, user as authUsers } from '@xarra/db';
+import { eq, sql, desc, asc, and } from 'drizzle-orm';
+import { authors, authorContracts, contractTemplates, user as authUsers } from '@xarra/db';
 import { createAuthorSchema, updateAuthorSchema, createAuthorContractSchema, paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 
 export async function authorRoutes(app: FastifyInstance) {
+  // ==================== Contract Templates ====================
+
+  // List contract templates (optionally filter by authorType)
+  app.get('/contract-templates', { preHandler: requireAuth }, async (request) => {
+    const { authorType, activeOnly } = request.query as { authorType?: string; activeOnly?: string };
+
+    const conditions = [];
+    if (authorType) conditions.push(eq(contractTemplates.authorType, authorType as 'HYBRID' | 'TRADITIONAL'));
+    if (activeOnly === 'true') conditions.push(eq(contractTemplates.isActive, true));
+
+    const items = await app.db.query.contractTemplates.findMany({
+      where: conditions.length > 0 ? and(...conditions) : undefined,
+      orderBy: [desc(contractTemplates.updatedAt)],
+    });
+
+    return { data: items };
+  });
+
+  // Get single contract template
+  app.get<{ Params: { templateId: string } }>('/contract-templates/:templateId', { preHandler: requireAuth }, async (request, reply) => {
+    const template = await app.db.query.contractTemplates.findFirst({
+      where: eq(contractTemplates.id, request.params.templateId),
+    });
+    if (!template) return reply.notFound('Contract template not found');
+    return { data: template };
+  });
+
+  // Create contract template (admin only)
+  app.post('/contract-templates', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const body = request.body as {
+      name: string;
+      authorType: 'HYBRID' | 'TRADITIONAL';
+      content: string;
+      version?: string;
+    };
+    const userId = request.session?.user?.id;
+
+    const [template] = await app.db.insert(contractTemplates).values({
+      name: body.name,
+      authorType: body.authorType,
+      content: body.content,
+      version: body.version || '1.0',
+      createdBy: userId,
+      updatedBy: userId,
+    }).returning();
+
+    return reply.status(201).send({ data: template });
+  });
+
+  // Update contract template (admin only)
+  app.patch<{ Params: { templateId: string } }>('/contract-templates/:templateId', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const body = request.body as {
+      name?: string;
+      content?: string;
+      version?: string;
+      isActive?: boolean;
+    };
+    const userId = request.session?.user?.id;
+
+    const [updated] = await app.db
+      .update(contractTemplates)
+      .set({
+        ...body,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(contractTemplates.id, request.params.templateId))
+      .returning();
+
+    if (!updated) return reply.notFound('Contract template not found');
+    return { data: updated };
+  });
+
+  // Delete/deactivate contract template (admin only)
+  app.delete<{ Params: { templateId: string } }>('/contract-templates/:templateId', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const [updated] = await app.db
+      .update(contractTemplates)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(contractTemplates.id, request.params.templateId))
+      .returning();
+
+    if (!updated) return reply.notFound('Contract template not found');
+    return { data: updated };
+  });
   // List authors (paginated)
   app.get('/', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);
@@ -107,9 +191,24 @@ export async function authorRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { id: string } }>('/:id/contracts', { preHandler: requireRole('admin', 'editorial') }, async (request, reply) => {
     const body = createAuthorContractSchema.parse(request.body);
+    const { contractTemplateId } = request.body as { contractTemplateId?: string };
+
+    // If a template is linked, snapshot its content
+    let contractTermsSnapshot: string | undefined;
+    if (contractTemplateId) {
+      const template = await app.db.query.contractTemplates.findFirst({
+        where: eq(contractTemplates.id, contractTemplateId),
+      });
+      if (template) {
+        contractTermsSnapshot = template.content;
+      }
+    }
+
     const [contract] = await app.db.insert(authorContracts).values({
       ...body,
       authorId: request.params.id,
+      contractTemplateId: contractTemplateId || undefined,
+      contractTermsSnapshot,
       royaltyRatePrint: String(body.royaltyRatePrint),
       royaltyRateEbook: String(body.royaltyRateEbook),
       advanceAmount: String(body.advanceAmount),

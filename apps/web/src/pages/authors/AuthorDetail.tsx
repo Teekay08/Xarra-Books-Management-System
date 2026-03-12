@@ -199,6 +199,7 @@ export function AuthorDetail() {
       {showContractModal && (
         <ContractModal
           authorId={id!}
+          authorType={author.type}
           onClose={() => setShowContractModal(false)}
           onSuccess={() => {
             setShowContractModal(false);
@@ -225,16 +226,25 @@ export function AuthorDetail() {
 
 function ContractModal({
   authorId,
+  authorType,
   onClose,
   onSuccess,
 }: {
   authorId: string;
+  authorType: string;
   onClose: () => void;
   onSuccess: () => void;
 }) {
   const { data: titlesData } = useQuery({
     queryKey: ['titles-all'],
     queryFn: () => api<{ data: TitleOption[] }>('/titles?limit=200'),
+  });
+
+  const { data: templatesData } = useQuery({
+    queryKey: ['contract-templates-active', authorType],
+    queryFn: () => api<{ data: { id: string; name: string; authorType: string; version: string }[] }>(
+      `/authors/contract-templates?activeOnly=true&authorType=${encodeURIComponent(authorType)}`
+    ),
   });
 
   const createContract = useMutation({
@@ -247,13 +257,16 @@ function ContractModal({
   });
 
   const titles = titlesData?.data ?? [];
+  const templates = templatesData?.data ?? [];
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    const templateId = fd.get('contractTemplateId') as string;
     createContract.mutate({
       authorId,
       titleId: fd.get('titleId') as string,
+      contractTemplateId: templateId || undefined,
       royaltyRatePrint: Number(fd.get('royaltyRatePrint')) / 100,
       royaltyRateEbook: Number(fd.get('royaltyRateEbook') || 0) / 100,
       triggerType: fd.get('triggerType') as string,
@@ -272,6 +285,21 @@ function ContractModal({
           <h2 className="text-lg font-semibold text-gray-900">Add Contract</h2>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Contract Template</label>
+            <select name="contractTemplateId" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+              <option value="">No template (custom terms)</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.authorType}) v{t.version}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">
+              Contract terms from the selected template will be attached for the author to review and sign.
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
             <select name="titleId" required className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">

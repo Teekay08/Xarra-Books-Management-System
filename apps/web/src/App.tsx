@@ -54,6 +54,7 @@ import { DataExport } from './pages/settings/DataExport';
 import { SystemConfiguration } from './pages/settings/SystemConfiguration';
 import { EmailSettings } from './pages/settings/EmailSettings';
 import { DocumentSeries } from './pages/settings/DocumentSeries';
+import { ContractTemplates } from './pages/settings/ContractTemplates';
 import { PortalDashboard } from './pages/portal/PortalDashboard';
 import { PortalSalesSummary } from './pages/portal/PortalSalesSummary';
 import { PortalRoyalties } from './pages/portal/PortalRoyalties';
@@ -279,6 +280,7 @@ const router = createBrowserRouter([
       { path: 'settings/system', element: <SystemConfiguration /> },
       { path: 'settings/email', element: <EmailSettings /> },
       { path: 'settings/document-series', element: <DocumentSeries /> },
+      { path: 'settings/contract-templates', element: <ContractTemplates /> },
 
       // Partner Portal Management (admin)
       { path: 'partners/portal-users', element: <PartnerPortalUsers /> },
