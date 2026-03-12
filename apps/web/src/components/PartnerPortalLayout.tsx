@@ -126,6 +126,12 @@ export function PartnerPortalLayout() {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
+
+        <footer className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-8 py-3 text-center pl-14 lg:pl-8">
+          <p className="text-xs text-gray-500">
+            Powered by <a href="https://www.tsedemeko.africa" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 hover:text-blue-800 transition-colors">Tsedemeko</a>
+          </p>
+        </footer>
       </div>
     </div>
   );
