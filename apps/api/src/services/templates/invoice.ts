@@ -130,7 +130,7 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     .party p { margin: 2px 0; }
     table { width: 100%; border-collapse: collapse; margin: 20px 0; }
     th { text-align: left; padding: 10px 8px; border-bottom: 2px solid #166534; font-size: 11px; text-transform: uppercase; color: #555; }
-    .totals { margin-left: auto; width: 280px; }
+    .totals { width: 280px; }
     .totals tr td { padding: 6px 8px; }
     .totals .grand-total td { border-top: 2px solid #166534; font-weight: bold; font-size: 16px; }
     .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 11px; color: #888; }
@@ -189,40 +189,43 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     </tbody>
   </table>
 
-  <table class="totals">
-    <tr>
-      <td>Subtotal</td>
-      <td style="text-align:right">${formatCurrency(data.subtotal)}</td>
-    </tr>
-    <tr>
-      <td>VAT (15%)</td>
-      <td style="text-align:right">${formatCurrency(data.vatAmount)}</td>
-    </tr>
-    <tr class="grand-total">
-      <td>Total</td>
-      <td style="text-align:right">${formatCurrency(data.total)}</td>
-    </tr>
-    ${data.amountPaid && Number(data.amountPaid) > 0 ? `
-    <tr>
-      <td>Amount Paid</td>
-      <td style="text-align:right;color:#166534">(${formatCurrency(data.amountPaid)})</td>
-    </tr>
-    <tr class="grand-total">
-      <td>Balance Due</td>
-      <td style="text-align:right">${formatCurrency(Number(data.total) - Number(data.amountPaid))}</td>
-    </tr>
-    ` : ''}
-  </table>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:20px">
+    <div style="width:55%">
+      ${bankDetailsHtml}
+    </div>
+    <table class="totals">
+      <tr>
+        <td>Subtotal</td>
+        <td style="text-align:right">${formatCurrency(data.subtotal)}</td>
+      </tr>
+      <tr>
+        <td>VAT (15%)</td>
+        <td style="text-align:right">${formatCurrency(data.vatAmount)}</td>
+      </tr>
+      <tr class="grand-total">
+        <td>Total</td>
+        <td style="text-align:right">${formatCurrency(data.total)}</td>
+      </tr>
+      ${data.amountPaid && Number(data.amountPaid) > 0 ? `
+      <tr>
+        <td>Amount Paid</td>
+        <td style="text-align:right;color:#166534">(${formatCurrency(data.amountPaid)})</td>
+      </tr>
+      <tr class="grand-total">
+        <td>Balance Due</td>
+        <td style="text-align:right">${formatCurrency(Number(data.total) - Number(data.amountPaid))}</td>
+      </tr>
+      ` : ''}
+    </table>
+  </div>
 
   ${data.notes ? `<div class="notes"><strong>Notes:</strong> ${data.notes}</div>` : ''}
 
   ${data.paymentTermsText ? `<div class="notes"><strong>Payment Terms:</strong> ${data.paymentTermsText}</div>` : ''}
 
-  ${bankDetailsHtml}
-
   <div class="footer">
     <p>${company.name}${company.registrationNumber ? ` (Reg: ${company.registrationNumber})` : ''}</p>
-    <p>Payment terms: EFT to account details provided above. Reference: ${data.number}</p>
+    <p>Payment terms: EFT to account details provided. Reference: ${data.number}</p>
   </div>
 </body>
 </html>`;
