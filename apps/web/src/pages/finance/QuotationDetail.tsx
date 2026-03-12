@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ActionMenu } from '../../components/ActionMenu';
 import { RecipientEditModal, type RecipientDetails } from '../../components/RecipientEditModal';
 import { DocumentEmailModal } from '../../components/DocumentEmailModal';
 
@@ -78,6 +79,11 @@ export function QuotationDetail() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => api(`/finance/quotations/${id}`, { method: 'DELETE' }),
+    onSuccess: () => navigate('/quotations'),
+  });
+
   const sendMutation = useMutation({
     mutationFn: (data: { email: string; cc: string; bcc: string; subject: string; message: string }) =>
       api(`/finance/quotations/${id}/send`, {
@@ -139,6 +145,23 @@ export function QuotationDetail() {
                 {convertMutation.isPending ? 'Converting...' : 'Convert to Invoice'}
               </button>
             )}
+            <ActionMenu items={[
+              {
+                label: 'Edit',
+                onClick: () => navigate(`/quotations/${id}/edit`),
+                hidden: q.status !== 'DRAFT',
+              },
+              {
+                label: 'Delete',
+                onClick: () => {
+                  if (confirm('Delete this draft quotation? This cannot be undone.')) {
+                    deleteMutation.mutate();
+                  }
+                },
+                variant: 'danger',
+                hidden: q.status !== 'DRAFT',
+              },
+            ]} />
           </div>
         }
       />

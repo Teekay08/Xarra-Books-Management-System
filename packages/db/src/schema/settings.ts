@@ -29,6 +29,32 @@ export const companySettings = pgTable('company_settings', {
   logoSmallUrl: varchar('logo_small_url', { length: 500 }),
   invoiceFooterText: text('invoice_footer_text'),
   statementFooterText: text('statement_footer_text'),
+  // Operational settings
+  lowStockThreshold: integer('low_stock_threshold').default(10), // Show amber warning if stock below this
+  sorAlertDays: integer('sor_alert_days').default(30), // Show amber alert when SOR expires within this many days
+  exchangeRateSource: varchar('exchange_rate_source', { length: 50 }).default('MANUAL'), // MANUAL, SARB, XE
+  // Email/SMTP settings
+  emailSettings: jsonb('email_settings').$type<{
+    smtpHost?: string;
+    smtpPort?: number;
+    smtpUser?: string;
+    smtpPassword?: string;
+    smtpSecure?: boolean;
+    sendingDomain?: string;
+    replyToEmail?: string;
+    fromName?: string;
+  }>(),
+  // Document series starting numbers
+  documentSeries: jsonb('document_series').$type<{
+    invoiceStart?: number;
+    creditNoteStart?: number;
+    debitNoteStart?: number;
+    quotationStart?: number;
+    purchaseOrderStart?: number;
+    cashSaleStart?: number;
+    expenseClaimStart?: number;
+    requisitionStart?: number;
+  }>(),
   // Invoice reminder settings (stored as JSONB)
   invoiceReminders: jsonb('invoice_reminders').$type<{
     enabled: boolean;
@@ -59,6 +85,28 @@ export const companySettings = pgTable('company_settings', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// User invitations (for email-based user onboarding)
+export const userInvitations = pgTable('user_invitations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: varchar('email', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  role: varchar('role', { length: 50 }).notNull(), // admin, finance, operations, editorial, reports_only
+  token: varchar('token', { length: 100 }).notNull().unique(),
+  invitedBy: text('invited_by').notNull().references(() => user.id),
+  status: varchar('status', { length: 20 }).notNull().default('PENDING'), // PENDING, ACCEPTED, EXPIRED
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_user_invitations_email').on(t.email),
+  index('idx_user_invitations_token').on(t.token),
+  index('idx_user_invitations_status').on(t.status),
+]);
+
+export const userInvitationsRelations = relations(userInvitations, ({ one }) => ({
+  invitedByUser: one(user, { fields: [userInvitations.invitedBy], references: [user.id] }),
+}));
 
 // Track sent reminders to avoid duplicates
 export const invoiceReminders = pgTable('invoice_reminders', {

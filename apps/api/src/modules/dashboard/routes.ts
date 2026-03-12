@@ -96,9 +96,9 @@ export async function dashboardRoutes(app: FastifyInstance) {
     };
   });
 
-  // P&L summary (current month + YTD)
+  // P&L summary (current month + YTD + YoY comparison)
   app.get('/pnl-summary', { preHandler: requireAuth }, async () => {
-    const [revenueYtd, revenueMtd, expensesYtd, expensesMtd, outstandingResult] = await Promise.all([
+    const [revenueYtd, revenueMtd, revenueMtdLy, expensesYtd, expensesMtd, outstandingResult] = await Promise.all([
       app.db.execute(sql`
         SELECT COALESCE(SUM(total::numeric), 0) AS total
         FROM invoices
@@ -110,6 +110,14 @@ export async function dashboardRoutes(app: FastifyInstance) {
         FROM invoices
         WHERE status != 'VOIDED'
           AND invoice_date >= DATE_TRUNC('month', CURRENT_DATE)
+      `),
+      // Same calendar month last year
+      app.db.execute(sql`
+        SELECT COALESCE(SUM(total::numeric), 0) AS total
+        FROM invoices
+        WHERE status != 'VOIDED'
+          AND invoice_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 year')
+          AND invoice_date < DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 year') + INTERVAL '1 month'
       `),
       app.db.execute(sql`
         SELECT COALESCE(SUM(amount::numeric), 0) AS total
@@ -131,7 +139,9 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const ytdRevenue = Number(revenueYtd[0]?.total ?? 0);
     const ytdExpenses = Number(expensesYtd[0]?.total ?? 0);
     const mtdRevenue = Number(revenueMtd[0]?.total ?? 0);
+    const mtdRevenueLy = Number(revenueMtdLy[0]?.total ?? 0);
     const mtdExpenses = Number(expensesMtd[0]?.total ?? 0);
+    const mtdYoYChange = mtdRevenueLy > 0 ? ((mtdRevenue - mtdRevenueLy) / mtdRevenueLy) * 100 : null;
 
     return {
       data: {
@@ -139,10 +149,149 @@ export async function dashboardRoutes(app: FastifyInstance) {
         ytdExpenses,
         ytdNet: ytdRevenue - ytdExpenses,
         mtdRevenue,
+        mtdRevenueLy,
+        mtdYoYChange,
         mtdExpenses,
         mtdNet: mtdRevenue - mtdExpenses,
         outstanding: Number(outstandingResult[0]?.total ?? 0),
       },
+    };
+  });
+
+  // Top 5 performing titles (by revenue, current month and YTD)
+  app.get('/top-titles', { preHandler: requireAuth }, async () => {
+    const [mtdRows, ytdRows] = await Promise.all([
+      app.db.execute(sql`
+        SELECT t.title, t.id,
+               COALESCE(SUM(il.quantity::int), 0) AS units_sold,
+               COALESCE(SUM(il.line_total::numeric), 0) AS revenue
+        FROM invoice_lines il
+        JOIN invoices i ON i.id = il.invoice_id
+        JOIN titles t ON t.id = il.title_id
+        WHERE i.status != 'VOIDED'
+          AND i.invoice_date >= DATE_TRUNC('month', CURRENT_DATE)
+        GROUP BY t.id, t.title
+        ORDER BY revenue DESC
+        LIMIT 5
+      `),
+      app.db.execute(sql`
+        SELECT t.title, t.id,
+               COALESCE(SUM(il.quantity::int), 0) AS units_sold,
+               COALESCE(SUM(il.line_total::numeric), 0) AS revenue
+        FROM invoice_lines il
+        JOIN invoices i ON i.id = il.invoice_id
+        JOIN titles t ON t.id = il.title_id
+        WHERE i.status != 'VOIDED'
+          AND i.invoice_date >= DATE_TRUNC('year', CURRENT_DATE)
+        GROUP BY t.id, t.title
+        ORDER BY revenue DESC
+        LIMIT 5
+      `),
+    ]);
+    return {
+      data: {
+        mtd: (mtdRows as any[]).map((r) => ({ id: r.id, title: r.title, unitsSold: Number(r.units_sold), revenue: Number(r.revenue) })),
+        ytd: (ytdRows as any[]).map((r) => ({ id: r.id, title: r.title, unitsSold: Number(r.units_sold), revenue: Number(r.revenue) })),
+      },
+    };
+  });
+
+  // Outstanding SORs — consignments with overdue or approaching return dates
+  app.get('/outstanding-sors', { preHandler: requireAuth }, async () => {
+    const rows = await app.db.execute(sql`
+      SELECT
+        c.id, c.number, c.dispatch_date, c.return_by_date, c.status,
+        cp.name AS partner_name,
+        COALESCE(SUM(cl.qty_dispatched - COALESCE(cl.qty_sold, 0) - COALESCE(cl.qty_returned, 0)), 0)::int AS outstanding_units
+      FROM consignments c
+      JOIN channel_partners cp ON cp.id = c.partner_id
+      LEFT JOIN consignment_lines cl ON cl.consignment_id = c.id
+      WHERE c.status IN ('ACTIVE', 'PARTIAL')
+        AND c.return_by_date IS NOT NULL
+        AND c.return_by_date <= CURRENT_DATE + INTERVAL '30 days'
+      GROUP BY c.id, c.number, c.dispatch_date, c.return_by_date, c.status, cp.name
+      ORDER BY c.return_by_date ASC
+      LIMIT 10
+    `);
+    return {
+      data: (rows as any[]).map((r) => ({
+        id: r.id,
+        number: r.number,
+        partnerName: r.partner_name,
+        dispatchDate: r.dispatch_date,
+        returnByDate: r.return_by_date,
+        status: r.status,
+        outstandingUnits: Number(r.outstanding_units),
+        isOverdue: new Date(r.return_by_date) < new Date(),
+        daysUntilDue: Math.ceil((new Date(r.return_by_date).getTime() - Date.now()) / 86400000),
+      })),
+    };
+  });
+
+  // Royalties due within 60 days
+  app.get('/royalties-due', { preHandler: requireAuth }, async () => {
+    const rows = await app.db.execute(sql`
+      SELECT
+        a.id, a.legal_name, a.pen_name,
+        COALESCE(SUM(ap.amount_due::numeric - COALESCE(ap.amount_paid::numeric, 0)), 0) AS amount_pending,
+        COUNT(ap.id)::int AS entry_count,
+        MIN(ap.period_to) AS earliest_period_end
+      FROM authors a
+      JOIN author_contracts ac ON ac.author_id = a.id AND ac.is_active = true
+      LEFT JOIN author_payments ap ON ap.author_id = a.id
+        AND ap.status IN ('AWAITING_APPROVAL', 'APPROVED')
+      WHERE a.is_active = true
+      GROUP BY a.id, a.legal_name, a.pen_name
+      HAVING COALESCE(SUM(ap.amount_due::numeric - COALESCE(ap.amount_paid::numeric, 0)), 0) > 0
+      ORDER BY amount_pending DESC
+      LIMIT 8
+    `);
+    return {
+      data: (rows as any[]).map((r) => ({
+        id: r.id,
+        authorName: r.pen_name || r.legal_name,
+        amountPending: Number(r.amount_pending),
+        entryCount: Number(r.entry_count),
+        earliestPeriodEnd: r.earliest_period_end,
+      })),
+    };
+  });
+
+  // Low stock alerts — titles with warehouse stock below threshold
+  app.get('/low-stock', { preHandler: requireAuth }, async () => {
+    const rows = await app.db.execute(sql`
+      SELECT
+        t.id, t.title, t.isbn_13 AS isbn13,
+        COALESCE(SUM(
+          CASE
+            WHEN im.movement_type IN ('IN', 'RETURN') THEN im.quantity
+            WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') THEN -im.quantity
+            WHEN im.movement_type = 'ADJUST' THEN im.quantity
+            ELSE 0
+          END
+        ), 0)::int AS stock_on_hand
+      FROM titles t
+      LEFT JOIN inventory_movements im ON im.title_id = t.id
+      WHERE t.is_active = true
+      GROUP BY t.id, t.title, t.isbn_13
+      HAVING COALESCE(SUM(
+        CASE
+          WHEN im.movement_type IN ('IN', 'RETURN') THEN im.quantity
+          WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') THEN -im.quantity
+          WHEN im.movement_type = 'ADJUST' THEN im.quantity
+          ELSE 0
+        END
+      ), 0) <= 10
+      ORDER BY stock_on_hand ASC
+      LIMIT 8
+    `);
+    return {
+      data: (rows as any[]).map((r) => ({
+        id: r.id,
+        title: r.title,
+        isbn13: r.isbn13,
+        stockOnHand: Number(r.stock_on_hand),
+      })),
     };
   });
 

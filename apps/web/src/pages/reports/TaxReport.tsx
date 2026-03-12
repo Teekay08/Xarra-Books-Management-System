@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
+import { ChartTooltip, ChartGradients, GradientDef, cleanAxisProps, cleanGridProps } from '../../components/charts';
 
 interface MonthlyTax {
   month: string;
@@ -88,19 +89,24 @@ export function TaxReport() {
         <>
           {/* VAT chart */}
           {monthly.length > 0 && (
-            <div className="rounded-lg border bg-white p-4 mb-6" style={{ height: 380 }}>
+            <div className="rounded-xl border border-gray-200/60 bg-white p-4 mb-6 shadow-sm" style={{ height: 380 }}>
               <h3 className="text-sm font-medium text-gray-700 mb-3">Monthly VAT Summary</h3>
               <ResponsiveContainer width="100%" height="90%">
                 <BarChart data={monthly}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                  <ChartGradients>
+                    <GradientDef id="taxBlue" from="#93c5fd" to="#2563eb" />
+                    <GradientDef id="taxRed" from="#fca5a5" to="#dc2626" />
+                    <GradientDef id="taxGreen" from="#34d399" to="#059669" />
+                  </ChartGradients>
+                  <CartesianGrid {...cleanGridProps} />
+                  <XAxis dataKey="month" {...cleanAxisProps} />
+                  <YAxis {...cleanAxisProps} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                   <Legend />
-                  <ReferenceLine y={0} stroke="#666" />
-                  <Bar dataKey="vatCollected" fill="#1d4ed8" name="Output VAT (Collected)" />
-                  <Bar dataKey="vatPaid" fill="#dc2626" name="Input VAT (Paid)" />
-                  <Bar dataKey="netVat" fill="#15803d" name="Net VAT" />
+                  <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
+                  <Bar dataKey="vatCollected" fill="url(#taxBlue)" name="Output VAT (Collected)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="vatPaid" fill="url(#taxRed)" name="Input VAT (Paid)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="netVat" fill="url(#taxGreen)" name="Net VAT" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

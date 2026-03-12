@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { ExportButton } from '../../components/ExportButton';
 import { downloadFromApi, exportUrl } from '../../lib/export';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface ReturnAuth {
   id: string;
@@ -81,10 +82,11 @@ export function ReturnsList() {
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Items</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {isLoading && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>}
+            {isLoading && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>}
             {data?.data?.map((ra) => (
               <tr key={ra.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/returns/${ra.id}`)}>
                 <td className="px-4 py-3 text-sm font-medium text-green-700">{ra.number}</td>
@@ -99,10 +101,17 @@ export function ReturnsList() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-500">{new Date(ra.returnDate).toLocaleDateString('en-ZA')}</td>
+                <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
+                  <ActionMenu items={[
+                    { label: 'View Details', onClick: () => navigate(`/returns/${ra.id}`) },
+                    { label: 'Edit', onClick: () => navigate(`/returns/${ra.id}/edit`), hidden: ra.status !== 'DRAFT' },
+                    { label: 'Delete', onClick: () => { if (confirm('Delete this return?')) navigate(`/returns/${ra.id}`); }, variant: 'danger', hidden: ra.status !== 'DRAFT' },
+                  ]} />
+                </td>
               </tr>
             ))}
             {!isLoading && data?.data?.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">No returns found.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No returns found.</td></tr>
             )}
           </tbody>
         </table>

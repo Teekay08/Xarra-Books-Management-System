@@ -95,6 +95,45 @@ export async function reportRoutes(app: FastifyInstance) {
       return { data: rows.map((r: any) => ({ label: r.label, invoiceCount: Number(r.invoice_count), unitsSold: Number(r.units_sold), revenue: Number(r.revenue) })) };
     }
 
+    if (groupBy === 'period') {
+      const rows = await app.db.execute(sql`
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', i.invoice_date), 'YYYY-MM') AS label,
+          COUNT(DISTINCT i.id)::int AS invoice_count,
+          COALESCE(SUM(il.quantity::int), 0) AS units_sold,
+          COALESCE(SUM(il.line_total::numeric), 0) AS revenue
+        FROM invoices i
+        LEFT JOIN invoice_lines il ON il.invoice_id = i.id
+        WHERE i.status != 'VOIDED'
+          AND i.invoice_date >= ${periodFrom}
+          AND i.invoice_date <= ${periodTo}
+        GROUP BY DATE_TRUNC('month', i.invoice_date)
+        ORDER BY label ASC
+      `);
+      return { data: rows.map((r: any) => ({ label: r.label, invoiceCount: Number(r.invoice_count), unitsSold: Number(r.units_sold), revenue: Number(r.revenue) })) };
+    }
+
+    if (groupBy === 'author') {
+      const rows = await app.db.execute(sql`
+        SELECT
+          COALESCE(a.pen_name, a.legal_name) AS label,
+          a.id AS author_id,
+          COALESCE(SUM(il.quantity::int), 0) AS units_sold,
+          COALESCE(SUM(il.line_total::numeric), 0) AS revenue
+        FROM invoice_lines il
+        JOIN invoices i ON i.id = il.invoice_id
+        JOIN titles t ON t.id = il.title_id
+        JOIN author_contracts ac ON ac.title_id = t.id
+        JOIN authors a ON a.id = ac.author_id
+        WHERE i.status != 'VOIDED'
+          AND i.invoice_date >= ${periodFrom}
+          AND i.invoice_date <= ${periodTo}
+        GROUP BY a.id, a.legal_name, a.pen_name
+        ORDER BY revenue DESC
+      `);
+      return { data: rows.map((r: any) => ({ label: r.label ?? 'Unknown', authorId: r.author_id, unitsSold: Number(r.units_sold), revenue: Number(r.revenue) })) };
+    }
+
     // Default: group by title
     const rows = await app.db.execute(sql`
       SELECT t.title AS label,
@@ -1053,6 +1092,305 @@ export async function reportRoutes(app: FastifyInstance) {
     }), { taxableIncome: 0, vatCollected: 0, expenseAmount: 0, vatPaid: 0, vatAdjustment: 0, netVat: 0 });
 
     return { data: { monthly, totals, periodFrom: periodFrom.toISOString(), periodTo: periodTo.toISOString() } };
+  });
+
+  // Print Runs report
+  app.get('/print-runs', { preHandler: requireAuth }, async (request) => {
+    const { from, to } = request.query as { from?: string; to?: string };
+
+    let dateFilter = sql`TRUE`;
+    if (from) dateFilter = sql`${dateFilter} AND pr.created_at >= ${new Date(from)}`;
+    if (to) dateFilter = sql`${dateFilter} AND pr.created_at <= ${new Date(to)}`;
+
+    const rows = await app.db.execute(sql`
+      SELECT
+        pr.id,
+        pr.print_run_number,
+        pr.number AS grn_number,
+        t.title,
+        t.isbn13,
+        pr.printer_name,
+        pr.quantity_ordered,
+        pr.quantity_received,
+        pr.total_cost,
+        CASE WHEN pr.quantity_ordered > 0 THEN ROUND(pr.total_cost::numeric / pr.quantity_ordered, 2) ELSE 0 END AS cost_per_unit,
+        pr.status,
+        pr.expected_delivery_date,
+        pr.received_at,
+        pr.notes,
+        pr.created_at
+      FROM title_print_runs pr
+      JOIN titles t ON t.id = pr.title_id
+      WHERE ${dateFilter}
+      ORDER BY pr.created_at DESC
+    `);
+
+    const data = (rows as any[]).map(r => ({
+      id: r.id,
+      printRunNumber: Number(r.print_run_number),
+      grnNumber: r.grn_number,
+      title: r.title,
+      isbn13: r.isbn13,
+      printerName: r.printer_name,
+      quantityOrdered: Number(r.quantity_ordered),
+      quantityReceived: r.quantity_received ? Number(r.quantity_received) : null,
+      totalCost: Number(r.total_cost),
+      costPerUnit: Number(r.cost_per_unit),
+      status: r.status,
+      expectedDeliveryDate: r.expected_delivery_date,
+      receivedAt: r.received_at,
+      notes: r.notes,
+      createdAt: r.created_at,
+    }));
+
+    const summary = {
+      totalRuns: data.length,
+      totalOrdered: data.reduce((s, r) => s + r.quantityOrdered, 0),
+      totalReceived: data.reduce((s, r) => s + (r.quantityReceived ?? 0), 0),
+      totalCost: data.reduce((s, r) => s + r.totalCost, 0),
+      byStatus: data.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {} as Record<string, number>),
+    };
+
+    return { data, summary };
+  });
+
+  // ==========================================
+  // PER-TITLE PROFIT & LOSS
+  // ==========================================
+  app.get('/title-pl/:titleId', { preHandler: requireAuth }, async (request) => {
+    const { titleId } = request.params as { titleId: string };
+
+    // 1. Get title info
+    const titleRows = await app.db.execute(sql`
+      SELECT id, title, isbn_13 AS isbn13, rrp_zar::numeric AS rrp
+      FROM titles WHERE id = ${titleId}
+    `) as any[];
+    if (!titleRows.length) throw app.httpErrors.notFound('Title not found');
+    const titleInfo = titleRows[0];
+
+    // 2. Gross revenue & discount breakdown from invoice lines (non-voided invoices)
+    //    gross = quantity * unit_price (before discount)
+    //    line_total = after discount
+    //    channel discount = gross - line_total
+    const salesRows = await app.db.execute(sql`
+      SELECT
+        cp.id AS partner_id,
+        cp.name AS partner_name,
+        cp.discount_pct::numeric AS partner_discount_pct,
+        COALESCE(SUM(il.quantity::numeric * il.unit_price::numeric), 0) AS gross_amount,
+        COALESCE(SUM(il.line_total::numeric), 0) AS net_amount,
+        COALESCE(SUM(il.quantity::int), 0) AS units_sold
+      FROM invoice_lines il
+      JOIN invoices i ON i.id = il.invoice_id
+      JOIN channel_partners cp ON cp.id = i.partner_id
+      WHERE il.title_id = ${titleId}
+        AND i.status != 'VOIDED'
+      GROUP BY cp.id, cp.name, cp.discount_pct
+      ORDER BY net_amount DESC
+    `) as any[];
+
+    let grossRevenue = 0;
+    let channelDiscounts = 0;
+    let netRevenue = 0;
+    const salesByChannel = salesRows.map((r: any) => {
+      const gross = Number(r.gross_amount);
+      const net = Number(r.net_amount);
+      const discount = gross - net;
+      grossRevenue += gross;
+      channelDiscounts += discount;
+      netRevenue += net;
+      return {
+        partnerId: r.partner_id,
+        partnerName: r.partner_name,
+        discountPct: Number(r.partner_discount_pct),
+        grossAmount: gross,
+        discountAmount: discount,
+        netAmount: net,
+        unitsSold: Number(r.units_sold),
+      };
+    });
+
+    // 2b. Cash sales for this title
+    const cashSaleRows = await app.db.execute(sql`
+      SELECT
+        COALESCE(SUM(csl.quantity::numeric * csl.unit_price::numeric), 0) AS gross_amount,
+        COALESCE(SUM(csl.line_total::numeric), 0) AS net_amount,
+        COALESCE(SUM(csl.quantity::int), 0) AS units_sold
+      FROM cash_sale_lines csl
+      JOIN cash_sales cs ON cs.id = csl.cash_sale_id
+      WHERE csl.title_id = ${titleId}
+        AND cs.voided_at IS NULL
+    `) as any[];
+
+    if (cashSaleRows.length && Number(cashSaleRows[0].units_sold) > 0) {
+      const csGross = Number(cashSaleRows[0].gross_amount);
+      const csNet = Number(cashSaleRows[0].net_amount);
+      grossRevenue += csGross;
+      netRevenue += csNet;
+      salesByChannel.push({
+        partnerId: null as any,
+        partnerName: 'Direct / Cash Sales',
+        discountPct: 0,
+        grossAmount: csGross,
+        discountAmount: csGross - csNet,
+        netAmount: csNet,
+        unitsSold: Number(cashSaleRows[0].units_sold),
+      });
+    }
+
+    // 3. Production costs
+    const costRows = await app.db.execute(sql`
+      SELECT category, description, amount::numeric AS amount, vendor
+      FROM title_production_costs
+      WHERE title_id = ${titleId}
+      ORDER BY category, created_at
+    `) as any[];
+
+    const costItems = costRows.map((r: any) => ({
+      category: r.category,
+      description: r.description,
+      amount: Number(r.amount),
+      vendor: r.vendor,
+    }));
+    const productionCosts = costItems.reduce((sum: number, c: any) => sum + c.amount, 0);
+
+    // 4. Print run costs (if not already covered by production costs)
+    const printRunRows = await app.db.execute(sql`
+      SELECT COALESCE(SUM(total_cost::numeric), 0) AS total_print_cost
+      FROM title_print_runs
+      WHERE title_id = ${titleId}
+        AND status != 'CANCELLED'
+    `) as any[];
+    const printRunCost = Number(printRunRows[0]?.total_print_cost || 0);
+
+    // 5. Author advance
+    const advanceRows = await app.db.execute(sql`
+      SELECT
+        COALESCE(SUM(advance_amount::numeric), 0) AS total_advance,
+        COALESCE(SUM(advance_recovered::numeric), 0) AS total_recovered
+      FROM author_contracts
+      WHERE title_id = ${titleId}
+    `) as any[];
+    const authorAdvance = Number(advanceRows[0]?.total_advance || 0);
+
+    // 6. Royalties paid
+    const royaltyRows = await app.db.execute(sql`
+      SELECT COALESCE(SUM(net_payable::numeric), 0) AS total_royalties
+      FROM royalty_ledger
+      WHERE title_id = ${titleId}
+        AND status != 'VOIDED'
+    `) as any[];
+    const royaltiesPaid = Number(royaltyRows[0]?.total_royalties || 0);
+
+    // 7. Credit notes against this title (reduce revenue)
+    const creditNoteRows = await app.db.execute(sql`
+      SELECT COALESCE(SUM(cn.subtotal::numeric), 0) AS total_credits
+      FROM credit_notes cn
+      JOIN invoices i ON i.id = cn.invoice_id
+      WHERE cn.voided_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM invoice_lines il
+          WHERE il.invoice_id = i.id AND il.title_id = ${titleId}
+        )
+    `) as any[];
+    const creditNoteTotal = Number(creditNoteRows[0]?.total_credits || 0);
+
+    // Calculate net profit
+    const totalCosts = productionCosts + printRunCost + authorAdvance + royaltiesPaid;
+    const adjustedNetRevenue = netRevenue - creditNoteTotal;
+    const netProfit = adjustedNetRevenue - totalCosts;
+
+    // Add print run cost and credit notes to cost items for the breakdown
+    if (printRunCost > 0) {
+      costItems.push({
+        category: 'PRINT_RUNS',
+        description: 'Total print run costs',
+        amount: printRunCost,
+        vendor: null,
+      });
+    }
+
+    return {
+      data: {
+        titleId: titleInfo.id,
+        title: titleInfo.title,
+        isbn13: titleInfo.isbn13,
+        rrp: Number(titleInfo.rrp),
+        grossRevenue,
+        channelDiscounts,
+        netRevenue,
+        creditNotes: creditNoteTotal,
+        adjustedNetRevenue,
+        productionCosts,
+        printRunCosts: printRunCost,
+        authorAdvance,
+        royaltiesPaid,
+        totalCosts,
+        netProfit,
+        breakdown: {
+          salesByChannel,
+          costItems,
+        },
+      },
+    };
+  });
+
+  // SOR Reconciliation — per consignment status with sold/returned/outstanding breakdown
+  app.get('/sor-reconciliation', { preHandler: requireAuth }, async (request) => {
+    const { from, to, partnerId } = request.query as { from?: string; to?: string; partnerId?: string };
+    const periodFrom = from ? new Date(from) : new Date(new Date().getFullYear(), 0, 1);
+    const periodTo = to ? new Date(to) : new Date();
+
+    const rows = await app.db.execute(sql`
+      SELECT
+        c.id,
+        c.number,
+        c.dispatch_date,
+        c.return_by_date,
+        c.status,
+        cp.name AS partner_name,
+        cp.id AS partner_id,
+        COALESCE(SUM(cl.qty_dispatched), 0)::int AS total_dispatched,
+        COALESCE(SUM(cl.qty_sold), 0)::int AS total_sold,
+        COALESCE(SUM(cl.qty_returned), 0)::int AS total_returned,
+        COALESCE(SUM(cl.qty_dispatched - COALESCE(cl.qty_sold, 0) - COALESCE(cl.qty_returned, 0)), 0)::int AS outstanding,
+        COUNT(DISTINCT cl.title_id)::int AS title_count
+      FROM consignments c
+      JOIN channel_partners cp ON cp.id = c.partner_id
+      LEFT JOIN consignment_lines cl ON cl.consignment_id = c.id
+      WHERE c.dispatch_date >= ${periodFrom}
+        AND c.dispatch_date <= ${periodTo}
+        ${partnerId ? sql`AND c.partner_id = ${partnerId}` : sql``}
+      GROUP BY c.id, c.number, c.dispatch_date, c.return_by_date, c.status, cp.name, cp.id
+      ORDER BY c.dispatch_date DESC
+    `);
+
+    const items = (rows as any[]).map((r) => ({
+      id: r.id,
+      number: r.number,
+      partnerName: r.partner_name,
+      partnerId: r.partner_id,
+      dispatchDate: r.dispatch_date,
+      returnByDate: r.return_by_date,
+      status: r.status,
+      titleCount: Number(r.title_count),
+      totalDispatched: Number(r.total_dispatched),
+      totalSold: Number(r.total_sold),
+      totalReturned: Number(r.total_returned),
+      outstanding: Number(r.outstanding),
+      sellThroughPct: r.total_dispatched > 0
+        ? Math.round((Number(r.total_sold) / Number(r.total_dispatched)) * 100)
+        : 0,
+    }));
+
+    const summary = items.reduce((acc, r) => ({
+      totalDispatched: acc.totalDispatched + r.totalDispatched,
+      totalSold: acc.totalSold + r.totalSold,
+      totalReturned: acc.totalReturned + r.totalReturned,
+      outstanding: acc.outstanding + r.outstanding,
+    }), { totalDispatched: 0, totalSold: 0, totalReturned: 0, outstanding: 0 });
+
+    return { data: { items, summary } };
   });
 }
 

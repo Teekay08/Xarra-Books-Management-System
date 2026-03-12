@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { api } from '../lib/api';
+import { formatR } from '../lib/format';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts';
+import { ChartTooltip, ChartGradients, GradientDef, CHART_COLORS, cleanAxisProps, cleanGridProps } from '../components/charts';
 
 interface DashboardStats {
   totalTitles: number;
@@ -22,6 +25,8 @@ interface PnlSummary {
   ytdExpenses: number;
   ytdNet: number;
   mtdRevenue: number;
+  mtdRevenueLy: number;
+  mtdYoYChange: number | null;
   mtdExpenses: number;
   mtdNet: number;
   outstanding: number;
@@ -31,15 +36,16 @@ interface RevenuePoint { month: string; revenue: number }
 interface ExpensePoint { category: string; total: number }
 interface OverdueInvoice { id: string; number: string; total: number; dueDate: string; partnerName: string; daysOverdue: number }
 interface Activity { type: string; reference: string; amount: number; date: string }
+interface TopTitle { id: string; title: string; unitsSold: number; revenue: number }
+interface OutstandingSor { id: string; number: string; partnerName: string; returnByDate: string; outstandingUnits: number; isOverdue: boolean; daysUntilDue: number }
+interface RoyaltyDue { id: string; authorName: string; amountPending: number; entryCount: number }
+interface LowStockTitle { id: string; title: string; stockOnHand: number }
 
-const PIE_COLORS = ['#166534', '#15803d', '#22c55e', '#86efac', '#4ade80', '#a3e635', '#facc15', '#f97316'];
-
-function formatR(v: number) {
-  return `R ${v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+const PIE_COLORS = CHART_COLORS;
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const [topTitlesPeriod, setTopTitlesPeriod] = useState<'mtd' | 'ytd'>('ytd');
 
   const { data: statsData, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -71,8 +77,29 @@ export function Dashboard() {
     queryFn: () => api<{ data: Activity[] }>('/dashboard/recent-activity'),
   });
 
+  const { data: topTitlesData } = useQuery({
+    queryKey: ['dashboard-top-titles'],
+    queryFn: () => api<{ data: { mtd: TopTitle[]; ytd: TopTitle[] } }>('/dashboard/top-titles'),
+  });
+
+  const { data: sorData } = useQuery({
+    queryKey: ['dashboard-outstanding-sors'],
+    queryFn: () => api<{ data: OutstandingSor[] }>('/dashboard/outstanding-sors'),
+  });
+
+  const { data: royaltiesData } = useQuery({
+    queryKey: ['dashboard-royalties-due'],
+    queryFn: () => api<{ data: RoyaltyDue[] }>('/dashboard/royalties-due'),
+  });
+
+  const { data: lowStockData } = useQuery({
+    queryKey: ['dashboard-low-stock'],
+    queryFn: () => api<{ data: LowStockTitle[] }>('/dashboard/low-stock'),
+  });
+
   const stats = statsData?.data;
   const pnl = pnlData?.data;
+  const topTitles = topTitlesPeriod === 'mtd' ? topTitlesData?.data?.mtd : topTitlesData?.data?.ytd;
 
   const operationalCards = [
     { label: 'Total Titles', value: stats?.totalTitles, color: 'bg-blue-50 text-blue-700', link: '/titles' },
@@ -101,9 +128,15 @@ export function Dashboard() {
             <p className="text-xs text-gray-400 mt-1">This month: {formatR(pnl.mtdRevenue)}</p>
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <p className="text-xs text-gray-500 uppercase">Expenses YTD</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatR(pnl.ytdExpenses)}</p>
-            <p className="text-xs text-gray-400 mt-1">This month: {formatR(pnl.mtdExpenses)}</p>
+            <p className="text-xs text-gray-500 uppercase">Sales This Month</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{formatR(pnl.mtdRevenue)}</p>
+            {pnl.mtdYoYChange !== null ? (
+              <p className={`text-xs mt-1 font-medium ${pnl.mtdYoYChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {pnl.mtdYoYChange >= 0 ? '▲' : '▼'} {Math.abs(pnl.mtdYoYChange).toFixed(1)}% vs same month last year
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 mt-1">No comparison data</p>
+            )}
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-5">
             <p className="text-xs text-gray-500 uppercase">Net Profit YTD</p>
@@ -139,16 +172,19 @@ export function Dashboard() {
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Revenue bar chart */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Revenue Over Time</h3>
           {revenueData?.data && revenueData.data.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={revenueData.data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v) => formatR(Number(v))} />
-                <Bar dataKey="revenue" fill="#166534" radius={[4, 4, 0, 0]} />
+                <ChartGradients>
+                  <GradientDef id="revGrad" from="#34d399" to="#059669" />
+                </ChartGradients>
+                <CartesianGrid {...cleanGridProps} />
+                <XAxis dataKey="month" {...cleanAxisProps} />
+                <YAxis {...cleanAxisProps} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
+                <Tooltip content={<ChartTooltip formatter={(v) => formatR(v)} />} />
+                <Bar dataKey="revenue" fill="url(#revGrad)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -156,8 +192,8 @@ export function Dashboard() {
           )}
         </div>
 
-        {/* Expense pie chart */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        {/* Expense donut chart */}
+        <div className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Expenses by Category (YTD)</h3>
           {expenseData?.data && expenseData.data.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
@@ -168,15 +204,18 @@ export function Dashboard() {
                   nameKey="category"
                   cx="50%"
                   cy="50%"
+                  innerRadius={60}
                   outerRadius={100}
+                  paddingAngle={2}
+                  cornerRadius={4}
                   label={({ category, percent }: any) => `${category} (${(percent * 100).toFixed(0)}%)`}
-                  labelLine={{ strokeWidth: 1 }}
+                  labelLine={{ strokeWidth: 1, stroke: '#cbd5e1' }}
                 >
                   {expenseData.data.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} strokeWidth={0} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v) => formatR(Number(v))} />
+                <Tooltip content={<ChartTooltip formatter={(v) => formatR(v)} />} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -185,7 +224,129 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Bottom row: Overdue Invoices + Recent Activity */}
+      {/* Insights row: Top Titles + Outstanding SORs */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Top 5 Performing Titles */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">Top Performing Titles</h3>
+            <div className="flex rounded-md border border-gray-200 overflow-hidden text-xs">
+              <button
+                onClick={() => setTopTitlesPeriod('mtd')}
+                className={`px-2 py-1 ${topTitlesPeriod === 'mtd' ? 'bg-gray-100 font-medium' : 'text-gray-500'}`}
+              >MTD</button>
+              <button
+                onClick={() => setTopTitlesPeriod('ytd')}
+                className={`px-2 py-1 ${topTitlesPeriod === 'ytd' ? 'bg-gray-100 font-medium' : 'text-gray-500'}`}
+              >YTD</button>
+            </div>
+          </div>
+          {topTitles && topTitles.length > 0 ? (
+            <div className="divide-y">
+              {topTitles.map((t, i) => (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-50 px-1 rounded"
+                  onClick={() => navigate(`/titles/${t.id}`)}
+                >
+                  <span className="text-xs font-bold text-gray-300 w-4 shrink-0">#{i + 1}</span>
+                  <span className="text-sm text-gray-800 flex-1 truncate">{t.title}</span>
+                  <span className="text-xs text-gray-500 shrink-0">{t.unitsSold} units</span>
+                  <span className="text-sm font-medium font-mono text-gray-900 shrink-0">{formatR(t.revenue)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">No sales data</p>
+          )}
+        </div>
+
+        {/* Outstanding SORs */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">Outstanding SORs</h3>
+            <button onClick={() => navigate('/consignments')} className="text-xs text-green-700 hover:underline">View all</button>
+          </div>
+          {sorData?.data && sorData.data.length > 0 ? (
+            <div className="divide-y max-h-56 overflow-y-auto">
+              {sorData.data.map((sor) => (
+                <div
+                  key={sor.id}
+                  className="flex items-center justify-between py-2 cursor-pointer hover:bg-gray-50 px-1 rounded"
+                  onClick={() => navigate(`/consignments/${sor.id}`)}
+                >
+                  <div>
+                    <span className="font-mono text-sm text-gray-800">{sor.number}</span>
+                    <span className="text-xs text-gray-500 ml-2">{sor.partnerName}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-gray-500">{sor.outstandingUnits} units</span>
+                    <span className={`ml-2 text-xs font-medium ${sor.isOverdue ? 'text-red-500' : 'text-amber-500'}`}>
+                      {sor.isOverdue ? `${Math.abs(sor.daysUntilDue)}d overdue` : `${sor.daysUntilDue}d left`}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">No SORs due within 30 days</p>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom row: Royalties Due + Low Stock + Overdue Invoices + Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Royalties Due */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">Royalties Due</h3>
+            <button onClick={() => navigate('/royalties')} className="text-xs text-green-700 hover:underline">Manage</button>
+          </div>
+          {royaltiesData?.data && royaltiesData.data.length > 0 ? (
+            <div className="divide-y max-h-48 overflow-y-auto">
+              {royaltiesData.data.map((r) => (
+                <div key={r.id} className="flex items-center justify-between py-2 text-sm px-1">
+                  <span className="text-gray-700">{r.authorName}</span>
+                  <div className="text-right">
+                    <span className="font-medium font-mono">{formatR(r.amountPending)}</span>
+                    <span className="ml-2 text-xs text-amber-600">{r.entryCount} pending</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">No royalties pending</p>
+          )}
+        </div>
+
+        {/* Low Stock Alerts */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">Low Stock Alerts</h3>
+            <button onClick={() => navigate('/inventory')} className="text-xs text-green-700 hover:underline">View inventory</button>
+          </div>
+          {lowStockData?.data && lowStockData.data.length > 0 ? (
+            <div className="divide-y max-h-48 overflow-y-auto">
+              {lowStockData.data.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between py-2 cursor-pointer hover:bg-gray-50 px-1 rounded"
+                  onClick={() => navigate(`/titles/${t.id}`)}
+                >
+                  <span className="text-sm text-gray-700 truncate flex-1">{t.title}</span>
+                  <span className={`text-sm font-bold ml-3 shrink-0 ${t.stockOnHand <= 0 ? 'text-red-600' : 'text-amber-500'}`}>
+                    {t.stockOnHand <= 0 ? 'Out of stock' : `${t.stockOnHand} left`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">All titles well-stocked</p>
+          )}
+        </div>
+      </div>
+
+      {/* Overdue Invoices + Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Overdue invoices */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">

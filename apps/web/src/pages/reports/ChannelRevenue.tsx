@@ -5,13 +5,14 @@ import { PageHeader } from '../../components/PageHeader';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { ChartTooltip, ChartGradients, GradientDef, CHART_COLORS, cleanAxisProps, cleanGridProps } from '../../components/charts';
 
 interface ChannelRow { channel: string; saleCount: number; unitsSold: number; revenue: number }
 interface PartnerRow { partnerName: string; invoiceCount: number; unitsSold: number; revenue: number }
 interface TrendRow { month: string; channel: string; revenue: number }
 
 const fmt = (n: number) => `R ${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const COLORS = ['#15803d', '#1d4ed8', '#dc2626', '#ea580c', '#9333ea', '#0891b2', '#be185d', '#4f46e5'];
+const COLORS = CHART_COLORS;
 
 const channelLabels: Record<string, string> = {
   XARRA_WEBSITE: 'Xarra Website',
@@ -86,16 +87,16 @@ export function ChannelRevenue() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-6 mb-6">
-            {/* Pie chart */}
+            {/* Donut chart */}
             {pieData.length > 0 && (
-              <div className="rounded-lg border bg-white p-4" style={{ height: 350 }}>
+              <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm" style={{ height: 350 }}>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Revenue by Channel</h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110} label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`} labelLine={false}>
-                      {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={110} paddingAngle={2} cornerRadius={4} label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`} labelLine={{ stroke: '#cbd5e1', strokeWidth: 1 }}>
+                      {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} strokeWidth={0} />)}
                     </Pie>
-                    <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -104,17 +105,17 @@ export function ChannelRevenue() {
 
             {/* Stacked bar trend */}
             {stackedData.length > 0 && (
-              <div className="rounded-lg border bg-white p-4" style={{ height: 350 }}>
+              <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm" style={{ height: 350 }}>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Monthly Trend by Channel</h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <BarChart data={stackedData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                    <CartesianGrid {...cleanGridProps} />
+                    <XAxis dataKey="month" {...cleanAxisProps} />
+                    <YAxis {...cleanAxisProps} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                     <Legend />
                     {channelsSet.map((ch, i) => (
-                      <Bar key={ch} dataKey={ch} name={channelLabels[ch] || ch} stackId="a" fill={COLORS[i % COLORS.length]} />
+                      <Bar key={ch} dataKey={ch} name={channelLabels[ch] || ch} stackId="a" fill={COLORS[i % COLORS.length]} radius={i === channelsSet.length - 1 ? [4, 4, 0, 0] : undefined} />
                     ))}
                   </BarChart>
                 </ResponsiveContainer>

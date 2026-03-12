@@ -9,6 +9,8 @@ import { downloadFromApi, exportUrl } from '../../lib/export';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
+import { formatR } from '../../lib/format';
 
 interface CashSaleLine {
   id: string;
@@ -38,9 +40,6 @@ interface CashSale {
 
 const PAYMENT_METHODS = ['ALL', 'CASH', 'CARD', 'EFT', 'MOBILE'] as const;
 
-function formatCurrency(val: string | number): string {
-  return `R ${Number(val).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function CashSaleList() {
   const navigate = useNavigate();
@@ -96,7 +95,7 @@ export function CashSaleList() {
     {
       key: 'total',
       header: 'Total',
-      render: (s: CashSale) => <span className="font-mono">{formatCurrency(s.total)}</span>,
+      render: (s: CashSale) => <span className="font-mono">{formatR(s.total)}</span>,
     },
     {
       key: 'status',
@@ -113,6 +112,19 @@ export function CashSaleList() {
           </span>
         );
       },
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (s: CashSale) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ActionMenu items={[
+            { label: 'View Details', onClick: () => navigate(`/sales/cash-sales/${s.id}`) },
+            { label: 'Print Receipt', onClick: () => window.open(`/api/v1/sales/cash-sales/${s.id}/receipt`, '_blank') },
+            { label: 'Void Sale', onClick: () => { if (confirm('Void this sale?')) navigate(`/sales/cash-sales/${s.id}`); }, variant: 'danger', hidden: !!s.voidedAt },
+          ]} />
+        </div>
+      ),
     },
   ];
 

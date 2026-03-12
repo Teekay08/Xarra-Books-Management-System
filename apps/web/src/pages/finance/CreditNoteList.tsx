@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { ExportButton } from '../../components/ExportButton';
 import { downloadFromApi, exportUrl } from '../../lib/export';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
+import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface CreditNote {
   id: string;
@@ -34,7 +36,17 @@ export function CreditNoteList() {
 
   return (
     <div>
-      <PageHeader title="Credit Notes" />
+      <PageHeader
+        title="Credit Notes"
+        action={
+          <Link
+            to="/credit-notes/new"
+            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
+          >
+            New Credit Note
+          </Link>
+        }
+      />
 
       <div className="mb-4 flex gap-3 items-center">
         <input
@@ -58,11 +70,12 @@ export function CreditNoteList() {
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {isLoading && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {data?.data?.map((cn) => (
               <tr key={cn.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/credit-notes/${cn.id}`)}>
@@ -79,25 +92,24 @@ export function CreditNoteList() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-500">{new Date(cn.createdAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
+                  <ActionMenu items={[
+                    { label: 'View Details', onClick: () => navigate(`/credit-notes/${cn.id}`) },
+                    { label: 'Download PDF', onClick: () => window.open(`/api/v1/finance/credit-notes/${cn.id}/pdf`, '_blank') },
+                    { label: 'Void', onClick: () => { if (confirm('Void this credit note?')) navigate(`/credit-notes/${cn.id}`); }, variant: 'danger', hidden: !!cn.voidedAt },
+                  ]} />
+                </td>
               </tr>
             ))}
             {!isLoading && data?.data?.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No credit notes found.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No credit notes found.</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       {data?.pagination && data.pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-sm text-gray-500">Page {data.pagination.page} of {data.pagination.totalPages}</p>
-          <div className="flex gap-2">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50">Previous</button>
-            <button onClick={() => setPage((p) => p + 1)} disabled={page >= data.pagination.totalPages}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50">Next</button>
-          </div>
-        </div>
+        <Pagination page={page} totalPages={data.pagination.totalPages} total={data.pagination.total} onPageChange={setPage} />
       )}
       <DateRangeExportModal
         open={exportModalOpen}

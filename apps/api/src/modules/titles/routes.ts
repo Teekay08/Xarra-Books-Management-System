@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, sql, desc, asc } from 'drizzle-orm';
-import { titles, titleProductionCosts, authors } from '@xarra/db';
+import { eq, and, sql, desc, asc } from 'drizzle-orm';
+import { titles, titleProductionCosts, titlePrintRuns, authors, inventoryMovements } from '@xarra/db';
 import { createTitleSchema, updateTitleSchema, paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { nextGRNNumber } from '../finance/invoice-number.js';
+import { createBroadcastNotification } from '../../services/notifications.js';
 
 export async function titleRoutes(app: FastifyInstance) {
   // List titles (paginated)
@@ -68,6 +70,7 @@ export async function titleRoutes(app: FastifyInstance) {
       with: {
         primaryAuthor: true,
         productionCosts: true,
+        printRuns: true,
       },
     });
 
@@ -141,5 +144,124 @@ export async function titleRoutes(app: FastifyInstance) {
       paidDate: body.paidDate ? new Date(body.paidDate) : undefined,
     }).returning();
     return reply.status(201).send({ data: cost });
+  });
+
+  app.delete<{ Params: { id: string; costId: string } }>('/:id/costs/:costId', { preHandler: requireRole('admin', 'finance') }, async (request, reply) => {
+    const { id, costId } = request.params;
+    const existing = await app.db.select().from(titleProductionCosts)
+      .where(and(eq(titleProductionCosts.id, costId), eq(titleProductionCosts.titleId, id)));
+    if (!existing.length) return reply.notFound('Cost not found');
+    await app.db.delete(titleProductionCosts)
+      .where(and(eq(titleProductionCosts.id, costId), eq(titleProductionCosts.titleId, id)));
+    return { success: true };
+  });
+
+  // === Print Runs ===
+
+  app.get<{ Params: { id: string } }>('/:id/print-runs', { preHandler: requireAuth }, async (request) => {
+    const runs = await app.db
+      .select()
+      .from(titlePrintRuns)
+      .where(eq(titlePrintRuns.titleId, request.params.id))
+      .orderBy(desc(titlePrintRuns.createdAt));
+    return { data: runs };
+  });
+
+  app.post<{ Params: { id: string } }>('/:id/print-runs', { preHandler: requireRole('admin', 'operations') }, async (request, reply) => {
+    const body = request.body as {
+      printerName: string;
+      quantityOrdered: number;
+      totalCost: number;
+      expectedDeliveryDate?: string;
+      notes?: string;
+    };
+    const userId = request.session?.user?.id;
+    const number = await nextGRNNumber(app.db as any);
+
+    // Calculate next per-title print run number
+    const [maxRow] = await app.db
+      .select({ maxNum: sql<number>`COALESCE(MAX(${titlePrintRuns.printRunNumber}), 0)` })
+      .from(titlePrintRuns)
+      .where(eq(titlePrintRuns.titleId, request.params.id));
+    const printRunNumber = (maxRow?.maxNum ?? 0) + 1;
+
+    const [run] = await app.db.insert(titlePrintRuns).values({
+      titleId: request.params.id,
+      printRunNumber,
+      number,
+      printerName: body.printerName,
+      quantityOrdered: body.quantityOrdered,
+      totalCost: String(body.totalCost),
+      expectedDeliveryDate: body.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : undefined,
+      notes: body.notes,
+      createdBy: userId,
+    }).returning();
+
+    return reply.status(201).send({ data: run });
+  });
+
+  app.post<{ Params: { id: string; runId: string } }>('/:id/print-runs/:runId/receive', { preHandler: requireRole('admin', 'operations') }, async (request, reply) => {
+    const { id, runId } = request.params;
+    const body = request.body as { quantityReceived: number; notes?: string };
+    const userId = request.session?.user?.id;
+
+    const run = await app.db.query.titlePrintRuns.findFirst({
+      where: and(eq(titlePrintRuns.id, runId), eq(titlePrintRuns.titleId, id)),
+    });
+    if (!run) return reply.notFound('Print run not found');
+    if (run.status === 'RECEIVED' || run.status === 'CANCELLED') {
+      return reply.badRequest('Print run is already received or cancelled');
+    }
+
+    const status = body.quantityReceived < run.quantityOrdered ? 'PARTIAL' : 'RECEIVED';
+
+    await app.db.update(titlePrintRuns).set({
+      status,
+      quantityReceived: body.quantityReceived,
+      receivedAt: new Date(),
+      receivedBy: userId,
+      notes: body.notes || run.notes,
+      updatedAt: new Date(),
+    }).where(eq(titlePrintRuns.id, runId));
+
+    // Create inventory movement to add received stock to warehouse
+    const [movement] = await app.db.insert(inventoryMovements).values({
+      titleId: id,
+      movementType: 'IN',
+      toLocation: 'XARRA_WAREHOUSE',
+      quantity: body.quantityReceived,
+      referenceId: runId,
+      referenceType: 'PRINT_RUN',
+      supplierName: run.printerName,
+      receivedDate: new Date(),
+      notes: `Print run ${run.number} received: ${body.quantityReceived} of ${run.quantityOrdered} ordered`,
+      createdBy: userId,
+    }).returning();
+
+    // Notify about stock receipt
+    const title = await app.db.query.titles.findFirst({ where: eq(titles.id, id) });
+    createBroadcastNotification(app, {
+      type: 'INVENTORY_RECEIVED',
+      title: 'Print run received',
+      message: `${body.quantityReceived} units of "${title?.title ?? 'Unknown'}" received from ${run.printerName} (${run.number})`,
+      actionUrl: `/titles/${id}`,
+      referenceType: 'INVENTORY_MOVEMENT',
+      referenceId: movement.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create print run notification'));
+
+    return { data: { message: 'Print run marked as received', status, quantityReceived: body.quantityReceived } };
+  });
+
+  app.delete<{ Params: { id: string; runId: string } }>('/:id/print-runs/:runId', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id, runId } = request.params;
+    const run = await app.db.query.titlePrintRuns.findFirst({
+      where: and(eq(titlePrintRuns.id, runId), eq(titlePrintRuns.titleId, id)),
+    });
+    if (!run) return reply.notFound('Print run not found');
+    if (run.status === 'RECEIVED' || run.status === 'PARTIAL') {
+      return reply.badRequest('Cannot delete a received print run');
+    }
+    await app.db.delete(titlePrintRuns).where(eq(titlePrintRuns.id, runId));
+    return { success: true };
   });
 }

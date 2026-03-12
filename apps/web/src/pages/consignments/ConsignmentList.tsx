@@ -9,6 +9,7 @@ import { downloadFromApi, exportUrl } from '../../lib/export';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface ConsignmentLine {
   qtyDispatched: number;
@@ -43,6 +44,15 @@ export function ConsignmentList() {
   const [exportConsignModalOpen, setExportConsignModalOpen] = useState(false);
   const [exportLinesModalOpen, setExportLinesModalOpen] = useState(false);
 
+  // Fetch system configuration for SOR alert period
+  const { data: systemConfig } = useQuery({
+    queryKey: ['system-config'],
+    queryFn: () => api<{ data: { sorAlertDays: number } }>('/settings/system-config'),
+  });
+
+  const sorAlertDays = systemConfig?.data?.sorAlertDays ?? 30;
+  const sorCriticalDays = Math.floor(sorAlertDays / 2); // Red alert at half the alert period
+
   const { data, isLoading } = useQuery({
     queryKey: ['consignments', page, search],
     queryFn: () =>
@@ -66,7 +76,7 @@ export function ConsignmentList() {
       const expiry = new Date(c.sorExpiryDate);
       const days = Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
       return (
-        <span className={days <= 14 ? 'text-red-600 font-medium' : days <= 30 ? 'text-amber-600' : ''}>
+        <span className={days <= sorCriticalDays ? 'text-red-600 font-medium' : days <= sorAlertDays ? 'text-amber-600' : ''}>
           {expiry.toLocaleDateString('en-ZA')} ({days}d)
         </span>
       );
@@ -80,6 +90,15 @@ export function ConsignmentList() {
       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[c.status] ?? ''}`}>
         {c.status.replace(/_/g, ' ')}
       </span>
+    )},
+    { key: 'actions', header: 'Actions', render: (c: Consignment) => (
+      <div onClick={(e) => e.stopPropagation()}>
+        <ActionMenu items={[
+          { label: 'View Details', onClick: () => navigate(`/consignments/${c.id}`) },
+          { label: 'Download PDF', onClick: () => window.open(`/api/v1/consignments/${c.id}/proforma-pdf`, '_blank') },
+          { label: 'Print', onClick: () => { const w = window.open(`/api/v1/consignments/${c.id}/proforma-pdf`, '_blank'); w?.addEventListener('load', () => w.print()); } },
+        ]} />
+      </div>
     )},
   ];
 

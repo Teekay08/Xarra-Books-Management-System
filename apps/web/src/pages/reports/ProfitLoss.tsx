@@ -5,6 +5,8 @@ import { PageHeader } from '../../components/PageHeader';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { formatR } from '../../lib/format';
+import { ChartTooltip, ChartGradients, GradientDef, cleanAxisProps, cleanGridProps } from '../../components/charts';
 
 interface PnlMonth {
   month: string;
@@ -21,9 +23,6 @@ interface PnlData {
   periodTo: string;
 }
 
-function formatR(v: number) {
-  return `R ${v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function ProfitLoss() {
   const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
@@ -95,16 +94,20 @@ export function ProfitLoss() {
 
           {/* Chart */}
           {pnl.months.length > 0 && (
-            <div className="rounded-lg border bg-white p-5 mb-6">
+            <div className="rounded-xl border border-gray-200/60 bg-white p-5 mb-6 shadow-sm">
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={pnl.months}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v) => formatR(Number(v))} />
+                  <ChartGradients>
+                    <GradientDef id="pnlRevGrad" from="#34d399" to="#059669" />
+                    <GradientDef id="pnlExpGrad" from="#fca5a5" to="#dc2626" />
+                  </ChartGradients>
+                  <CartesianGrid {...cleanGridProps} />
+                  <XAxis dataKey="month" {...cleanAxisProps} />
+                  <YAxis {...cleanAxisProps} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip content={<ChartTooltip formatter={(v) => formatR(v)} />} />
                   <Legend />
-                  <Bar dataKey="revenue" name="Revenue" fill="#166534" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expenses" name="Expenses" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="revenue" name="Revenue" fill="url(#pnlRevGrad)" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="expenses" name="Expenses" fill="url(#pnlExpGrad)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

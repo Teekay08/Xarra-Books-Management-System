@@ -48,7 +48,19 @@ export async function authorRoutes(app: FastifyInstance) {
     });
 
     if (!author) return reply.notFound('Author not found');
-    return { data: author };
+
+    // Include portal user email if linked
+    let portalUser: { email: string; updatedAt: Date | null } | null = null;
+    if (author.portalUserId) {
+      const [u] = await app.db
+        .select({ email: authUsers.email, updatedAt: authUsers.updatedAt })
+        .from(authUsers)
+        .where(eq(authUsers.id, author.portalUserId))
+        .limit(1);
+      portalUser = u ?? null;
+    }
+
+    return { data: { ...author, portalUser } };
   });
 
   // Create author

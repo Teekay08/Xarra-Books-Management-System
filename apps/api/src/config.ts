@@ -11,7 +11,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
-  CORS_ORIGIN: z.string().url().default('http://localhost:5173'),
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
   JWT_SECRET: z.string().min(8),
   S3_BUCKET: z.string().default('xarra-documents'),
   AWS_REGION: z.string().default('af-south-1'),
@@ -43,7 +43,7 @@ export const config = {
   },
 
   cors: {
-    origin: env.CORS_ORIGIN,
+    origins: env.CORS_ORIGIN.split(',').map((o) => o.trim()),
   },
 
   jwt: {

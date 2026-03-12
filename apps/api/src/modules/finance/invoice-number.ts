@@ -10,7 +10,7 @@ export async function nextInvoiceNumber(db: NodePgDatabase<Record<string, unknow
   const pattern = `${prefix}-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM invoices
     WHERE number LIKE ${pattern}
   `);
@@ -24,7 +24,7 @@ export async function nextCreditNoteNumber(db: NodePgDatabase<Record<string, unk
   const pattern = `CN-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM credit_notes
     WHERE number LIKE ${pattern}
   `);
@@ -38,7 +38,7 @@ export async function nextDebitNoteNumber(db: NodePgDatabase<Record<string, unkn
   const pattern = `DN-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM debit_notes
     WHERE number LIKE ${pattern}
   `);
@@ -52,7 +52,7 @@ export async function nextQuotationNumber(db: NodePgDatabase<Record<string, unkn
   const pattern = `PF-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM quotations
     WHERE number LIKE ${pattern}
   `);
@@ -66,7 +66,7 @@ export async function nextPurchaseOrderNumber(db: NodePgDatabase<Record<string, 
   const pattern = `PO-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM purchase_orders
     WHERE number LIKE ${pattern}
   `);
@@ -80,7 +80,7 @@ export async function nextCashSaleNumber(db: NodePgDatabase<Record<string, unkno
   const pattern = `CS-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM cash_sales
     WHERE number LIKE ${pattern}
   `);
@@ -94,7 +94,7 @@ export async function nextExpenseClaimNumber(db: NodePgDatabase<Record<string, u
   const pattern = `EC-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM expense_claims
     WHERE number LIKE ${pattern}
   `);
@@ -108,7 +108,7 @@ export async function nextRequisitionNumber(db: NodePgDatabase<Record<string, un
   const pattern = `REQ-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM requisitions
     WHERE number LIKE ${pattern}
   `);
@@ -122,7 +122,7 @@ export async function nextPartnerOrderNumber(db: NodePgDatabase<Record<string, u
   const pattern = `POR-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM partner_orders
     WHERE number LIKE ${pattern}
   `);
@@ -136,11 +136,39 @@ export async function nextPartnerReturnRequestNumber(db: NodePgDatabase<Record<s
   const pattern = `PRR-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
     FROM partner_return_requests
     WHERE number LIKE ${pattern}
   `);
 
   const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
   return `PRR-${year}-${String(nextNum).padStart(4, '0')}`;
+}
+
+export async function nextReturnNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `RA-${year}-%`;
+
+  const result = await db.execute<{ maxNum: string | null }>(sql`
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
+    FROM returns_authorizations
+    WHERE number LIKE ${pattern}
+  `);
+
+  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
+  return `RA-${year}-${String(nextNum).padStart(4, '0')}`;
+}
+
+export async function nextGRNNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `GRN-${year}-%`;
+
+  const result = await db.execute<{ maxNum: string | null }>(sql`
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
+    FROM title_print_runs
+    WHERE number LIKE ${pattern}
+  `);
+
+  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
+  return `GRN-${year}-${String(nextNum).padStart(4, '0')}`;
 }

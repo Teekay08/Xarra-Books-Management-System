@@ -34,7 +34,8 @@ export type Module =
   | 'expenseClaims'
   | 'requisitions'
   | 'partnerPortal'
-  | 'courierShipments';
+  | 'courierShipments'
+  | 'royalties';
 
 export type Role = 'admin' | 'finance' | 'operations' | 'editorial' | 'author' | 'reportsOnly';
 
@@ -69,6 +70,7 @@ export const PERMISSIONS: PermissionMatrix = {
     requisitions: ['read', 'create', 'update', 'approve'],
     partnerPortal: ['read', 'create', 'update', 'delete', 'approve'],
     courierShipments: ['read', 'create', 'update', 'delete'],
+    royalties: ['read', 'create', 'update', 'approve', 'void'],
   },
   finance: {
     dashboard: ['read'],
@@ -96,6 +98,7 @@ export const PERMISSIONS: PermissionMatrix = {
     requisitions: ['read', 'create', 'update'],
     partnerPortal: ['read', 'approve'],
     courierShipments: ['read'],
+    royalties: ['read', 'create', 'update', 'approve', 'void'],
   },
   operations: {
     dashboard: ['read'],
@@ -121,6 +124,7 @@ export const PERMISSIONS: PermissionMatrix = {
     requisitions: ['read', 'create', 'update'],
     partnerPortal: ['read', 'create', 'update', 'approve'],
     courierShipments: ['read', 'create', 'update'],
+    royalties: ['read'],
   },
   editorial: {
     dashboard: ['read'],
@@ -168,6 +172,7 @@ export const PERMISSIONS: PermissionMatrix = {
     cashSales: ['read'],
     expenseClaims: ['read'],
     requisitions: ['read'],
+    royalties: ['read'],
     settings: ['read'],
   },
 };

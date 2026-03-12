@@ -4,14 +4,16 @@ import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
 
 interface CategoryRow { category: string; total: number; count: number }
 interface TrendRow { month: string; category: string; total: number }
 interface MonthlyRow { month: string; total: number; taxTotal: number }
 
 const fmt = (n: number) => `R ${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const COLORS = ['#15803d', '#1d4ed8', '#dc2626', '#ea580c', '#9333ea', '#0891b2', '#be185d', '#4f46e5', '#059669', '#7c3aed'];
+
+import { ChartTooltip, ChartGradients, GradientDef, CHART_COLORS, cleanAxisProps, cleanGridProps } from '../../components/charts';
+const COLORS = CHART_COLORS;
 
 export function ExpenseTrends() {
   const year = new Date().getFullYear();
@@ -88,35 +90,39 @@ export function ExpenseTrends() {
       {isLoading ? <p className="text-sm text-gray-400">Loading...</p> : (
         <>
           <div className="grid grid-cols-2 gap-6 mb-6">
-            {/* Pie chart by category */}
+            {/* Donut chart by category */}
             {categories.length > 0 && (
-              <div className="rounded-lg border bg-white p-4" style={{ height: 350 }}>
+              <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm" style={{ height: 350 }}>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Expenses by Category</h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <PieChart>
-                    <Pie data={categories.map((c) => ({ name: c.category, value: c.total }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`} labelLine={false}>
-                      {categories.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    <Pie data={categories.map((c) => ({ name: c.category, value: c.total }))} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={100} paddingAngle={2} cornerRadius={4} label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`} labelLine={{ stroke: '#cbd5e1', strokeWidth: 1 }}>
+                      {categories.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} strokeWidth={0} />)}
                     </Pie>
-                    <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
             )}
 
-            {/* Monthly total line chart */}
+            {/* Monthly spending area chart */}
             {monthly.length > 0 && (
-              <div className="rounded-lg border bg-white p-4" style={{ height: 350 }}>
+              <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm" style={{ height: 350 }}>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Monthly Spending Trend</h3>
                 <ResponsiveContainer width="100%" height="90%">
-                  <LineChart data={monthly}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                    <Line type="monotone" dataKey="total" stroke="#dc2626" strokeWidth={2} dot={{ r: 4 }} name="Total" />
-                    <Line type="monotone" dataKey="taxTotal" stroke="#9333ea" strokeWidth={1} strokeDasharray="5 5" dot={false} name="VAT Portion" />
-                  </LineChart>
+                  <AreaChart data={monthly}>
+                    <ChartGradients>
+                      <GradientDef id="expTotalGrad" from="#fca5a5" to="#fecaca" />
+                      <GradientDef id="expVatGrad" from="#c4b5fd" to="#ede9fe" />
+                    </ChartGradients>
+                    <CartesianGrid {...cleanGridProps} />
+                    <XAxis dataKey="month" {...cleanAxisProps} />
+                    <YAxis {...cleanAxisProps} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
+                    <Area type="monotone" dataKey="total" stroke="#ef4444" strokeWidth={2} fill="url(#expTotalGrad)" name="Total" />
+                    <Area type="monotone" dataKey="taxTotal" stroke="#8b5cf6" strokeWidth={1.5} fill="url(#expVatGrad)" strokeDasharray="5 5" name="VAT Portion" />
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             )}
@@ -124,17 +130,17 @@ export function ExpenseTrends() {
 
           {/* Stacked bar by category/month */}
           {stackedData.length > 0 && (
-            <div className="rounded-lg border bg-white p-4 mb-6" style={{ height: 350 }}>
+            <div className="rounded-xl border border-gray-200/60 bg-white p-4 mb-6 shadow-sm" style={{ height: 350 }}>
               <h3 className="text-sm font-medium text-gray-700 mb-3">Category Breakdown by Month</h3>
               <ResponsiveContainer width="100%" height="90%">
                 <BarChart data={stackedData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                  <CartesianGrid {...cleanGridProps} />
+                  <XAxis dataKey="month" {...cleanAxisProps} />
+                  <YAxis {...cleanAxisProps} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                   <Legend />
                   {categoryNames.map((cat, i) => (
-                    <Bar key={cat} dataKey={cat} stackId="a" fill={COLORS[i % COLORS.length]} />
+                    <Bar key={cat} dataKey={cat} stackId="a" fill={COLORS[i % COLORS.length]} radius={i === categoryNames.length - 1 ? [4, 4, 0, 0] : undefined} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>

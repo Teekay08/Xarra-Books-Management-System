@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
+import { formatR } from '../../lib/format';
 
 interface AgingData {
   buckets: { current: number; thirtyDays: number; sixtyDays: number; ninetyPlus: number };
@@ -18,9 +19,6 @@ interface AgingData {
   }[];
 }
 
-function formatR(v: number) {
-  return `R ${v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function OverdueAging() {
   const navigate = useNavigate();

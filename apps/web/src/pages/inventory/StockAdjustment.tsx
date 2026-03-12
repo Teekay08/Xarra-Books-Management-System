@@ -20,6 +20,15 @@ interface Supplier {
 
 const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500';
 
+type AdjustmentType = 'RESTOCK' | 'WRITEOFF' | 'TRANSFER' | 'COMPLIMENTARY';
+
+const ADJUSTMENT_TYPES: { value: AdjustmentType; label: string; description: string; icon: string }[] = [
+  { value: 'RESTOCK', label: 'Restock', description: 'Return stock from returns/corrections', icon: '📦' },
+  { value: 'WRITEOFF', label: 'Write-off', description: 'Damaged, lost, or unsaleable stock', icon: '🗑️' },
+  { value: 'TRANSFER', label: 'Transfer', description: 'Move stock between locations', icon: '🔄' },
+  { value: 'COMPLIMENTARY', label: 'Complimentary', description: 'Free copies given away', icon: '🎁' },
+];
+
 export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receive' }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -27,6 +36,7 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
   const [error, setError] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   const [titleId, setTitleId] = useState(searchParams.get('titleId') ?? '');
+  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('RESTOCK');
   const [supplierId, setSupplierId] = useState('');
   const [showCreateSupplier, setShowCreateSupplier] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState('');
@@ -106,9 +116,11 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
     } else {
       mutation.mutate({
         titleId,
+        adjustmentType,
         quantity: Number(fd.get('quantity')),
         location: fd.get('location'),
-        reason: fd.get('reason'),
+        ...(adjustmentType === 'TRANSFER' && { toLocation: fd.get('toLocation') }),
+        reason: fd.get('reason') || `${adjustmentType} adjustment`,
         notes: fd.get('notes') || undefined,
       }, { onError: (err) => setError(err.message) });
     }
@@ -257,22 +269,49 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
           </>
         )}
 
+        {/* Adjustment Type Selector (adjust mode only) */}
+        {!isReceive && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Adjustment Type *</label>
+            <div className="grid grid-cols-2 gap-3">
+              {ADJUSTMENT_TYPES.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => { setAdjustmentType(t.value); if (!isDirty) setIsDirty(true); }}
+                  className={`rounded-lg border-2 p-3 text-left transition-colors ${
+                    adjustmentType === t.value
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-lg">{t.icon}</span>
+                  <p className="mt-1 text-sm font-medium text-gray-900">{t.label}</p>
+                  <p className="text-xs text-gray-500">{t.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Quantity * {!isReceive && <span className="text-gray-400">(negative to reduce)</span>}
+              Quantity *
             </label>
             <input
               name="quantity"
               type="number"
               required
-              min={isReceive ? 1 : undefined}
+              min={1}
               className={cls}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {!isReceive && adjustmentType === 'TRANSFER' ? 'From Location *' : 'Location *'}
+            </label>
             <select
               name="location"
               required
@@ -286,6 +325,24 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
           </div>
         </div>
 
+        {/* To Location (Transfer only) */}
+        {!isReceive && adjustmentType === 'TRANSFER' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">To Location *</label>
+            <select
+              name="toLocation"
+              required
+              defaultValue=""
+              className={cls}
+            >
+              <option value="" disabled>Select destination...</option>
+              {INVENTORY_LOCATIONS.map((loc) => (
+                <option key={loc} value={loc}>{loc.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {!isReceive && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
@@ -293,7 +350,12 @@ export function StockAdjustment({ mode = 'adjust' }: { mode?: 'adjust' | 'receiv
               name="reason"
               required
               className={cls}
-              placeholder="e.g., Physical count correction, Damaged stock"
+              placeholder={
+                adjustmentType === 'RESTOCK' ? 'e.g., Returned from partner, Count correction' :
+                adjustmentType === 'WRITEOFF' ? 'e.g., Water damage, Unsaleable condition' :
+                adjustmentType === 'TRANSFER' ? 'e.g., Replenish store stock, Move to warehouse' :
+                'e.g., Author copies, Review copies, Marketing'
+              }
             />
           </div>
         )}

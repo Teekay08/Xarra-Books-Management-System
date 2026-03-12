@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
+import { ChartTooltip, ChartGradients, GradientDef, CHART_COLORS, cleanAxisProps, cleanGridProps } from '../../components/charts';
 
 interface PartnerRow {
   id: string; name: string; discountPct: number;
@@ -15,7 +16,7 @@ interface PartnerRow {
 }
 
 const fmt = (n: number) => `R ${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const COLORS = ['#15803d', '#1d4ed8', '#9333ea', '#dc2626', '#ea580c', '#0891b2', '#4f46e5', '#be185d'];
+const COLORS = CHART_COLORS;
 
 export function PartnerPerformance() {
   const year = new Date().getFullYear();
@@ -82,31 +83,35 @@ export function PartnerPerformance() {
       <div className="grid grid-cols-2 gap-6 mb-6">
         {/* Revenue bar chart */}
         {partners.length > 0 && (
-          <div className="rounded-lg border bg-white p-4" style={{ height: 350 }}>
+          <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm" style={{ height: 350 }}>
             <h3 className="text-sm font-medium text-gray-700 mb-3">Revenue by Partner</h3>
             <ResponsiveContainer width="100%" height="90%">
               <BarChart data={partners.slice(0, 10).map((p) => ({ name: p.name.length > 20 ? p.name.slice(0, 20) + '...' : p.name, revenue: p.totalRevenue, paid: p.totalPaid }))} layout="vertical" margin={{ left: 120 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
-                <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Bar dataKey="revenue" fill="#15803d" name="Revenue" />
-                <Bar dataKey="paid" fill="#1d4ed8" name="Paid" />
+                <ChartGradients>
+                  <GradientDef id="ppRevGrad" from="#34d399" to="#059669" direction="horizontal" />
+                  <GradientDef id="ppPaidGrad" from="#93c5fd" to="#2563eb" direction="horizontal" />
+                </ChartGradients>
+                <CartesianGrid {...cleanGridProps} />
+                <XAxis type="number" {...cleanAxisProps} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
+                <YAxis type="category" dataKey="name" width={110} {...cleanAxisProps} />
+                <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
+                <Bar dataKey="revenue" fill="url(#ppRevGrad)" name="Revenue" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="paid" fill="url(#ppPaidGrad)" name="Paid" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
 
-        {/* Revenue share pie */}
+        {/* Revenue share donut */}
         {pieData.length > 0 && (
-          <div className="rounded-lg border bg-white p-4" style={{ height: 350 }}>
+          <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm" style={{ height: 350 }}>
             <h3 className="text-sm font-medium text-gray-700 mb-3">Revenue Share</h3>
             <ResponsiveContainer width="100%" height="90%">
               <PieChart>
-                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`} labelLine={false}>
-                  {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={100} paddingAngle={2} cornerRadius={4} label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`} labelLine={{ stroke: '#cbd5e1', strokeWidth: 1 }}>
+                  {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} strokeWidth={0} />)}
                 </Pie>
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>

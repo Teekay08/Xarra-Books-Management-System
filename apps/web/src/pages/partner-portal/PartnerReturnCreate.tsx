@@ -3,16 +3,21 @@ import { useNavigate } from 'react-router';
 import { partnerApi, getPartnerUser, type PaginatedResponse } from '../../lib/partner-api';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 
-interface Consignment {
+interface ConsignmentLine {
   id: string;
-  dispatchDate: string | null;
-  createdAt: string;
+  qtyDispatched: number;
+  qtySold: number;
+  qtyReturned: number;
+  qtyDamaged: number;
+  title?: { id: string; title: string; isbn13: string | null };
 }
 
-interface CatalogTitle {
+interface Consignment {
   id: string;
-  title: string;
-  isbn13: string | null;
+  proformaNumber: string | null;
+  dispatchDate: string | null;
+  createdAt: string;
+  lines: ConsignmentLine[];
 }
 
 interface Branch {
@@ -25,6 +30,7 @@ interface ReturnLine {
   titleName: string;
   isbn: string;
   quantity: number;
+  maxQuantity: number;
   condition: 'GOOD' | 'DAMAGED' | 'UNSALEABLE';
   reason: string;
 }
@@ -34,7 +40,6 @@ export function PartnerReturnCreate() {
   const user = getPartnerUser();
 
   const [consignments, setConsignments] = useState<Consignment[]>([]);
-  const [titles, setTitles] = useState<CatalogTitle[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
 
   const [consignmentId, setConsignmentId] = useState('');
@@ -43,8 +48,6 @@ export function PartnerReturnCreate() {
   const [branchId, setBranchId] = useState('');
   const [notes, setNotes] = useState('');
 
-  const [showTitleSelector, setShowTitleSelector] = useState(false);
-  const [titleSearch, setTitleSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [error, setError] = useState('');
@@ -52,12 +55,23 @@ export function PartnerReturnCreate() {
 
   const isHqUser = !user?.branchId;
 
+  const selectedConsignment = consignments.find((c) => c.id === consignmentId);
+
+  // Available titles from selected consignment (only titles with returnable qty)
+  const availableTitles = (selectedConsignment?.lines ?? [])
+    .filter((l) => l.title && l.qtyDispatched - l.qtyReturned - l.qtyDamaged > 0)
+    .map((l) => ({
+      id: l.title!.id,
+      title: l.title!.title,
+      isbn13: l.title!.isbn13,
+      maxQty: l.qtyDispatched - l.qtyReturned - l.qtyDamaged,
+    }));
+
   useEffect(() => {
     async function fetchData() {
       try {
         const promises: Promise<any>[] = [
-          partnerApi<PaginatedResponse<Consignment>>('/documents/consignments?limit=50'),
-          partnerApi<PaginatedResponse<CatalogTitle>>('/catalog?limit=100'),
+          partnerApi<PaginatedResponse<Consignment>>('/documents/consignments?limit=200'),
         ];
 
         if (isHqUser) {
@@ -66,9 +80,8 @@ export function PartnerReturnCreate() {
 
         const results = await Promise.all(promises);
         setConsignments(results[0].data);
-        setTitles(results[1].data);
-        if (isHqUser && results[2]) {
-          setBranches(results[2].data);
+        if (isHqUser && results[1]) {
+          setBranches(results[1].data);
         }
       } catch {
         // errors handled by partnerApi
@@ -79,7 +92,14 @@ export function PartnerReturnCreate() {
     fetchData();
   }, [isHqUser]);
 
-  function addLine(title: CatalogTitle) {
+  // When consignment changes, clear lines
+  function handleConsignmentChange(newId: string) {
+    setConsignmentId(newId);
+    setLines([]);
+    if (!isDirty) setIsDirty(true);
+  }
+
+  function addLine(title: { id: string; title: string; isbn13: string | null; maxQty: number }) {
     if (lines.some((l) => l.titleId === title.id)) return;
     setLines((prev) => [
       ...prev,
@@ -88,12 +108,12 @@ export function PartnerReturnCreate() {
         titleName: title.title,
         isbn: title.isbn13 ?? '',
         quantity: 1,
+        maxQuantity: title.maxQty,
         condition: 'GOOD',
         reason: '',
       },
     ]);
-    setShowTitleSelector(false);
-    setTitleSearch('');
+    if (!isDirty) setIsDirty(true);
   }
 
   function updateLine(index: number, updates: Partial<ReturnLine>) {
@@ -109,6 +129,11 @@ export function PartnerReturnCreate() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    if (!consignmentId) {
+      setError('Please select a consignment / SOR pro-forma invoice.');
+      return;
+    }
 
     if (!reason.trim()) {
       setError('Please provide a reason for the return.');
@@ -126,10 +151,17 @@ export function PartnerReturnCreate() {
       return;
     }
 
+    const overLine = lines.find((l) => l.quantity > l.maxQuantity);
+    if (overLine) {
+      setError(`Quantity for "${overLine.titleName}" exceeds the available returnable quantity (${overLine.maxQuantity}).`);
+      return;
+    }
+
     setSubmitting(true);
     try {
+      const idempotencyKey = crypto.randomUUID();
       const payload = {
-        consignmentId: consignmentId || undefined,
+        consignmentId,
         reason: reason.trim(),
         lines: lines.map((l) => ({
           titleId: l.titleId,
@@ -144,6 +176,7 @@ export function PartnerReturnCreate() {
       const res = await partnerApi<{ data: { id: string } }>('/returns', {
         method: 'POST',
         body: JSON.stringify(payload),
+        headers: { 'X-Idempotency-Key': idempotencyKey },
       });
 
       setIsDirty(false);
@@ -155,11 +188,9 @@ export function PartnerReturnCreate() {
     }
   }
 
-  const filteredTitles = titles.filter(
-    (t) =>
-      !lines.some((l) => l.titleId === t.id) &&
-      (t.title.toLowerCase().includes(titleSearch.toLowerCase()) ||
-        (t.isbn13 ?? '').toLowerCase().includes(titleSearch.toLowerCase()))
+  // Filter available titles (exclude already-added ones)
+  const titlesNotAdded = availableTitles.filter(
+    (t) => !lines.some((l) => l.titleId === t.id)
   );
 
   if (loading) {
@@ -176,7 +207,7 @@ export function PartnerReturnCreate() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">New Return Request</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Submit a request to return titles. All returns are subject to review and approval.
+          Submit a request to return titles. Select the SOR pro-forma invoice the items were supplied on.
         </p>
       </div>
 
@@ -187,24 +218,25 @@ export function PartnerReturnCreate() {
       )}
 
       <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="space-y-6">
-        {/* Consignment Reference */}
+        {/* Return Details */}
         <div className="rounded-lg border bg-white p-6 shadow-sm space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Return Details</h2>
 
           <div>
             <label htmlFor="consignment" className="block text-sm font-medium text-gray-700 mb-1">
-              Consignment Reference (optional)
+              SOR Pro-Forma Invoice <span className="text-red-500">*</span>
             </label>
             <select
               id="consignment"
               value={consignmentId}
-              onChange={(e) => setConsignmentId(e.target.value)}
+              onChange={(e) => handleConsignmentChange(e.target.value)}
+              required
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             >
-              <option value="">-- No consignment --</option>
+              <option value="">-- Select SOR pro-forma invoice --</option>
               {consignments.map((c) => (
                 <option key={c.id} value={c.id}>
-                  Consignment ({c.dispatchDate ? new Date(c.dispatchDate).toLocaleDateString('en-ZA') : new Date(c.createdAt).toLocaleDateString('en-ZA')})
+                  {c.proformaNumber ?? 'SOR'} — {c.dispatchDate ? new Date(c.dispatchDate).toLocaleDateString('en-ZA') : new Date(c.createdAt).toLocaleDateString('en-ZA')}
                 </option>
               ))}
             </select>
@@ -264,71 +296,41 @@ export function PartnerReturnCreate() {
         {/* Line Items */}
         <div className="rounded-lg border bg-white p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Line Items</h2>
-            <button
-              type="button"
-              onClick={() => setShowTitleSelector(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              Add Title
-            </button>
+            <h2 className="text-lg font-semibold text-gray-900">Titles to Return</h2>
           </div>
 
-          {/* Title Selector Modal */}
-          {showTitleSelector && (
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-700">Select a title to add</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowTitleSelector(false);
-                    setTitleSearch('');
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <input
-                type="text"
-                value={titleSearch}
-                onChange={(e) => setTitleSearch(e.target.value)}
-                placeholder="Search by title or ISBN..."
-                autoFocus
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+          {!consignmentId ? (
+            <p className="text-sm text-gray-500 text-center py-6">
+              Select a SOR pro-forma invoice above to see available titles.
+            </p>
+          ) : titlesNotAdded.length > 0 ? (
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Available titles from this consignment:</p>
               <div className="max-h-48 overflow-y-auto space-y-1">
-                {filteredTitles.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-2 text-center">No matching titles found.</p>
-                ) : (
-                  filteredTitles.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => addLine(t)}
-                      className="w-full text-left rounded-md px-3 py-2 text-sm hover:bg-white transition-colors"
-                    >
+                {titlesNotAdded.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => addLine(t)}
+                    className="w-full text-left rounded-md px-3 py-2 text-sm hover:bg-white transition-colors flex justify-between items-center"
+                  >
+                    <span>
                       <span className="font-medium text-gray-900">{t.title}</span>
                       <span className="ml-2 text-gray-500">({t.isbn13 ?? 'No ISBN'})</span>
-                    </button>
-                  ))
-                )}
+                    </span>
+                    <span className="text-xs text-gray-400">max {t.maxQty}</span>
+                  </button>
+                ))}
               </div>
             </div>
-          )}
+          ) : lines.length === 0 ? (
+            <p className="text-sm text-amber-600 text-center py-4">
+              No returnable titles remaining on this consignment.
+            </p>
+          ) : null}
 
           {/* Line Items List */}
-          {lines.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-6">
-              No items added yet. Click "Add Title" to begin.
-            </p>
-          ) : (
+          {lines.length > 0 && (
             <div className="space-y-3">
               {lines.map((line, index) => (
                 <div
@@ -338,7 +340,7 @@ export function PartnerReturnCreate() {
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{line.titleName}</p>
-                      <p className="text-xs text-gray-500">ISBN: {line.isbn}</p>
+                      <p className="text-xs text-gray-500">ISBN: {line.isbn} | Max returnable: {line.maxQuantity}</p>
                     </div>
                     <button
                       type="button"
@@ -354,14 +356,15 @@ export function PartnerReturnCreate() {
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Quantity
+                        Quantity (max {line.maxQuantity})
                       </label>
                       <input
                         type="number"
                         min={1}
+                        max={line.maxQuantity}
                         value={line.quantity}
                         onChange={(e) =>
-                          updateLine(index, { quantity: Math.max(1, parseInt(e.target.value) || 1) })
+                          updateLine(index, { quantity: Math.max(1, Math.min(line.maxQuantity, parseInt(e.target.value) || 1)) })
                         }
                         className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                       />

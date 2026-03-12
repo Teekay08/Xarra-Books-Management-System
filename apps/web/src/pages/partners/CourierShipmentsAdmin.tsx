@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface Shipment {
   id: string;
@@ -199,15 +200,13 @@ export function CourierShipmentsAdmin() {
       key: 'actions',
       header: 'Actions',
       render: (s: Shipment) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            openUpdate(s);
-          }}
-          className="text-xs text-green-700 hover:underline"
-        >
-          Update
-        </button>
+        <div onClick={(e) => e.stopPropagation()}>
+          <ActionMenu items={[
+            { label: 'Update Status', onClick: () => openUpdate(s) },
+            { label: 'Track Shipment', onClick: () => window.open(s.trackingUrl!, '_blank'), hidden: !s.trackingUrl },
+            { label: 'Copy Waybill', onClick: () => navigator.clipboard.writeText(s.waybillNumber) },
+          ]} />
+        </div>
       ),
     },
   ];

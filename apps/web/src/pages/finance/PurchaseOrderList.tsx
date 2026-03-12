@@ -9,6 +9,7 @@ import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface PurchaseOrder {
   id: string;
@@ -69,6 +70,16 @@ export function PurchaseOrderList() {
       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[po.status] ?? ''}`}>
         {po.status}
       </span>
+    )},
+    { key: 'actions', header: 'Actions', render: (po: PurchaseOrder) => (
+      <div onClick={(e) => e.stopPropagation()}>
+        <ActionMenu items={[
+          { label: 'View Details', onClick: () => navigate(`/finance/purchase-orders/${po.id}`) },
+          { label: 'Edit', onClick: () => navigate(`/finance/purchase-orders/${po.id}/edit`), hidden: po.status !== 'DRAFT' },
+          { label: 'Print', onClick: () => window.open(`/api/v1/finance/purchase-orders/${po.id}/pdf`, '_blank') },
+          { label: 'Delete', onClick: () => { if (confirm('Delete this purchase order?')) navigate(`/finance/purchase-orders/${po.id}`); }, variant: 'danger', hidden: po.status !== 'DRAFT' },
+        ]} />
+      </div>
     )},
   ];
 

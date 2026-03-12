@@ -60,23 +60,53 @@ export const invoiceLines = pgTable('invoice_lines', {
   index('idx_invoice_lines_invoice_id').on(t.invoiceId),
 ]);
 
+export const creditNoteStatusEnum = pgEnum('credit_note_status', [
+  'DRAFT', 'PENDING_REVIEW', 'APPROVED', 'SENT', 'VOIDED',
+]);
+
 export const creditNotes = pgTable('credit_notes', {
   id: uuid('id').primaryKey().defaultRandom(),
   number: varchar('number', { length: 20 }).notNull().unique(), // CN-YYYY-NNNN
   invoiceId: uuid('invoice_id').notNull().references(() => invoices.id),
   partnerId: uuid('partner_id').notNull().references(() => channelPartners.id),
+  returnsAuthId: uuid('returns_auth_id'), // links to return authorization if auto-generated
   subtotal: decimal('subtotal', { precision: 12, scale: 2 }).notNull(),
   vatAmount: decimal('vat_amount', { precision: 12, scale: 2 }).notNull(),
   total: decimal('total', { precision: 12, scale: 2 }).notNull(),
   reason: text('reason').notNull(),
+  status: creditNoteStatusEnum('status').notNull().default('DRAFT'),
   pdfUrl: varchar('pdf_url', { length: 500 }),
+  // Review workflow
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewNotes: text('review_notes'),
+  approvedBy: text('approved_by'),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  sentTo: varchar('sent_to', { length: 255 }),
   voidedAt: timestamp('voided_at', { withTimezone: true }),
   voidedReason: text('voided_reason'),
   createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_credit_notes_invoice_id').on(t.invoiceId),
   index('idx_credit_notes_partner_id').on(t.partnerId),
+  index('idx_credit_notes_status').on(t.status),
+]);
+
+export const creditNoteLines = pgTable('credit_note_lines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  creditNoteId: uuid('credit_note_id').notNull().references(() => creditNotes.id, { onDelete: 'cascade' }),
+  lineNumber: integer('line_number').notNull(),
+  titleId: uuid('title_id').references(() => titles.id),
+  description: varchar('description', { length: 500 }).notNull(),
+  quantity: decimal('quantity', { precision: 10, scale: 2 }).notNull(),
+  unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
+  lineTotal: decimal('line_total', { precision: 12, scale: 2 }).notNull(),
+  lineTax: decimal('line_tax', { precision: 12, scale: 2 }).notNull().default('0'),
+}, (t) => [
+  index('idx_credit_note_lines_credit_note_id').on(t.creditNoteId),
 ]);
 
 export const payments = pgTable('payments', {
@@ -188,9 +218,15 @@ export const invoiceLinesRelations = relations(invoiceLines, ({ one }) => ({
   invoice: one(invoices, { fields: [invoiceLines.invoiceId], references: [invoices.id] }),
 }));
 
-export const creditNotesRelations = relations(creditNotes, ({ one }) => ({
+export const creditNotesRelations = relations(creditNotes, ({ one, many }) => ({
   invoice: one(invoices, { fields: [creditNotes.invoiceId], references: [invoices.id] }),
   partner: one(channelPartners, { fields: [creditNotes.partnerId], references: [channelPartners.id] }),
+  lines: many(creditNoteLines),
+}));
+
+export const creditNoteLinesRelations = relations(creditNoteLines, ({ one }) => ({
+  creditNote: one(creditNotes, { fields: [creditNoteLines.creditNoteId], references: [creditNotes.id] }),
+  title: one(titles, { fields: [creditNoteLines.titleId], references: [titles.id] }),
 }));
 
 export const paymentsRelations = relations(payments, ({ one, many }) => ({

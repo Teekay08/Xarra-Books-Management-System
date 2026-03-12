@@ -25,7 +25,10 @@ const reports: ReportCard[] = [
 
   // Operations
   { name: 'Inventory', description: 'Stock levels, consignment history, and movement summary', href: '/reports/inventory', category: 'Operations' },
+  { name: 'Print Runs', description: 'Print run history per title — copies ordered, received, costs, and status', href: '/reports/print-runs', category: 'Operations' },
+  { name: 'SOR Reconciliation', description: 'Per-consignment breakdown of dispatched, sold, returned, and outstanding stock', href: '/reports/sor-reconciliation', category: 'Operations' },
   { name: 'Author Royalties', description: 'Detailed sales and royalty calculations per author with PDF export', href: '/reports/author-royalty', category: 'Authors' },
+  { name: 'Royalty Due Report', description: 'All authors with outstanding royalties — approved, pending approval, and overdue', href: '/reports/royalty-due', category: 'Authors' },
 ];
 
 const categories = [...new Set(reports.map((r) => r.category))];

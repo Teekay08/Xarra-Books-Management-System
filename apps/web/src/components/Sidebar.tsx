@@ -47,6 +47,7 @@ const allSections: NavSection[] = [
       { name: 'Debit Notes', href: '/debit-notes', module: 'debitNotes' },
       { name: 'Payments', href: '/payments', module: 'payments' },
       { name: 'Remittances', href: '/remittances', module: 'remittances' },
+      { name: 'Royalties', href: '/royalties', module: 'royalties' },
       { name: 'Expenses', href: '/expenses', module: 'expenses' },
       { name: 'Statements', href: '/statements', module: 'statements' },
     ],
@@ -71,8 +72,12 @@ const allSections: NavSection[] = [
   {
     label: 'Admin',
     items: [
+      { name: 'Documents', href: '/documents', module: 'invoices' },
       { name: 'Settings', href: '/settings', module: 'settings' },
       { name: 'User Management', href: '/settings/users', module: 'users' },
+      { name: 'System Config', href: '/settings/system', module: 'settings' },
+      { name: 'Email Settings', href: '/settings/email', module: 'settings' },
+      { name: 'Document Series', href: '/settings/document-series', module: 'settings' },
       { name: 'Scheduling', href: '/settings/scheduling', module: 'settings' },
       { name: 'Data Export', href: '/settings/export', module: 'settings' },
       { name: 'Audit Trail', href: '/admin/audit-log', module: 'auditLogs' },
@@ -117,7 +122,7 @@ export function Sidebar() {
     .filter((section) => section.items.length > 0);
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
+    <aside className="w-64 h-full bg-white border-r border-gray-200 flex flex-col shrink-0">
       <div className="p-5 border-b border-gray-100">
         <img src="/XarraBooks-logo.png" alt="Xarra Books" className="h-12 mb-1" />
         <p className="text-[10px] text-gray-400 font-mono tracking-widest uppercase mt-1">Management System</p>

@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc } from 'drizzle-orm';
-import { authors, authorContracts, royaltyLedger, titles, authorPayments } from '@xarra/db';
+import { authors, authorContracts, royaltyLedger, authorPayments } from '@xarra/db';
 import { paginationSchema, roundAmount } from '@xarra/shared';
 import { requireRole } from '../../middleware/require-auth.js';
+import { createBroadcastNotification } from '../../services/notifications.js';
 
 async function getAuthorForUser(app: FastifyInstance, userId: string) {
   return app.db.query.authors.findFirst({
@@ -286,5 +287,72 @@ export async function authorPortalRoutes(app: FastifyInstance) {
         totalPages: Math.ceil(total / limit),
       },
     };
+  });
+
+  // Sales summary — units sold per title per channel for this author's titles
+  app.get('/sales', { preHandler }, async (request, reply) => {
+    const author = await getAuthorForUser(app, request.session!.user.id);
+    if (!author) return reply.notFound('Author profile not found');
+
+    const { from, to } = request.query as { from?: string; to?: string };
+    const fromDate = from ?? new Date(new Date().getFullYear(), 0, 1).toISOString();
+    const toDate = to ?? new Date().toISOString();
+
+    const rows = await app.db.execute(sql`
+      SELECT
+        t.id        AS title_id,
+        t.title     AS title_name,
+        sr.channel,
+        SUM(sr.quantity)::int          AS units_sold,
+        SUM(sr.net_revenue::numeric)   AS revenue
+      FROM sale_records sr
+      JOIN titles t ON t.id = sr.title_id
+      JOIN author_contracts ac ON ac.title_id = t.id
+      WHERE ac.author_id = ${author.id}
+        AND sr.status = 'CONFIRMED'
+        AND sr.sale_date >= ${fromDate}::timestamptz
+        AND sr.sale_date <= ${toDate}::timestamptz
+      GROUP BY t.id, t.title, sr.channel
+      ORDER BY t.title, sr.channel
+    `) as any[];
+
+    // Group by title
+    const titleMap = new Map<string, { titleId: string; titleName: string; channels: { channel: string; unitsSold: number; revenue: number }[]; totalUnits: number; totalRevenue: number }>();
+    for (const r of rows) {
+      if (!titleMap.has(r.title_id)) {
+        titleMap.set(r.title_id, { titleId: r.title_id, titleName: r.title_name, channels: [], totalUnits: 0, totalRevenue: 0 });
+      }
+      const entry = titleMap.get(r.title_id)!;
+      const units = Number(r.units_sold);
+      const rev = roundAmount(Number(r.revenue));
+      entry.channels.push({ channel: r.channel, unitsSold: units, revenue: rev });
+      entry.totalUnits += units;
+      entry.totalRevenue = roundAmount(entry.totalRevenue + rev);
+    }
+
+    return { data: [...titleMap.values()] };
+  });
+
+  // Contact Xarra — submit a message to the Xarra team
+  app.post('/contact', { preHandler }, async (request, reply) => {
+    const author = await getAuthorForUser(app, request.session!.user.id);
+    if (!author) return reply.notFound('Author profile not found');
+
+    const { subject, message } = request.body as { subject: string; message: string };
+    if (!subject?.trim() || !message?.trim()) {
+      return reply.badRequest('Subject and message are required');
+    }
+
+    await createBroadcastNotification(app, {
+      type: 'SYSTEM',
+      priority: 'NORMAL',
+      title: `Author Query: ${subject.trim()}`,
+      message: `From ${author.legalName}: ${message.trim()}`,
+      actionUrl: `/authors/${author.id}`,
+      referenceType: 'author',
+      referenceId: author.id,
+    });
+
+    return { data: { success: true } };
   });
 }

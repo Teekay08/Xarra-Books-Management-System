@@ -9,6 +9,7 @@ import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface Invoice {
   id: string;
@@ -72,6 +73,16 @@ export function InvoiceList() {
       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[inv.status] ?? ''}`}>
         {inv.status}
       </span>
+    )},
+    { key: 'actions', header: 'Actions', render: (inv: Invoice) => (
+      <div onClick={(e) => e.stopPropagation()}>
+        <ActionMenu items={[
+          { label: 'View Details', onClick: () => navigate(`/invoices/${inv.id}`) },
+          { label: 'Download PDF', onClick: () => window.open(`/api/v1/finance/invoices/${inv.id}/pdf`, '_blank') },
+          { label: 'Print', onClick: () => { const w = window.open(`/api/v1/finance/invoices/${inv.id}/pdf`, '_blank'); w?.addEventListener('load', () => w.print()); } },
+          { label: 'Void Invoice', onClick: () => { if (confirm('Void this invoice?')) navigate(`/invoices/${inv.id}`); }, variant: 'danger', hidden: inv.status !== 'DRAFT' },
+        ]} />
+      </div>
     )},
   ];
 

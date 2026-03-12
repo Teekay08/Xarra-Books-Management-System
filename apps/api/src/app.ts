@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
+import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
@@ -36,6 +37,7 @@ import { exportRoutes } from './modules/export/routes.js';
 import { partnerPortalRoutes, partnerPortalAdminRoutes } from './modules/partner-portal/routes.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { supplierRoutes } from './modules/suppliers/routes.js';
+import { documentRoutes } from './modules/documents/routes.js';
 import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
@@ -51,14 +53,64 @@ export async function buildApp() {
 
   // Core plugins
   await app.register(cors, {
-    origin: config.cors.origin,
+    origin: config.cors.origins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
   });
   await app.register(helmet);
   await app.register(sensible);
+  
+  // Rate limiting - protect against abuse and DoS attacks
+  await app.register(rateLimit, {
+    max: 100, // 100 requests
+    timeWindow: '15 minutes',
+    errorResponseBuilder: () => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: 'Rate limit exceeded. Please try again later.',
+    }),
+  });
+  
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB max
+
+  // Global error handler - prevents information leakage
+  app.setErrorHandler((error, request, reply) => {
+    // Log full error details internally for debugging
+    app.log.error({
+      err: error,
+      url: request.url,
+      method: request.method,
+      userId: request.session?.user?.id,
+    }, 'Request error');
+
+    // Send safe error response to client
+    if (config.nodeEnv === 'production') {
+      // In production, don't expose internal error details
+      if (error.statusCode && error.statusCode < 500) {
+        // Client errors (4xx) can be shown as-is
+        return reply.status(error.statusCode).send({
+          statusCode: error.statusCode,
+          error: error.name || 'Bad Request',
+          message: error.message,
+        });
+      }
+      // Server errors (5xx) - hide details
+      return reply.status(500).send({
+        statusCode: 500,
+        error: 'Internal Server Error',
+        message: 'An unexpected error occurred. Please try again later.',
+      });
+    } else {
+      // In development, show full error details for debugging
+      return reply.status(error.statusCode || 500).send({
+        statusCode: error.statusCode || 500,
+        error: error.name || 'Error',
+        message: error.message,
+        stack: error.stack,
+      });
+    }
+  });
 
   // Serve uploaded files in dev
   await app.register(fastifyStatic, {
@@ -181,6 +233,7 @@ export async function buildApp() {
     api.register(supplierRoutes, { prefix: '/suppliers' });
     api.register(partnerPortalRoutes, { prefix: '/partner-portal' });
     api.register(partnerPortalAdminRoutes, { prefix: '/partner-admin' });
+    api.register(documentRoutes, { prefix: '/documents' });
   }, { prefix: '/api/v1' });
 
   return app;

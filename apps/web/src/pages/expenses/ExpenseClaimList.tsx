@@ -9,6 +9,8 @@ import { downloadFromApi, exportUrl } from '../../lib/export';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
+import { formatR } from '../../lib/format';
 
 interface ExpenseClaim {
   id: string;
@@ -28,9 +30,6 @@ const statusColors: Record<string, string> = {
   PAID: 'bg-purple-100 text-purple-700',
 };
 
-function formatR(val: string | number) {
-  return `R ${Number(val).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function ExpenseClaimList() {
   const navigate = useNavigate();
@@ -85,6 +84,19 @@ export function ExpenseClaimList() {
         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[claim.status] ?? ''}`}>
           {claim.status}
         </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (claim: ExpenseClaim) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ActionMenu items={[
+            { label: 'View Details', onClick: () => navigate(`/expenses/claims/${claim.id}`) },
+            { label: 'Edit', onClick: () => navigate(`/expenses/claims/${claim.id}/edit`), hidden: claim.status !== 'DRAFT' },
+            { label: 'Delete', onClick: () => { if (confirm('Delete this expense claim?')) navigate(`/expenses/claims/${claim.id}`); }, variant: 'danger', hidden: claim.status !== 'DRAFT' },
+          ]} />
+        </div>
       ),
     },
   ];

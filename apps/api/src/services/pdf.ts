@@ -4,10 +4,19 @@ import { config } from '../config.js';
 let browserInstance: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
 
 async function getBrowser() {
+  if (browserInstance) {
+    // Verify the existing instance is still usable
+    try {
+      await browserInstance.version();
+    } catch {
+      browserInstance = null;
+    }
+  }
   if (!browserInstance) {
     browserInstance = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      userDataDir: undefined, // use a fresh temp dir each launch
     });
   }
   return browserInstance;

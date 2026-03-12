@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { ExportButton } from '../../components/ExportButton';
 import { downloadFromApi, exportUrl } from '../../lib/export';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface Remittance {
   id: string;
@@ -50,15 +51,7 @@ export function RemittanceList() {
     <div>
       <PageHeader
         title="Remittances"
-        subtitle="Payments received from channel partners"
-        action={
-          <button
-            onClick={() => navigate('/remittances/new')}
-            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
-          >
-            Record Remittance
-          </button>
-        }
+        subtitle="Remittances are submitted by partners via the partner portal"
       />
 
       <div className="mb-4 flex gap-3 items-center">
@@ -86,6 +79,7 @@ export function RemittanceList() {
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -101,6 +95,13 @@ export function RemittanceList() {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {new Date(r.createdAt).toLocaleDateString('en-ZA')}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
+                    <ActionMenu items={[
+                      { label: 'View Details', onClick: () => navigate(`/remittances/${r.id}`) },
+                      { label: 'Approve', onClick: () => navigate(`/remittances/${r.id}`), hidden: !['PENDING', 'UNDER_REVIEW'].includes(r.status) },
+                      { label: 'Dispute', onClick: () => navigate(`/remittances/${r.id}`), variant: 'danger', hidden: !['PENDING', 'UNDER_REVIEW'].includes(r.status) },
+                    ]} />
                   </td>
                 </tr>
               ))}

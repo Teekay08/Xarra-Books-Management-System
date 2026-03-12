@@ -104,6 +104,7 @@ export const partnerOrderStatusEnum = pgEnum('partner_order_status', [
 export const partnerOrders = pgTable('partner_orders', {
   id: uuid('id').primaryKey().defaultRandom(),
   number: varchar('number', { length: 20 }).notNull().unique(), // POR-YYYY-NNNN
+  customerPoNumber: varchar('customer_po_number', { length: 50 }),
   partnerId: uuid('partner_id').notNull().references(() => channelPartners.id),
   branchId: uuid('branch_id').references(() => partnerBranches.id),
   placedById: uuid('placed_by_id').notNull().references(() => partnerUsers.id),

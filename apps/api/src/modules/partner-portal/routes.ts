@@ -16,6 +16,12 @@ import {
   courierShipments,
   inventoryMovements,
   partnerNotifications,
+  remittances,
+  remittanceInvoices,
+  remittanceCreditNotes,
+  paymentAllocations,
+  returnsAuthorizations,
+  returnsAuthorizationLines,
 } from '@xarra/db';
 import {
   partnerLoginSchema,
@@ -28,7 +34,7 @@ import {
   roundAmount,
 } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
-import { nextPartnerOrderNumber, nextPartnerReturnRequestNumber } from '../finance/invoice-number.js';
+import { nextPartnerOrderNumber, nextPartnerReturnRequestNumber, nextCreditNoteNumber, nextReturnNumber } from '../finance/invoice-number.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
 import { renderSorProformaHtml } from '../../services/templates/sor-proforma.js';
@@ -295,21 +301,25 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     const { page, limit } = query;
     const offset = (page - 1) * limit;
     const session = request.partnerSession!;
+    const { status, branchId: filterBranchId } = request.query as Record<string, string | undefined>;
 
-    // Branch users only see their branch's orders
-    const branchFilter = session.branchId
-      ? and(eq(partnerOrders.partnerId, session.partnerId), eq(partnerOrders.branchId, session.branchId))
+    // Branch users only see their branch's orders; HQ can optionally filter by branch
+    const effectiveBranchId = session.branchId ?? filterBranchId ?? null;
+    const branchFilter = effectiveBranchId
+      ? and(eq(partnerOrders.partnerId, session.partnerId), eq(partnerOrders.branchId, effectiveBranchId))
       : eq(partnerOrders.partnerId, session.partnerId);
+    const statusFilter = status ? and(branchFilter, eq(partnerOrders.status, status as any)) : branchFilter;
+    const whereClause = statusFilter;
 
     const [items, countResult] = await Promise.all([
       app.db.query.partnerOrders.findMany({
-        where: branchFilter,
+        where: whereClause,
         with: { branch: true, lines: { with: { title: true } }, placedBy: true },
         orderBy: [desc(partnerOrders.createdAt)],
         limit,
         offset,
       }),
-      app.db.select({ count: sql<number>`count(*)` }).from(partnerOrders).where(branchFilter),
+      app.db.select({ count: sql<number>`count(*)` }).from(partnerOrders).where(whereClause),
     ]);
 
     return {
@@ -399,8 +409,12 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
 
     const number = await nextPartnerOrderNumber(app.db as any);
 
+    // Auto-generate PO number if partner didn't provide one
+    const customerPoNumber = body.customerPoNumber?.trim() || `PO-${number}`;
+
     const [order] = await app.db.insert(partnerOrders).values({
       number,
+      customerPoNumber,
       partnerId: session.partnerId,
       branchId,
       placedById: session.userId,
@@ -462,6 +476,31 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     return { data: { message: 'Order cancelled' } };
   });
 
+  // Update PO number on own order
+  app.patch<{ Params: { id: string } }>('/orders/:id', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    const body = request.body as { customerPoNumber?: string };
+
+    const order = await app.db.query.partnerOrders.findFirst({
+      where: and(eq(partnerOrders.id, request.params.id), eq(partnerOrders.partnerId, session.partnerId)),
+    });
+    if (!order) return reply.notFound('Order not found');
+
+    const updates: Record<string, any> = { updatedAt: new Date() };
+    if (body.customerPoNumber !== undefined) {
+      updates.customerPoNumber = body.customerPoNumber.trim() || null;
+    }
+
+    await app.db.update(partnerOrders).set(updates).where(eq(partnerOrders.id, order.id));
+
+    const updated = await app.db.query.partnerOrders.findFirst({
+      where: eq(partnerOrders.id, order.id),
+      with: { lines: { with: { title: true } } },
+    });
+
+    return { data: updated };
+  });
+
   // ==========================================
   // DOCUMENTS (view invoices, statements, credit notes)
   // ==========================================
@@ -472,9 +511,12 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     const { page, limit } = query;
     const offset = (page - 1) * limit;
     const session = request.partnerSession!;
+    const { branchId: filterBranchId } = request.query as Record<string, string | undefined>;
 
-    const branchFilter = session.branchId
-      ? and(eq(invoices.partnerId, session.partnerId), eq(invoices.branchId, session.branchId))
+    // Branch users only see their branch; HQ can optionally filter by branch
+    const effectiveBranchId = session.branchId ?? filterBranchId ?? null;
+    const branchFilter = effectiveBranchId
+      ? and(eq(invoices.partnerId, session.partnerId), eq(invoices.branchId, effectiveBranchId))
       : eq(invoices.partnerId, session.partnerId);
 
     const [items, countResult] = await Promise.all([
@@ -548,8 +590,27 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
       app.db.select({ count: sql<number>`count(*)` }).from(creditNotes).where(eq(creditNotes.partnerId, session.partnerId)),
     ]);
 
+    // Compute consumption status for each credit note
+    const data = await Promise.all(items.map(async (cn) => {
+      if (cn.voidedAt) {
+        return { ...cn, allocatedAmount: '0.00', availableAmount: '0.00', consumptionStatus: 'VOIDED' as const };
+      }
+      const appliedResult = await app.db.execute(sql`
+        SELECT COALESCE(SUM(rcn.amount::numeric), 0) AS applied
+        FROM remittance_credit_notes rcn
+        JOIN remittances r ON r.id = rcn.remittance_id
+        WHERE rcn.credit_note_id = ${cn.id}
+          AND r.status IN ('APPROVED', 'MATCHED', 'UNDER_REVIEW', 'PENDING')
+      `);
+      const allocated = Number(appliedResult[0]?.applied ?? 0);
+      const total = Number(cn.total);
+      const available = roundAmount(total - allocated);
+      const consumptionStatus = available <= 0 ? 'FULLY_ALLOCATED' : allocated > 0 ? 'PARTIALLY_ALLOCATED' : 'AVAILABLE';
+      return { ...cn, allocatedAmount: allocated.toFixed(2), availableAmount: available.toFixed(2), consumptionStatus };
+    }));
+
     return {
-      data: items,
+      data,
       pagination: { page, limit, total: Number(countResult[0].count), totalPages: Math.ceil(Number(countResult[0].count) / limit) },
     };
   });
@@ -571,9 +632,12 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     const { page, limit } = query;
     const offset = (page - 1) * limit;
     const session = request.partnerSession!;
+    const { branchId: filterBranchId } = request.query as Record<string, string | undefined>;
 
-    const branchFilter = session.branchId
-      ? and(eq(consignments.partnerId, session.partnerId), or(eq(consignments.branchId, session.branchId), isNull(consignments.branchId)))
+    // Branch users see their branch + unassigned; HQ can optionally filter by branch
+    const effectiveBranchId = session.branchId ?? filterBranchId ?? null;
+    const branchFilter = effectiveBranchId
+      ? and(eq(consignments.partnerId, session.partnerId), or(eq(consignments.branchId, effectiveBranchId), isNull(consignments.branchId)))
       : eq(consignments.partnerId, session.partnerId);
 
     const [items, countResult] = await Promise.all([
@@ -690,6 +754,259 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
   });
 
   // ==========================================
+  // REMITTANCES (HQ-only self-service)
+  // ==========================================
+
+  // List remittances for this partner
+  app.get('/remittances', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    if (session.branchId) return reply.forbidden('Remittances are managed by head office');
+
+    const query = paginationSchema.parse(request.query);
+    const { page, limit } = query;
+    const offset = (page - 1) * limit;
+
+    const where = eq(remittances.partnerId, session.partnerId);
+
+    const [items, countResult] = await Promise.all([
+      app.db.query.remittances.findMany({
+        where,
+        orderBy: [desc(remittances.createdAt)],
+        limit,
+        offset,
+      }),
+      app.db.select({ count: sql<number>`count(*)` }).from(remittances).where(where),
+    ]);
+
+    return {
+      data: items,
+      pagination: { page, limit, total: Number(countResult[0].count), totalPages: Math.ceil(Number(countResult[0].count) / limit) },
+    };
+  });
+
+  // Get remittance detail
+  app.get<{ Params: { id: string } }>('/remittances/:id', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    if (session.branchId) return reply.forbidden('Remittances are managed by head office');
+
+    const remittance = await app.db.query.remittances.findFirst({
+      where: and(eq(remittances.id, request.params.id), eq(remittances.partnerId, session.partnerId)),
+      with: {
+        invoiceAllocations: { with: { invoice: true } },
+        creditNoteAllocations: { with: { creditNote: true, invoice: true } },
+      },
+    });
+    if (!remittance) return reply.notFound('Remittance not found');
+    return { data: remittance };
+  });
+
+  // Create remittance (partner self-service)
+  app.post('/remittances', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    if (session.branchId) return reply.forbidden('Remittances are managed by head office');
+
+    const body = request.body as {
+      partnerRef?: string;
+      totalAmount: number;
+      periodFrom?: string;
+      periodTo?: string;
+      invoiceAllocations: { invoiceId: string; amount: number }[];
+      creditNoteAllocations?: { creditNoteId: string; invoiceId: string; amount: number }[];
+      notes?: string;
+    };
+
+    if (!body.invoiceAllocations?.length) {
+      return reply.badRequest('At least one invoice allocation is required');
+    }
+
+    if (!body.totalAmount || body.totalAmount <= 0) {
+      return reply.badRequest('A valid total amount is required');
+    }
+
+    // Validate all invoices belong to this partner
+    for (const alloc of body.invoiceAllocations) {
+      const inv = await app.db.query.invoices.findFirst({
+        where: and(eq(invoices.id, alloc.invoiceId), eq(invoices.partnerId, session.partnerId)),
+      });
+      if (!inv) return reply.badRequest(`Invoice ${alloc.invoiceId} not found or not yours`);
+    }
+
+    // Validate all credit notes belong to this partner
+    if (body.creditNoteAllocations?.length) {
+      for (const alloc of body.creditNoteAllocations) {
+        const cn = await app.db.query.creditNotes.findFirst({
+          where: and(eq(creditNotes.id, alloc.creditNoteId), eq(creditNotes.partnerId, session.partnerId)),
+        });
+        if (!cn) return reply.badRequest(`Credit note ${alloc.creditNoteId} not found or not yours`);
+        if (cn.voidedAt) return reply.badRequest(`Credit note ${cn.number} has been voided`);
+      }
+    }
+
+    const result = await app.db.transaction(async (tx) => {
+      const [remittance] = await tx.insert(remittances).values({
+        partnerId: session.partnerId,
+        partnerRef: body.partnerRef?.trim() || null,
+        periodFrom: body.periodFrom ? new Date(body.periodFrom) : undefined,
+        periodTo: body.periodTo ? new Date(body.periodTo) : undefined,
+        totalAmount: String(body.totalAmount),
+        parseMethod: 'MANUAL',
+        status: 'PENDING',
+        notes: body.notes?.trim() || null,
+        createdBy: session.userId,
+      }).returning();
+
+      await tx.insert(remittanceInvoices).values(
+        body.invoiceAllocations.map((a) => ({
+          remittanceId: remittance.id,
+          invoiceId: a.invoiceId,
+          amount: String(a.amount),
+        })),
+      );
+
+      if (body.creditNoteAllocations?.length) {
+        await tx.insert(remittanceCreditNotes).values(
+          body.creditNoteAllocations.map((a) => ({
+            remittanceId: remittance.id,
+            creditNoteId: a.creditNoteId,
+            invoiceId: a.invoiceId,
+            amount: String(a.amount),
+          })),
+        );
+      }
+
+      return remittance;
+    });
+
+    // Notify Xarra admin
+    createBroadcastNotification(app, {
+      type: 'SYSTEM',
+      priority: 'NORMAL',
+      title: 'New Remittance Submitted',
+      message: `A partner submitted a remittance of R ${Number(body.totalAmount).toFixed(2)}${body.partnerRef ? ` (ref: ${body.partnerRef})` : ''}`,
+      referenceType: 'REMITTANCE',
+      referenceId: result.id,
+      actionUrl: `/remittances/${result.id}`,
+    });
+
+    return reply.status(201).send({ data: result });
+  });
+
+  // Outstanding invoices for this partner (HQ-only)
+  app.get('/invoices/outstanding', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    if (session.branchId) return reply.forbidden('Outstanding invoices are managed by head office');
+
+    const items = await app.db.query.invoices.findMany({
+      where: sql`${invoices.partnerId} = ${session.partnerId} AND ${invoices.status} IN ('ISSUED', 'PARTIAL', 'OVERDUE')`,
+      orderBy: [desc(invoices.invoiceDate)],
+    });
+
+    const result = await Promise.all(items.map(async (inv) => {
+      const [paidResult, creditResult] = await Promise.all([
+        app.db.execute(sql`SELECT COALESCE(SUM(amount::numeric), 0) AS total FROM payment_allocations WHERE invoice_id = ${inv.id}`),
+        app.db.execute(sql`SELECT COALESCE(SUM(total::numeric), 0) AS total FROM credit_notes WHERE invoice_id = ${inv.id} AND voided_at IS NULL`),
+      ]);
+      const amountPaid = Number(paidResult[0]?.total ?? 0);
+      const creditTotal = Number(creditResult[0]?.total ?? 0);
+      const effectiveTotal = Math.max(0, roundAmount(Number(inv.total) - creditTotal));
+      const amountDue = Math.max(0, roundAmount(effectiveTotal - amountPaid));
+      return {
+        id: inv.id,
+        number: inv.number,
+        invoiceDate: inv.invoiceDate,
+        dueDate: inv.dueDate,
+        status: inv.status,
+        total: inv.total,
+        creditNotesTotal: creditTotal.toFixed(2),
+        amountPaid: amountPaid.toFixed(2),
+        effectiveTotal: effectiveTotal.toFixed(2),
+        amountDue: amountDue.toFixed(2),
+      };
+    }));
+
+    return { data: result.filter((inv) => Number(inv.amountDue) > 0) };
+  });
+
+  // Available credit notes for this partner (HQ-only)
+  app.get('/credit-notes/available', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    if (session.branchId) return reply.forbidden('Credit note allocation is managed by head office');
+
+    const items = await app.db.query.creditNotes.findMany({
+      where: sql`${creditNotes.partnerId} = ${session.partnerId} AND ${creditNotes.voidedAt} IS NULL`,
+      with: { invoice: true },
+      orderBy: [desc(creditNotes.createdAt)],
+    });
+
+    const result = await Promise.all(items.map(async (cn) => {
+      const appliedResult = await app.db.execute(sql`
+        SELECT COALESCE(SUM(rcn.amount::numeric), 0) AS applied
+        FROM remittance_credit_notes rcn
+        JOIN remittances r ON r.id = rcn.remittance_id
+        WHERE rcn.credit_note_id = ${cn.id}
+          AND r.status IN ('APPROVED', 'MATCHED', 'UNDER_REVIEW', 'PENDING')
+      `);
+      const applied = Number(appliedResult[0]?.applied ?? 0);
+      const available = roundAmount(Number(cn.total) - applied);
+      return {
+        id: cn.id,
+        number: cn.number,
+        invoiceId: cn.invoiceId,
+        invoiceNumber: cn.invoice?.number,
+        total: cn.total,
+        applied: applied.toFixed(2),
+        available: available.toFixed(2),
+        reason: cn.reason,
+        createdAt: cn.createdAt,
+      };
+    }));
+
+    return { data: result.filter((cn) => Number(cn.available) > 0) };
+  });
+
+  // Branch activity summary (HQ-only)
+  app.get('/branches/activity-summary', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    if (session.branchId) return reply.forbidden('Branch activity is only available for head office');
+
+    const branches = await app.db.query.partnerBranches.findMany({
+      where: and(eq(partnerBranches.partnerId, session.partnerId), eq(partnerBranches.isActive, true)),
+    });
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+
+    const result = await Promise.all(branches.map(async (branch) => {
+      const [orderCount, returnCount, lastOrder] = await Promise.all([
+        app.db.execute(sql`
+          SELECT COUNT(*) AS count FROM partner_orders
+          WHERE partner_id = ${session.partnerId} AND branch_id = ${branch.id}
+            AND created_at >= ${thirtyDaysAgo}
+        `),
+        app.db.execute(sql`
+          SELECT COUNT(*) AS count FROM partner_return_requests
+          WHERE partner_id = ${session.partnerId} AND branch_id = ${branch.id}
+            AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'AUTHORIZED', 'AWAITING_PICKUP', 'IN_TRANSIT')
+        `),
+        app.db.execute(sql`
+          SELECT MAX(created_at) AS last_date FROM partner_orders
+          WHERE partner_id = ${session.partnerId} AND branch_id = ${branch.id}
+        `),
+      ]);
+
+      return {
+        id: branch.id,
+        name: branch.name,
+        code: branch.code,
+        ordersLast30Days: Number(orderCount[0]?.count ?? 0),
+        pendingReturns: Number(returnCount[0]?.count ?? 0),
+        lastOrderDate: lastOrder[0]?.last_date ?? null,
+      };
+    }));
+
+    return { data: result };
+  });
+
+  // ==========================================
   // RETURN REQUESTS
   // ==========================================
 
@@ -699,9 +1016,12 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     const { page, limit } = query;
     const offset = (page - 1) * limit;
     const session = request.partnerSession!;
+    const { branchId: filterBranchId } = request.query as Record<string, string | undefined>;
 
-    const branchFilter = session.branchId
-      ? and(eq(partnerReturnRequests.partnerId, session.partnerId), eq(partnerReturnRequests.branchId, session.branchId))
+    // Branch users only see their branch; HQ can optionally filter by branch
+    const effectiveBranchId = session.branchId ?? filterBranchId ?? null;
+    const branchFilter = effectiveBranchId
+      ? and(eq(partnerReturnRequests.partnerId, session.partnerId), eq(partnerReturnRequests.branchId, effectiveBranchId))
       : eq(partnerReturnRequests.partnerId, session.partnerId);
 
     const [items, countResult] = await Promise.all([
@@ -736,6 +1056,20 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
   app.post('/returns', { preHandler: requirePartnerAuth }, async (request, reply) => {
     const body = createPartnerReturnRequestSchema.parse(request.body);
     const session = request.partnerSession!;
+
+    // Prevent duplicate submissions: check for existing return on same consignment within last 60 seconds
+    if (body.consignmentId) {
+      const recentDuplicate = await app.db.query.partnerReturnRequests.findFirst({
+        where: and(
+          eq(partnerReturnRequests.partnerId, session.partnerId),
+          eq(partnerReturnRequests.consignmentId, body.consignmentId),
+          sql`${partnerReturnRequests.createdAt} > NOW() - INTERVAL '60 seconds'`,
+        ),
+      });
+      if (recentDuplicate) {
+        return reply.status(409).send({ error: 'A return request for this consignment was just submitted. Please check your returns list.' });
+      }
+    }
 
     const branchId = session.branchId || body.branchId || null;
     const number = await nextPartnerReturnRequestNumber(app.db as any);
@@ -1417,11 +1751,46 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
     const userId = request.session?.user?.id;
 
     if (body.action === 'authorize') {
+      // Fetch request with lines for RA creation
+      const rrWithLines = await app.db.query.partnerReturnRequests.findFirst({
+        where: eq(partnerReturnRequests.id, rr.id),
+        with: { lines: true },
+      });
+
+      // Generate RA number and create Return Authorization
+      const raNumber = await nextReturnNumber(app.db as any);
+      const [ra] = await app.db.insert(returnsAuthorizations).values({
+        number: raNumber,
+        partnerId: rr.partnerId,
+        branchId: rr.branchId,
+        consignmentId: rr.consignmentId,
+        returnDate: new Date(),
+        reason: rr.reason,
+        status: 'AUTHORIZED',
+        notes: body.reviewNotes || rr.notes,
+        createdBy: userId,
+      }).returning();
+
+      // Create RA lines from partner return request lines
+      if (rrWithLines?.lines && rrWithLines.lines.length > 0) {
+        await app.db.insert(returnsAuthorizationLines).values(
+          rrWithLines.lines.map((line: any) => ({
+            returnsAuthId: ra.id,
+            titleId: line.titleId,
+            quantity: line.quantity,
+            condition: (line.condition === 'GOOD' || line.condition === 'DAMAGED' || line.condition === 'UNSALEABLE') ? line.condition : 'GOOD',
+            notes: line.reason,
+          })),
+        );
+      }
+
+      // Update partner return request with status and link to RA
       await app.db.update(partnerReturnRequests).set({
         status: 'AUTHORIZED',
         reviewedById: userId,
         reviewedAt: new Date(),
         reviewNotes: body.reviewNotes,
+        returnsAuthorizationId: ra.id,
         updatedAt: new Date(),
       }).where(eq(partnerReturnRequests.id, rr.id));
 
@@ -1434,7 +1803,7 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
         referenceId: rr.id,
       }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
 
-      return { data: { message: 'Return request authorized' } };
+      return { data: { message: 'Return request authorized', returnsAuthorizationId: ra.id, raNumber } };
     } else {
       await app.db.update(partnerReturnRequests).set({
         status: 'REJECTED',
@@ -1536,19 +1905,110 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       }
     }
 
-    notifyPartner(app, rr.partnerId, {
-      type: 'RETURN_STATUS_CHANGED',
-      title: `Return ${rr.number} inspected`,
-      message: 'Your returned goods have been inspected. A credit note will be issued for accepted items.',
-      actionUrl: '/partner/returns',
-      referenceType: 'RETURN_REQUEST',
-      referenceId: rr.id,
-    }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
+    // Auto-create credit note for accepted items
+    let creditNote = null;
+    if (updatedRr) {
+      // Find invoice via consignment or most recent invoice for partner
+      let invoiceRecord = null;
+      if (rr.consignmentId) {
+        invoiceRecord = await app.db.query.invoices.findFirst({
+          where: eq(invoices.consignmentId, rr.consignmentId),
+        });
+      }
+      if (!invoiceRecord) {
+        // Fallback: find most recent non-voided invoice for this partner
+        const [latest] = await app.db.select().from(invoices)
+          .where(sql`${invoices.partnerId} = ${rr.partnerId} AND ${invoices.status} != 'VOIDED'`)
+          .orderBy(sql`${invoices.createdAt} DESC`)
+          .limit(1);
+        invoiceRecord = latest;
+      }
 
-    return { data: { message: 'Return inspected, inventory updated for accepted items' } };
+      if (invoiceRecord) {
+        const partner = await app.db.query.channelPartners.findFirst({
+          where: eq(channelPartners.id, rr.partnerId),
+        });
+        const discountPct = Number(partner?.discountPct ?? 0);
+
+        let subtotal = 0;
+        const creditLineDescs: string[] = [];
+        for (const line of updatedRr.lines) {
+          const qty = line.qtyAccepted ?? 0;
+          if (qty <= 0) continue;
+          const rrp = Number(line.title?.rrpZar ?? 0);
+          if (rrp <= 0) continue;
+
+          const unitPrice = roundAmount(rrp * (1 - discountPct / 100));
+          subtotal += roundAmount(unitPrice * qty);
+          creditLineDescs.push(`${line.title?.title ?? 'Unknown'} x${qty}`);
+        }
+
+        if (subtotal > 0) {
+          subtotal = roundAmount(subtotal);
+          const isTaxInclusive = invoiceRecord.taxInclusive ?? false;
+          const vatAmount = roundAmount(isTaxInclusive
+            ? subtotal - (subtotal / (1 + VAT_RATE))
+            : subtotal * VAT_RATE);
+          const creditSubtotal = roundAmount(isTaxInclusive ? subtotal - vatAmount : subtotal);
+          const total = roundAmount(creditSubtotal + vatAmount);
+
+          const cnNumber = await nextCreditNoteNumber(app.db as any);
+          const [cn] = await app.db.insert(creditNotes).values({
+            number: cnNumber,
+            invoiceId: invoiceRecord.id,
+            partnerId: rr.partnerId,
+            subtotal: String(creditSubtotal),
+            vatAmount: String(vatAmount),
+            total: String(total),
+            reason: `Partner return ${rr.number} — ${creditLineDescs.join(', ')}`,
+            createdBy: request.session?.user?.id,
+          }).returning();
+          creditNote = cn;
+
+          // Link credit note to return request and mark as CREDIT_ISSUED
+          await app.db.update(partnerReturnRequests).set({
+            status: 'CREDIT_ISSUED',
+            creditNoteId: cn.id,
+            updatedAt: new Date(),
+          }).where(eq(partnerReturnRequests.id, rr.id));
+        }
+      }
+    }
+
+    if (creditNote) {
+      notifyPartner(app, rr.partnerId, {
+        type: 'CREDIT_NOTE_ISSUED',
+        title: `Credit note ${creditNote.number} issued`,
+        message: `R ${Number(creditNote.total).toFixed(2)} credited for return ${rr.number}. Apply this to your next remittance.`,
+        actionUrl: '/partner/credit-notes',
+        referenceType: 'CREDIT_NOTE',
+        referenceId: creditNote.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to notify partner of credit note'));
+
+      createBroadcastNotification(app, {
+        type: 'CREDIT_NOTE_CREATED',
+        priority: 'NORMAL',
+        title: `Credit note ${creditNote.number} auto-created`,
+        message: `R ${Number(creditNote.total).toFixed(2)} for partner return ${rr.number}`,
+        actionUrl: `/credit-notes/${creditNote.id}`,
+        referenceType: 'CREDIT_NOTE',
+        referenceId: creditNote.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create credit note notification'));
+    } else {
+      notifyPartner(app, rr.partnerId, {
+        type: 'RETURN_STATUS_CHANGED',
+        title: `Return ${rr.number} inspected`,
+        message: 'Your returned goods have been inspected.',
+        actionUrl: '/partner/returns',
+        referenceType: 'RETURN_REQUEST',
+        referenceId: rr.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
+    }
+
+    return { data: { message: 'Return inspected', creditNoteId: creditNote?.id ?? null } };
   });
 
-  // Link credit note to return request
+  // Link credit note to return request (manual fallback if auto-creation didn't apply)
   app.post<{ Params: { id: string } }>('/return-requests/:id/credit', {
     preHandler: requireRole('admin', 'finance'),
   }, async (request, reply) => {
@@ -1557,7 +2017,7 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       where: eq(partnerReturnRequests.id, request.params.id),
     });
     if (!rr) return reply.notFound('Return request not found');
-    if (rr.status !== 'INSPECTED') return reply.badRequest('Return must be inspected first');
+    if (!['INSPECTED', 'CREDIT_ISSUED'].includes(rr.status)) return reply.badRequest('Return must be inspected first');
 
     await app.db.update(partnerReturnRequests).set({
       status: 'CREDIT_ISSUED',

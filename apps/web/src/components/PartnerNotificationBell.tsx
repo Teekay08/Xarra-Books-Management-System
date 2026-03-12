@@ -79,7 +79,23 @@ export function PartnerNotificationBell() {
 
   const markAllReadMutation = useMutation({
     mutationFn: () => partnerApi('/notifications/read-all', { method: 'POST' }),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['partner-notification-count'] });
+      await queryClient.cancelQueries({ queryKey: ['partner-notifications-dropdown'] });
+
+      queryClient.setQueryData(['partner-notification-count'], (old: any) =>
+        old ? { ...old, data: { unread: 0 } } : old
+      );
+      queryClient.setQueryData(['partner-notifications-dropdown'], (old: any) => {
+        if (!old?.data) return old;
+        return { ...old, data: old.data.map((n: any) => ({ ...n, isRead: true })) };
+      });
+      queryClient.setQueryData(['partner-notifications'], (old: any) => {
+        if (!old?.data) return old;
+        return { ...old, data: old.data.map((n: any) => ({ ...n, isRead: true })) };
+      });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['partner-notification-count'] });
       queryClient.invalidateQueries({ queryKey: ['partner-notifications-dropdown'] });
       queryClient.invalidateQueries({ queryKey: ['partner-notifications'] });

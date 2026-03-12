@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, decimal, integer, pgEnum, jsonb, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, decimal, integer, pgEnum, jsonb, index, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { authors } from './authors';
 
@@ -51,11 +51,45 @@ export const titlesRelations = relations(titles, ({ one, many }) => ({
     references: [authors.id],
   }),
   productionCosts: many(titleProductionCosts),
+  printRuns: many(titlePrintRuns),
 }));
 
 export const titleProductionCostsRelations = relations(titleProductionCosts, ({ one }) => ({
   title: one(titles, {
     fields: [titleProductionCosts.titleId],
+    references: [titles.id],
+  }),
+}));
+
+// === Print Runs ===
+
+export const printRunStatusEnum = pgEnum('print_run_status', ['ORDERED', 'IN_PRODUCTION', 'SHIPPED', 'RECEIVED', 'PARTIAL', 'CANCELLED']);
+
+export const titlePrintRuns = pgTable('title_print_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  titleId: uuid('title_id').notNull().references(() => titles.id),
+  printRunNumber: integer('print_run_number').notNull().default(1), // sequential per title (1, 2, 3...)
+  number: varchar('number', { length: 50 }).notNull().unique(), // GRN-YYYY-NNNN
+  printerName: varchar('printer_name', { length: 255 }).notNull(),
+  quantityOrdered: integer('quantity_ordered').notNull(),
+  totalCost: decimal('total_cost', { precision: 12, scale: 2 }).notNull(),
+  expectedDeliveryDate: timestamp('expected_delivery_date', { withTimezone: true }),
+  status: printRunStatusEnum('status').notNull().default('ORDERED'),
+  quantityReceived: integer('quantity_received'),
+  receivedAt: timestamp('received_at', { withTimezone: true }),
+  receivedBy: text('received_by'),
+  notes: text('notes'),
+  createdBy: text('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_print_runs_title_id').on(t.titleId),
+  index('idx_print_runs_status').on(t.status),
+]);
+
+export const titlePrintRunsRelations = relations(titlePrintRuns, ({ one }) => ({
+  title: one(titles, {
+    fields: [titlePrintRuns.titleId],
     references: [titles.id],
   }),
 }));

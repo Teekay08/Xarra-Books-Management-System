@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { ExportButton } from '../../components/ExportButton';
 import { downloadFromApi, exportUrl } from '../../lib/export';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface Expense {
   id: string;
@@ -67,11 +68,12 @@ export function ExpenseList() {
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {isLoading && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {data?.data?.map((exp) => (
               <tr key={exp.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/expenses/${exp.id}`)}>
@@ -85,10 +87,17 @@ export function ExpenseList() {
                 <td className="px-4 py-3 text-sm font-medium text-gray-900 text-right">R {Number(exp.amount).toFixed(2)}</td>
                 <td className="px-4 py-3 text-sm text-gray-500">{exp.paymentMethod?.replace(/_/g, ' ') ?? '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-500">{exp.reference ?? '—'}</td>
+                <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
+                  <ActionMenu items={[
+                    { label: 'View Details', onClick: () => navigate(`/expenses/${exp.id}`) },
+                    { label: 'Edit', onClick: () => navigate(`/expenses/${exp.id}/edit`) },
+                    { label: 'Delete', onClick: () => { if (confirm('Delete this expense?')) navigate(`/expenses/${exp.id}`); }, variant: 'danger' },
+                  ]} />
+                </td>
               </tr>
             ))}
             {!isLoading && data?.data?.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">No expenses recorded yet.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No expenses recorded yet.</td></tr>
             )}
           </tbody>
         </table>

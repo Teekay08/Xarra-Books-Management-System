@@ -5,6 +5,8 @@ import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { RecipientEditModal, type RecipientDetails } from '../../components/RecipientEditModal';
 import { DocumentEmailModal } from '../../components/DocumentEmailModal';
+import { VoidReasonModal } from '../../components/VoidReasonModal';
+import { formatR } from '../../lib/format';
 
 interface InvoiceLine {
   id: string;
@@ -75,9 +77,6 @@ const statusColors: Record<string, string> = {
   VOIDED: 'bg-red-50 text-red-400',
 };
 
-function formatR(val: string | number) {
-  return `R ${Number(val).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function InvoiceDetail() {
   const { id } = useParams();
@@ -88,6 +87,7 @@ export function InvoiceDetail() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCreditNoteModal, setShowCreditNoteModal] = useState(false);
   const [showRecipientModal, setShowRecipientModal] = useState(false);
+  const [showVoidModal, setShowVoidModal] = useState(false);
   const [cnError, setCnError] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -261,10 +261,7 @@ export function InvoiceDetail() {
                     Print
                   </button>
                   {inv.status !== 'VOIDED' && inv.status !== 'DRAFT' && (
-                    <button onClick={() => {
-                      const reason = prompt('Reason for voiding this invoice:');
-                      if (reason) { voidMutation.mutate(reason); setShowActions(false); }
-                    }}
+                    <button onClick={() => { setShowVoidModal(true); setShowActions(false); }}
                       className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
                       Void Invoice
                     </button>
@@ -543,6 +540,19 @@ export function InvoiceDetail() {
           onSubmit={(reason, lines) => {
             setCnError('');
             creditNoteMutation.mutate({ reason, lines }, { onError: (err) => setCnError(err.message) });
+          }}
+        />
+      )}
+
+      {/* Void Reason Modal */}
+      {showVoidModal && (
+        <VoidReasonModal
+          title="Void Invoice"
+          description={`Void invoice ${inv.number}? This action cannot be undone.`}
+          isPending={voidMutation.isPending}
+          onClose={() => setShowVoidModal(false)}
+          onConfirm={(reason) => {
+            voidMutation.mutate(reason, { onSuccess: () => setShowVoidModal(false) });
           }}
         />
       )}

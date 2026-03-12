@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface ReturnLine {
   id: string;
@@ -192,15 +193,15 @@ export function PartnerReturnRequestsAdmin() {
       key: 'actions',
       header: 'Actions',
       render: (r: ReturnRequest) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            openDetail(r);
-          }}
-          className="text-xs text-green-700 hover:underline"
-        >
-          View
-        </button>
+        <div onClick={(e) => e.stopPropagation()}>
+          <ActionMenu items={[
+            { label: 'View Details', onClick: () => openDetail(r) },
+            { label: 'Review', onClick: () => { openDetail(r); setTimeout(() => { setReviewAction('authorize'); setReviewNotes(''); setRejectionReason(''); setShowReview(true); }, 0); }, hidden: r.status !== 'SUBMITTED' },
+            { label: 'Receive', onClick: () => { setSelected(r); setTimeout(() => receiveMut.mutate(), 0); }, hidden: r.status !== 'AUTHORIZED' },
+            { label: 'Inspect', onClick: () => { openDetail(r); setTimeout(openInspect, 100); }, hidden: r.status !== 'RECEIVED' },
+            { label: 'Link Credit Note', onClick: () => { openDetail(r); setTimeout(() => { setCreditNoteId(''); setShowCredit(true); }, 0); }, hidden: r.status !== 'INSPECTED' || !!r.creditNoteId },
+          ]} />
+        </div>
       ),
     },
   ];

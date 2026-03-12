@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { partnerApi, type PaginatedResponse } from '../../lib/partner-api';
+import { PartnerBranchFilter } from '../../components/PartnerBranchFilter';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface Invoice {
   id: string;
@@ -68,13 +70,16 @@ export function PartnerInvoices() {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [branchFilter, setBranchFilter] = useState('');
 
   useEffect(() => {
     async function fetchInvoices() {
       setLoading(true);
       try {
+        const params = new URLSearchParams({ page: String(page), limit: '20' });
+        if (branchFilter) params.set('branchId', branchFilter);
         const res = await partnerApi<PaginatedResponse<Invoice>>(
-          `/documents/invoices?page=${page}&limit=20`
+          `/documents/invoices?${params}`
         );
         setInvoices(res.data);
         setTotalPages(res.pagination.totalPages);
@@ -85,7 +90,7 @@ export function PartnerInvoices() {
       }
     }
     fetchInvoices();
-  }, [page]);
+  }, [page, branchFilter]);
 
   async function viewDetail(invoiceId: string) {
     setDetailLoading(true);
@@ -115,7 +120,10 @@ export function PartnerInvoices() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
+        <PartnerBranchFilter value={branchFilter} onChange={(v) => { setBranchFilter(v); setPage(1); }} />
+      </div>
 
       {/* Invoice Table */}
       <div className="rounded-lg border bg-white shadow-sm">
@@ -168,23 +176,59 @@ export function PartnerInvoices() {
                       {formatPrice(inv.total)}
                     </td>
                     <td className="px-6 py-3 text-right">
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          onClick={() => downloadPdf(inv.id)}
-                          className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
-                          PDF
-                        </button>
-                        <button
-                          onClick={() => {
-                            const w = window.open(`/api/v1/finance/invoices/${inv.id}/pdf`, '_blank');
-                            w?.addEventListener('load', () => w.print());
-                          }}
-                          className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
-                          Print
-                        </button>
-                      </div>
+                      <ActionMenu
+                        items={[
+                          {
+                            label: 'View Details',
+                            icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
+                            onClick: () => viewDetail(inv.id),
+                          },
+                          {
+                            label: 'Download PDF',
+                            icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+                            onClick: () => downloadPdf(inv.id),
+                          },
+                          {
+                            label: 'Print',
+                            icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>,
+                            onClick: () => {
+                              const w = window.open(`/api/v1/finance/invoices/${inv.id}/pdf`, '_blank');
+                              w?.addEventListener('load', () => w.print());
+                            },
+                          },
+                          {
+                            label: 'Email Copy',
+                            icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
+                            onClick: async () => {
+                              try {
+                                await partnerApi(`/documents/invoices/${inv.id}/email`, { method: 'POST' });
+                              } catch { /* handled by partnerApi */ }
+                            },
+                          },
+                          {
+                            label: 'Copy Invoice #',
+                            icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>,
+                            onClick: () => navigator.clipboard.writeText(inv.number),
+                          },
+                          {
+                            label: 'Dispute Invoice',
+                            icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>,
+                            variant: 'danger',
+                            hidden: inv.status !== 'SENT' && inv.status !== 'OVERDUE',
+                            onClick: async () => {
+                              const reason = prompt('Please describe the reason for disputing this invoice:');
+                              if (!reason) return;
+                              try {
+                                await partnerApi(`/documents/invoices/${inv.id}/dispute`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({ reason }),
+                                });
+                                window.location.reload();
+                              } catch { /* handled by partnerApi */ }
+                            },
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}

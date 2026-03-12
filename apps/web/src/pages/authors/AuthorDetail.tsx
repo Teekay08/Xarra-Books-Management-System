@@ -30,6 +30,8 @@ interface Author {
   province: string | null;
   isActive: boolean;
   notes: string | null;
+  portalUserId: string | null;
+  portalUser: { email: string; updatedAt: string | null } | null;
   contracts?: Contract[];
 }
 
@@ -44,6 +46,7 @@ export function AuthorDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showContractModal, setShowContractModal] = useState(false);
+  const [showPortalModal, setShowPortalModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['author', id],
@@ -151,6 +154,46 @@ export function AuthorDetail() {
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{author.notes}</p>
           </Card>
         )}
+
+        {/* Portal Access */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">Portal Access</h3>
+            {!author.portalUserId && (
+              <button
+                onClick={() => setShowPortalModal(true)}
+                className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
+              >
+                Grant Access
+              </button>
+            )}
+          </div>
+          {author.portalUserId && author.portalUser ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                  Active
+                </span>
+              </div>
+              <p className="text-sm text-gray-700">
+                <span className="text-gray-500">Login email: </span>
+                {author.portalUser.email}
+              </p>
+              {author.portalUser.updatedAt && (
+                <p className="text-xs text-gray-400">
+                  Last activity:{' '}
+                  {new Date(author.portalUser.updatedAt).toLocaleDateString('en-ZA', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              No portal access. The author cannot log in until access is granted.
+            </p>
+          )}
+        </div>
       </div>
 
       {showContractModal && (
@@ -159,6 +202,19 @@ export function AuthorDetail() {
           onClose={() => setShowContractModal(false)}
           onSuccess={() => {
             setShowContractModal(false);
+            queryClient.invalidateQueries({ queryKey: ['author', id] });
+          }}
+        />
+      )}
+
+      {showPortalModal && (
+        <PortalAccessModal
+          authorId={id!}
+          authorEmail={author.email}
+          authorName={author.legalName}
+          onClose={() => setShowPortalModal(false)}
+          onSuccess={() => {
+            setShowPortalModal(false);
             queryClient.invalidateQueries({ queryKey: ['author', id] });
           }}
         />
@@ -289,6 +345,94 @@ function ContractModal({
             <button type="submit" disabled={createContract.isPending}
               className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
               {createContract.isPending ? 'Creating...' : 'Create Contract'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function PortalAccessModal({
+  authorId,
+  authorEmail,
+  authorName,
+  onClose,
+  onSuccess,
+}: {
+  authorId: string;
+  authorEmail: string | null;
+  authorName: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const grantAccess = useMutation({
+    mutationFn: (body: { email: string; name: string; password: string }) =>
+      api(`/authors/${authorId}/portal-access`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess,
+  });
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    grantAccess.mutate({
+      email: fd.get('email') as string,
+      name: authorName,
+      password: fd.get('password') as string,
+    });
+  }
+
+  const cls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div className="p-5 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">Grant Portal Access</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Creates a login account for {authorName}. Share these credentials with the author.
+          </p>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
+            <input
+              name="email"
+              type="email"
+              required
+              defaultValue={authorEmail ?? ''}
+              className={cls}
+              placeholder="author@email.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password *</label>
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={8}
+              className={cls}
+              placeholder="Min. 8 characters"
+            />
+            <p className="text-xs text-gray-400 mt-1">Author can change this after first login via Settings.</p>
+          </div>
+          {grantAccess.isError && (
+            <p className="text-sm text-red-600">
+              {(grantAccess.error as Error)?.message ?? 'Failed to grant access'}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={grantAccess.isPending}
+              className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+              {grantAccess.isPending ? 'Creating...' : 'Grant Access'}
             </button>
           </div>
         </form>

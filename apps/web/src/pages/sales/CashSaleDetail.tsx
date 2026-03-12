@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { formatR } from '../../lib/format';
 
 interface CashSaleLine {
   id: string;
@@ -31,9 +32,6 @@ interface CashSale {
   lines: CashSaleLine[];
 }
 
-function formatCurrency(val: string | number): string {
-  return `R ${Number(val).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function CashSaleDetail() {
   const { id } = useParams();
@@ -168,10 +166,10 @@ export function CashSaleDetail() {
                   )}
                 </td>
                 <td className="py-2 text-right font-mono">{line.quantity}</td>
-                <td className="py-2 text-right font-mono">{formatCurrency(line.unitPrice)}</td>
+                <td className="py-2 text-right font-mono">{formatR(line.unitPrice)}</td>
                 <td className="py-2 text-right">{Number(line.discount)}%</td>
                 <td className="py-2 text-right font-mono font-semibold">
-                  {formatCurrency(line.lineTotal)}
+                  {formatR(line.lineTotal)}
                 </td>
               </tr>
             ))}
@@ -185,17 +183,17 @@ export function CashSaleDetail() {
           <div className="w-72 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal</span>
-              <span className="font-mono">{formatCurrency(sale.subtotal)}</span>
+              <span className="font-mono">{formatR(sale.subtotal)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">
                 VAT (15%){sale.taxInclusive ? ' - inclusive' : ''}
               </span>
-              <span className="font-mono">{formatCurrency(sale.vatAmount)}</span>
+              <span className="font-mono">{formatR(sale.vatAmount)}</span>
             </div>
             <div className="flex justify-between border-t border-gray-300 pt-2 text-base font-semibold">
               <span>Total</span>
-              <span className="font-mono">{formatCurrency(sale.total)}</span>
+              <span className="font-mono">{formatR(sale.total)}</span>
             </div>
           </div>
         </div>

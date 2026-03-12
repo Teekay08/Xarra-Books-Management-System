@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { partnerApi, getPartnerToken, type PaginatedResponse } from '../../lib/partner-api';
+import { PartnerBranchFilter } from '../../components/PartnerBranchFilter';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface ConsignmentLineTitle {
   id: string;
@@ -46,13 +48,16 @@ export function PartnerConsignments() {
   const [totalPages, setTotalPages] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lineLoading, setLineLoading] = useState<string | null>(null);
+  const [branchFilter, setBranchFilter] = useState('');
 
   useEffect(() => {
     async function fetchConsignments() {
       setLoading(true);
       try {
+        const params = new URLSearchParams({ page: String(page), limit: '20' });
+        if (branchFilter) params.set('branchId', branchFilter);
         const res = await partnerApi<PaginatedResponse<Consignment>>(
-          `/documents/consignments?page=${page}&limit=20`
+          `/documents/consignments?${params}`
         );
         setConsignments(res.data);
         setTotalPages(res.pagination.totalPages);
@@ -63,7 +68,7 @@ export function PartnerConsignments() {
       }
     }
     fetchConsignments();
-  }, [page]);
+  }, [page, branchFilter]);
 
   async function toggleExpand(consignment: Consignment) {
     if (expandedId === consignment.id) {
@@ -104,7 +109,10 @@ export function PartnerConsignments() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Consignments</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Consignments</h1>
+        <PartnerBranchFilter value={branchFilter} onChange={(v) => { setBranchFilter(v); setPage(1); }} />
+      </div>
 
       <div className="rounded-lg border bg-white shadow-sm">
         {consignments.length === 0 ? (
@@ -122,7 +130,7 @@ export function PartnerConsignments() {
                   <th className="px-6 py-3 font-medium">Courier</th>
                   <th className="px-6 py-3 font-medium">Waybill</th>
                   <th className="px-6 py-3 font-medium text-right">Items</th>
-                  <th className="px-6 py-3 font-medium text-right">Documents</th>
+                  <th className="px-6 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -213,37 +221,61 @@ function ExpandableRow({
         <td className="px-6 py-3 text-gray-600">{consignment.courierWaybill ?? '-'}</td>
         <td className="px-6 py-3 text-right text-gray-900">{consignment.lines?.length ?? 0}</td>
         <td className="px-6 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={async () => {
-                const token = getPartnerToken();
-                const res = await fetch(`/api/v1/partner-portal/documents/consignments/${consignment.id}/proforma-pdf`, {
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                window.open(url, '_blank');
-              }}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Download PDF
-            </button>
-            <button
-              onClick={async () => {
-                const token = getPartnerToken();
-                const res = await fetch(`/api/v1/partner-portal/documents/consignments/${consignment.id}/proforma-pdf`, {
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const w = window.open(url, '_blank');
-                w?.addEventListener('load', () => w.print());
-              }}
-              className="text-xs text-gray-600 hover:text-gray-700 font-medium"
-            >
-              Print
-            </button>
-          </div>
+          <ActionMenu
+            items={[
+              {
+                label: 'Download PDF',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+                onClick: async () => {
+                  const token = getPartnerToken();
+                  const res = await fetch(`/api/v1/partner-portal/documents/consignments/${consignment.id}/proforma-pdf`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  window.open(url, '_blank');
+                },
+              },
+              {
+                label: 'Print',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>,
+                onClick: async () => {
+                  const token = getPartnerToken();
+                  const res = await fetch(`/api/v1/partner-portal/documents/consignments/${consignment.id}/proforma-pdf`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const w = window.open(url, '_blank');
+                  w?.addEventListener('load', () => w.print());
+                },
+              },
+              {
+                label: 'Copy Waybill #',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>,
+                hidden: !consignment.courierWaybill,
+                onClick: () => navigator.clipboard.writeText(consignment.courierWaybill ?? ''),
+              },
+              {
+                label: 'Acknowledge Receipt',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>,
+                hidden: consignment.status !== 'DISPATCHED' && consignment.status !== 'DELIVERED',
+                onClick: async () => {
+                  try {
+                    await partnerApi(`/documents/consignments/${consignment.id}/acknowledge`, { method: 'POST' });
+                    window.location.reload();
+                  } catch { /* handled by partnerApi */ }
+                },
+              },
+              {
+                label: 'Report Issue',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>,
+                hidden: consignment.status !== 'DISPATCHED' && consignment.status !== 'DELIVERED' && consignment.status !== 'RECEIVED',
+                variant: 'danger',
+                onClick: () => window.location.assign('/partner/returns/new'),
+              },
+            ]}
+          />
         </td>
       </tr>
 

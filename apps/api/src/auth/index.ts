@@ -22,7 +22,7 @@ export const auth = betterAuth({
   }),
   secret: config.jwt.secret,
   baseURL: `http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`,
-  trustedOrigins: [config.cors.origin],
+  trustedOrigins: config.cors.origins,
 
   emailAndPassword: {
     enabled: true,
@@ -53,11 +53,11 @@ export const auth = betterAuth({
   },
 
   session: {
-    expiresIn: 60 * 15, // 15 minutes
-    updateAge: 60 * 5, // refresh every 5 minutes
+    expiresIn: 60 * 60 * 8, // 8 hours (full work day)
+    updateAge: 60 * 15, // refresh every 15 minutes of activity
     cookieCache: {
       enabled: true,
-      maxAge: 60 * 5,
+      maxAge: 60 * 15,
     },
   },
 

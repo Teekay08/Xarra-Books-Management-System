@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { formatR } from '../../lib/format';
 
 interface ReqLine {
   key: string;
@@ -23,9 +24,6 @@ function emptyLine(): ReqLine {
   };
 }
 
-function formatR(val: number) {
-  return `R ${val.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function RequisitionCreate() {
   const navigate = useNavigate();

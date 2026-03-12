@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { formatR } from '../../lib/format';
 
 interface ClaimLine {
   id: string;
@@ -39,9 +40,6 @@ const statusColors: Record<string, string> = {
   PAID: 'bg-purple-100 text-purple-700',
 };
 
-function formatR(val: string | number) {
-  return `R ${Number(val).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function ExpenseClaimDetail() {
   const { id } = useParams();

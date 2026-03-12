@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
+import { ChartTooltip, ChartGradients, GradientDef, cleanAxisProps, cleanGridProps } from '../../components/charts';
 
 interface MonthlyRow { month: string; inflow: number; outflow: number; net: number }
 interface PaymentSpeed { avgDays: number; minDays: number; maxDays: number }
@@ -89,18 +90,22 @@ export function CashFlowAnalysis() {
         <>
           {/* Cash flow chart */}
           {monthly.length > 0 && (
-            <div className="rounded-lg border bg-white p-4 mb-6" style={{ height: 380 }}>
+            <div className="rounded-xl border border-gray-200/60 bg-white p-4 mb-6 shadow-sm" style={{ height: 380 }}>
               <h3 className="text-sm font-medium text-gray-700 mb-3">Monthly Cash Flow</h3>
               <ResponsiveContainer width="100%" height="90%">
                 <BarChart data={monthly}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                  <ChartGradients>
+                    <GradientDef id="cfIn" from="#34d399" to="#059669" />
+                    <GradientDef id="cfOut" from="#fca5a5" to="#dc2626" />
+                  </ChartGradients>
+                  <CartesianGrid {...cleanGridProps} />
+                  <XAxis dataKey="month" {...cleanAxisProps} />
+                  <YAxis {...cleanAxisProps} tickFormatter={(v) => `R${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                   <Legend />
-                  <ReferenceLine y={0} stroke="#666" />
-                  <Bar dataKey="inflow" fill="#15803d" name="Cash In (Payments)" />
-                  <Bar dataKey="outflow" fill="#dc2626" name="Cash Out (Expenses)" />
+                  <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
+                  <Bar dataKey="inflow" fill="url(#cfIn)" name="Cash In (Payments)" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="outflow" fill="url(#cfOut)" name="Cash Out (Expenses)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

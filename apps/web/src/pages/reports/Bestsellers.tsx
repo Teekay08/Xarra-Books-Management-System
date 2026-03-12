@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ChartTooltip, ChartGradients, GradientDef, cleanAxisProps, cleanGridProps } from '../../components/charts';
 
 interface TitleRow { id: string; title: string; isbn13?: string; unitsSold: number; revenue: number }
 interface AuthorRow { id: string; name: string; revenue: number; unitsSold: number; titleCount: number }
@@ -104,14 +105,18 @@ export function Bestsellers() {
         <>
           {/* Chart for title tabs */}
           {chartData.length > 0 && (tab === 'revenue' || tab === 'units' || tab === 'underperformers') && (
-            <div className="rounded-lg border bg-white p-4 mb-6" style={{ height: Math.max(280, chartData.length * 32) }}>
+            <div className="rounded-xl border border-gray-200/60 bg-white p-4 mb-6 shadow-sm" style={{ height: Math.max(280, chartData.length * 32) }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData.map((t) => ({ name: t.title.length > 30 ? t.title.slice(0, 30) + '...' : t.title, value: tab === 'units' ? t.unitsSold : t.revenue }))} layout="vertical" margin={{ left: 180 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" tickFormatter={tab === 'units' ? undefined : (v) => `R${(v / 1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="name" width={170} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: any) => tab === 'units' ? Number(v).toLocaleString() : fmt(Number(v))} />
-                  <Bar dataKey="value" fill={tab === 'underperformers' ? '#dc2626' : '#15803d'} radius={[0, 4, 4, 0]} />
+                  <ChartGradients>
+                    <GradientDef id="bestGreen" from="#34d399" to="#059669" direction="horizontal" />
+                    <GradientDef id="bestRed" from="#fca5a5" to="#dc2626" direction="horizontal" />
+                  </ChartGradients>
+                  <CartesianGrid {...cleanGridProps} />
+                  <XAxis type="number" {...cleanAxisProps} tickFormatter={tab === 'units' ? undefined : (v) => `R${(v / 1000).toFixed(0)}k`} />
+                  <YAxis type="category" dataKey="name" width={170} {...cleanAxisProps} />
+                  <Tooltip content={<ChartTooltip formatter={tab === 'units' ? (v) => v.toLocaleString() : (v) => fmt(v)} />} />
+                  <Bar dataKey="value" fill={tab === 'underperformers' ? 'url(#bestRed)' : 'url(#bestGreen)'} radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

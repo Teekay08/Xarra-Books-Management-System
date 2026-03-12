@@ -48,10 +48,12 @@ export async function partnerApi<T>(path: string, init?: RequestInit): Promise<T
   const token = getPartnerToken();
   const isFormData = init?.body instanceof FormData;
 
+  const hasBody = init?.body != null;
+
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(hasBody && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },

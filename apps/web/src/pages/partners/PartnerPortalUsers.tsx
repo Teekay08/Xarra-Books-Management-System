@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
 
@@ -223,27 +224,11 @@ export function PartnerPortalUsers() {
       key: 'actions',
       header: 'Actions',
       render: (u: PortalUser) => (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              openEdit(u);
-            }}
-            className="text-xs text-green-700 hover:underline"
-          >
-            Edit
-          </button>
-          {u.isActive && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (confirm('Deactivate this user?')) deactivateMutation.mutate(u.id);
-              }}
-              className="text-xs text-red-600 hover:underline"
-            >
-              Deactivate
-            </button>
-          )}
+        <div onClick={(e) => e.stopPropagation()}>
+          <ActionMenu items={[
+            { label: 'Edit', onClick: () => openEdit(u) },
+            { label: u.isActive ? 'Deactivate' : 'Activate', onClick: () => { if (confirm(`${u.isActive ? 'Deactivate' : 'Activate'} this user?`)) deactivateMutation.mutate(u.id); }, variant: u.isActive ? 'danger' : 'default' },
+          ]} />
         </div>
       ),
     },

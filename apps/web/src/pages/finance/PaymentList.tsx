@@ -9,6 +9,7 @@ import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface Payment {
   id: string;
@@ -53,6 +54,15 @@ export function PaymentList() {
       <span className="text-xs">
         {p.allocations?.length ? `${p.allocations.length} invoice(s)` : 'Unallocated'}
       </span>
+    )},
+    { key: 'actions', header: 'Actions', render: (p: Payment) => (
+      <div onClick={(e) => e.stopPropagation()}>
+        <ActionMenu items={[
+          { label: 'View Details', onClick: () => navigate(`/payments/${p.id}`) },
+          { label: 'Edit Payment', onClick: () => navigate(`/payments/${p.id}/edit`) },
+          { label: 'Delete', onClick: () => { if (confirm('Delete this payment?')) navigate(`/payments/${p.id}`); }, variant: 'danger', hidden: (p.allocations?.length ?? 0) > 0 },
+        ]} />
+      </div>
     )},
   ];
 

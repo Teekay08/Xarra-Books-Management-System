@@ -48,6 +48,7 @@ export function PartnerCatalog() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [notes, setNotes] = useState('');
+  const [customerPoNumber, setCustomerPoNumber] = useState('');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('');
   const [placing, setPlacing] = useState(false);
@@ -136,6 +137,7 @@ export function PartnerCatalog() {
           quantity: item.qty,
         })),
         notes: notes.trim() || undefined,
+        customerPoNumber: customerPoNumber.trim() || undefined,
       };
       if (isHQ && selectedBranch) {
         body.branchId = selectedBranch;
@@ -147,6 +149,7 @@ export function PartnerCatalog() {
       setSuccessOrder(res.data.number);
       setCart([]);
       setNotes('');
+      setCustomerPoNumber('');
       setTimeout(() => {
         navigate(`/partner/orders/${res.data.id}`);
       }, 2500);
@@ -450,6 +453,21 @@ export function PartnerCatalog() {
               </select>
             </div>
           )}
+
+          {/* Purchase Order Number */}
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Your PO Number (optional)
+            </label>
+            <input
+              type="text"
+              value={customerPoNumber}
+              onChange={(e) => setCustomerPoNumber(e.target.value)}
+              maxLength={50}
+              placeholder="e.g. PO-12345"
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-[#8B1A1A] focus:outline-none focus:ring-1 focus:ring-[#8B1A1A]"
+            />
+          </div>
 
           {/* Delivery notes */}
           <div className="mb-3">

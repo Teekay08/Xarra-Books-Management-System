@@ -3,11 +3,13 @@ import { eq, sql } from 'drizzle-orm';
 import {
   returnsAuthorizations, returnsAuthorizationLines,
   returnInspectionLines, inventoryMovements, consignmentLines,
+  invoices, creditNotes, creditNoteLines, titles, channelPartners,
 } from '@xarra/db';
-import { paginationSchema } from '@xarra/shared';
+import { paginationSchema, VAT_RATE, roundAmount } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
+import { nextCreditNoteNumber, nextReturnNumber } from '../finance/invoice-number.js';
 import { z } from 'zod';
 
 const createReturnSchema = z.object({
@@ -27,17 +29,6 @@ const createReturnSchema = z.object({
   courierWaybill: z.string().optional(),
 });
 
-async function nextReturnNumber(db: any): Promise<string> {
-  const year = new Date().getFullYear();
-  const pattern = `RA-${year}-%`;
-  const result = await db.execute(sql`
-    SELECT MAX(SUBSTRING(number FROM '-(\d+)$')::int) AS "maxNum"
-    FROM returns_authorizations
-    WHERE number LIKE ${pattern}
-  `);
-  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
-  return `RA-${year}-${String(nextNum).padStart(4, '0')}`;
-}
 
 export async function returnRoutes(app: FastifyInstance) {
   // List returns
@@ -288,6 +279,7 @@ export async function returnRoutes(app: FastifyInstance) {
 
     const userId = request.session?.user?.id;
 
+    let creditNote: any = null;
     await app.db.transaction(async (tx) => {
       for (const line of ra.inspectionLines) {
         // Good items → back to warehouse
@@ -351,6 +343,116 @@ export async function returnRoutes(app: FastifyInstance) {
         status: 'PROCESSED',
         processedAt: new Date(),
       }).where(eq(returnsAuthorizations.id, ra.id));
+
+      // Auto-create credit note if linked to a consignment with an invoice
+      if (ra.consignmentId) {
+        const invoice = await tx.query.invoices.findFirst({
+          where: eq(invoices.consignmentId, ra.consignmentId),
+        });
+
+        if (invoice && invoice.status !== 'VOIDED') {
+          // Get partner discount to calculate credit at invoiced price
+          const partner = await tx.query.channelPartners.findFirst({
+            where: eq(channelPartners.id, ra.partnerId),
+          });
+          const discountPct = Number(partner?.discountPct ?? 0);
+
+          // Get title prices for credit calculation
+          const titleIds = ra.inspectionLines.map((l) => l.titleId);
+          const titleRecords = await tx.select().from(titles)
+            .where(sql`${titles.id} IN (${sql.join(titleIds.map(id => sql`${id}`), sql`, `)})`);
+          const titleMap = new Map(titleRecords.map((t) => [t.id, t]));
+
+          // Only credit good + damaged items (unsaleable = writeoff, no credit)
+          let subtotal = 0;
+          const creditLineItems: Array<{
+            titleId: string;
+            description: string;
+            quantity: number;
+            unitPrice: number;
+            lineTotal: number;
+          }> = [];
+          
+          for (const line of ra.inspectionLines) {
+            const creditQty = line.qtyGood + line.qtyDamaged;
+            if (creditQty <= 0) continue;
+            const title = titleMap.get(line.titleId);
+            if (!title) continue;
+
+            const rrp = Number(title.rrpZar);
+            const unitPrice = roundAmount(rrp * (1 - discountPct / 100));
+            const lineTotal = roundAmount(unitPrice * creditQty);
+            subtotal += lineTotal;
+            
+            creditLineItems.push({
+              titleId: line.titleId,
+              description: `${title.title} (ISBN: ${title.isbn || 'N/A'})`,
+              quantity: creditQty,
+              unitPrice,
+              lineTotal,
+            });
+          }
+
+          if (subtotal > 0) {
+            subtotal = roundAmount(subtotal);
+            const isTaxInclusive = invoice.taxInclusive ?? false;
+            const vatAmount = roundAmount(isTaxInclusive
+              ? subtotal - (subtotal / (1 + VAT_RATE))
+              : subtotal * VAT_RATE);
+            const creditSubtotal = roundAmount(isTaxInclusive ? subtotal - vatAmount : subtotal);
+            const total = roundAmount(creditSubtotal + vatAmount);
+
+            const cnNumber = await nextCreditNoteNumber(tx as any);
+            const [cn] = await tx.insert(creditNotes).values({
+              number: cnNumber,
+              invoiceId: invoice.id,
+              partnerId: ra.partnerId,
+              returnsAuthId: ra.id,
+              subtotal: String(creditSubtotal),
+              vatAmount: String(vatAmount),
+              total: String(total),
+              reason: `Auto-generated from return ${ra.number}`,
+              status: 'DRAFT', // Start as draft for review
+              createdBy: userId,
+            }).returning();
+            creditNote = cn;
+
+            // Insert credit note line items
+            const lineInserts = creditLineItems.map((item, idx) => ({
+              creditNoteId: cn.id,
+              lineNumber: idx + 1,
+              titleId: item.titleId,
+              description: item.description,
+              quantity: String(item.quantity),
+              unitPrice: String(item.unitPrice),
+              lineTotal: String(item.lineTotal),
+              lineTax: String(roundAmount(item.lineTotal * (isTaxInclusive ? 0 : VAT_RATE))),
+            }));
+
+            await tx.insert(creditNoteLines).values(lineInserts);
+
+            // Update invoice status after credit note
+            const paidResult = await tx.execute(sql`
+              SELECT COALESCE(SUM(amount::numeric), 0) AS total
+              FROM payment_allocations WHERE invoice_id = ${invoice.id}
+            `);
+            const amountPaid = Number(paidResult[0]?.total ?? 0);
+            const creditTotal = await tx.execute(sql`
+              SELECT COALESCE(SUM(total::numeric), 0) AS total
+              FROM credit_notes WHERE invoice_id = ${invoice.id} AND voided_at IS NULL
+            `);
+            const effectiveTotal = Math.max(0, roundAmount(Number(invoice.total) - Number(creditTotal[0]?.total ?? 0)));
+            let newStatus = invoice.status;
+            if (effectiveTotal <= 0) newStatus = 'PAID';
+            else if (amountPaid >= effectiveTotal) newStatus = 'PAID';
+            else if (amountPaid > 0) newStatus = 'PARTIAL';
+            if (newStatus !== invoice.status) {
+              await tx.update(invoices).set({ status: newStatus, updatedAt: new Date() })
+                .where(eq(invoices.id, invoice.id));
+            }
+          }
+        }
+      }
     });
 
     const totalQty = ra.inspectionLines.reduce((s, l) => s + l.qtyReceived, 0);
@@ -374,6 +476,150 @@ export async function returnRoutes(app: FastifyInstance) {
       referenceId: ra.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
 
-    return { data: { message: 'Return processed, inventory updated' } };
+    // If credit note was created, send separate notification
+    if (creditNote) {
+      notifyPartner(app, ra.partnerId, {
+        type: 'CREDIT_NOTE_ISSUED',
+        title: `Credit note ${creditNote.number} issued`,
+        message: `R ${Number(creditNote.total).toFixed(2)} credited for return ${ra.number}. Apply this to your next remittance.`,
+        actionUrl: '/partner/credit-notes',
+        referenceType: 'CREDIT_NOTE',
+        referenceId: creditNote.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to notify partner of credit note'));
+
+      createBroadcastNotification(app, {
+        type: 'CREDIT_NOTE_CREATED',
+        priority: 'NORMAL',
+        title: `Credit note ${creditNote.number} auto-created`,
+        message: `R ${Number(creditNote.total).toFixed(2)} against return ${ra.number}`,
+        actionUrl: `/credit-notes/${creditNote.id}`,
+        referenceType: 'CREDIT_NOTE',
+        referenceId: creditNote.id,
+      }).catch((err) => app.log.error({ err }, 'Failed to create credit note notification'));
+    }
+
+    return { data: { message: 'Return processed, inventory updated', creditNoteId: creditNote?.id ?? null } };
+  });
+
+  // Regenerate credit note with line items for existing processed returns
+  app.post<{ Params: { id: string } }>('/:id/regenerate-credit-note', { preHandler: requireRole(['ADMIN', 'FINANCE_MANAGER']) }, async (request, reply) => {
+    const userId = (request.user as any).email || (request.user as any).id;
+    
+    const ra = await app.db.query.returnsAuthorizations.findFirst({
+      where: eq(returnsAuthorizations.id, request.params.id),
+      with: {
+        partner: true,
+        inspectionLines: { with: { title: true } },
+      },
+    });
+
+    if (!ra) return reply.notFound('Return not found');
+    if (ra.status !== 'PROCESSED') return reply.badRequest('Only PROCESSED returns can have credit notes regenerated');
+    if (!ra.consignmentId) return reply.badRequest('Return must be linked to a consignment to regenerate credit note');
+
+    // Find existing credit note
+    const existingCN = await app.db.query.creditNotes.findFirst({
+      where: eq(creditNotes.returnsAuthId, ra.id),
+      with: { lines: true },
+    });
+
+    if (!existingCN) return reply.notFound('No existing credit note found for this return');
+    if (existingCN.status === 'VOIDED') return reply.badRequest('Cannot regenerate voided credit note');
+
+    // Get invoice
+    const invoice = await app.db.query.invoices.findFirst({
+      where: eq(invoices.consignmentId, ra.consignmentId),
+    });
+
+    if (!invoice) return reply.badRequest('No invoice found for this return\'s consignment');
+
+    await app.db.transaction(async (tx) => {
+      // Delete existing line items if any
+      if (existingCN.lines && existingCN.lines.length > 0) {
+        await tx.delete(creditNoteLines).where(eq(creditNoteLines.creditNoteId, existingCN.id));
+      }
+
+      // Recalculate line items
+      const discountPct = Number(ra.partner?.discountPct ?? 0);
+      let subtotal = 0;
+      const creditLineItems: Array<{
+        titleId: string;
+        description: string;
+        quantity: number;
+        unitPrice: number;
+        lineTotal: number;
+      }> = [];
+
+      for (const line of ra.inspectionLines) {
+        const creditQty = line.qtyGood + line.qtyDamaged;
+        if (creditQty <= 0) continue;
+        const title = line.title;
+        if (!title) continue;
+
+        const rrp = Number(title.rrpZar);
+        const unitPrice = roundAmount(rrp * (1 - discountPct / 100));
+        const lineTotal = roundAmount(unitPrice * creditQty);
+        subtotal += lineTotal;
+
+        creditLineItems.push({
+          titleId: line.titleId,
+          description: `${title.title} (ISBN: ${title.isbn || 'N/A'})`,
+          quantity: creditQty,
+          unitPrice,
+          lineTotal,
+        });
+      }
+
+      if (creditLineItems.length === 0) return reply.badRequest('No creditable items found in return');
+
+      subtotal = roundAmount(subtotal);
+      const isTaxInclusive = invoice.taxInclusive ?? false;
+      const vatAmount = roundAmount(isTaxInclusive
+        ? subtotal - (subtotal / (1 + VAT_RATE))
+        : subtotal * VAT_RATE);
+      const creditSubtotal = roundAmount(isTaxInclusive ? subtotal - vatAmount : subtotal);
+      const total = roundAmount(creditSubtotal + vatAmount);
+
+      // Update credit note header
+      await tx.update(creditNotes).set({
+        subtotal: String(creditSubtotal),
+        vatAmount: String(vatAmount),
+        total: String(total),
+        reason: `Auto-generated from return ${ra.number} (regenerated)`,
+        status: existingCN.status === 'APPROVED' || existingCN.status === 'SENT' ? existingCN.status : 'DRAFT',
+        updatedAt: new Date(),
+      }).where(eq(creditNotes.id, existingCN.id));
+
+      // Insert new line items
+      const lineInserts = creditLineItems.map((item, idx) => ({
+        creditNoteId: existingCN.id,
+        lineNumber: idx + 1,
+        titleId: item.titleId,
+        description: item.description,
+        quantity: String(item.quantity),
+        unitPrice: String(item.unitPrice),
+        lineTotal: String(item.lineTotal),
+        lineTax: String(roundAmount(item.lineTotal * (isTaxInclusive ? 0 : VAT_RATE))),
+      }));
+
+      await tx.insert(creditNoteLines).values(lineInserts);
+    });
+
+    const updated = await app.db.query.creditNotes.findFirst({
+      where: eq(creditNotes.id, existingCN.id),
+      with: { lines: { orderBy: (l, { asc }) => [asc(l.lineNumber)] } },
+    });
+
+    createBroadcastNotification(app, {
+      type: 'CREDIT_NOTE_UPDATED',
+      priority: 'NORMAL',
+      title: `Credit note ${existingCN.number} regenerated`,
+      message: `Line items added for return ${ra.number}`,
+      actionUrl: `/credit-notes/${existingCN.id}`,
+      referenceType: 'CREDIT_NOTE',
+      referenceId: existingCN.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create credit note regen notification'));
+
+    return { data: { message: 'Credit note regenerated with line items', creditNote: updated } };
   });
 }

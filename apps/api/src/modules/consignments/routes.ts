@@ -158,6 +158,24 @@ export async function consignmentRoutes(app: FastifyInstance) {
     return reply.status(201).send({ data: result });
   });
 
+  // Delete a DRAFT consignment
+  app.delete<{ Params: { id: string } }>('/:id', {
+    preHandler: requireRole('admin', 'operations'),
+  }, async (request, reply) => {
+    const consignment = await app.db.query.consignments.findFirst({
+      where: eq(consignments.id, request.params.id),
+    });
+    if (!consignment) return reply.notFound('Consignment not found');
+    if (consignment.status !== 'DRAFT') return reply.badRequest('Only DRAFT consignments can be deleted');
+
+    await app.db.transaction(async (tx) => {
+      await tx.delete(consignmentLines).where(eq(consignmentLines.consignmentId, consignment.id));
+      await tx.delete(consignments).where(eq(consignments.id, consignment.id));
+    });
+
+    return { success: true };
+  });
+
   // Dispatch consignment (DRAFT → DISPATCHED) + inventory deduction
   app.post<{ Params: { id: string } }>('/:id/dispatch', {
     preHandler: requireRole('admin', 'operations'),
@@ -778,6 +796,56 @@ export async function consignmentRoutes(app: FastifyInstance) {
       data: items,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
+  });
+
+  // Extend SOR expiry date
+  app.post<{ Params: { id: string } }>('/:id/extend-sor', {
+    preHandler: requireRole('admin', 'operations', 'finance'),
+  }, async (request, reply) => {
+    const { newExpiryDate } = request.body as { newExpiryDate: string };
+
+    if (!newExpiryDate) return reply.badRequest('newExpiryDate is required');
+
+    const parsed = new Date(newExpiryDate);
+    if (isNaN(parsed.getTime())) return reply.badRequest('Invalid date format');
+
+    const consignment = await app.db.query.consignments.findFirst({
+      where: eq(consignments.id, request.params.id),
+      with: { partner: true },
+    });
+    if (!consignment) return reply.notFound('Consignment not found');
+    if (!['DELIVERED', 'ACKNOWLEDGED'].includes(consignment.status)) {
+      return reply.badRequest('Consignment must be DELIVERED or ACKNOWLEDGED to extend SOR');
+    }
+
+    if (consignment.sorExpiryDate && parsed <= consignment.sorExpiryDate) {
+      return reply.badRequest('New expiry date must be after the current expiry date');
+    }
+
+    const [updated] = await app.db.update(consignments).set({
+      sorExpiryDate: parsed,
+      updatedAt: new Date(),
+    }).where(eq(consignments.id, request.params.id)).returning();
+
+    createBroadcastNotification(app, {
+      type: 'CONSIGNMENT_DISPATCHED',
+      title: `SOR extended — ${consignment.partner.name}`,
+      message: `SOR expiry extended to ${parsed.toLocaleDateString('en-ZA')}.`,
+      actionUrl: `/consignments/${consignment.id}`,
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create SOR extension notification'));
+
+    notifyPartner(app, consignment.partnerId, {
+      type: 'CONSIGNMENT_DISPATCHED',
+      title: 'SOR period extended',
+      message: `Your SOR period has been extended to ${parsed.toLocaleDateString('en-ZA')}.`,
+      actionUrl: '/partner/consignments',
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create partner SOR extension notification'));
+
+    return { data: updated };
   });
 
   // SOR expiry dashboard — active consignments with days remaining

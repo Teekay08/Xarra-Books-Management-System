@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc } from 'drizzle-orm';
 import {
-  invoices, invoiceLines, creditNotes, debitNotes,
+  invoices, invoiceLines, creditNotes, creditNoteLines, debitNotes,
   payments, paymentAllocations, channelPartners,
   partnerBranches, remittances, remittanceInvoices, remittanceCreditNotes, companySettings,
   quotations, quotationLines,
@@ -872,6 +872,37 @@ export async function financeRoutes(app: FastifyInstance) {
     return { data: cn };
   });
 
+  // Void a credit note
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/void', {
+    preHandler: requireRole('admin', 'finance'),
+  }, async (request, reply) => {
+    const { reason } = request.body as { reason?: string };
+    if (!reason?.trim()) return reply.badRequest('Void reason is required');
+
+    const cn = await app.db.query.creditNotes.findFirst({
+      where: eq(creditNotes.id, request.params.id),
+      with: { partner: true, invoice: true },
+    });
+    if (!cn) return reply.notFound('Credit note not found');
+    if (cn.voidedAt) return reply.badRequest('Credit note is already voided');
+
+    await app.db.update(creditNotes)
+      .set({ voidedAt: new Date(), voidedReason: reason.trim() })
+      .where(eq(creditNotes.id, request.params.id));
+
+    await createBroadcastNotification(app, {
+      type: 'SYSTEM',
+      priority: 'HIGH',
+      title: `Credit note ${cn.number} voided`,
+      message: `Credit note ${cn.number} for ${cn.partner.name} has been voided. Reason: ${reason.trim()}`,
+      actionUrl: `/credit-notes/${cn.id}`,
+      referenceType: 'CREDIT_NOTE',
+      referenceId: cn.id,
+    });
+
+    return { success: true };
+  });
+
   // ==========================================
   // PAYMENTS
   // ==========================================
@@ -1596,6 +1627,24 @@ export async function financeRoutes(app: FastifyInstance) {
     return reply.status(201).send({ data: invoice });
   });
 
+  // Delete a DRAFT quotation
+  app.delete<{ Params: { id: string } }>('/quotations/:id', {
+    preHandler: requireRole('admin', 'finance'),
+  }, async (request, reply) => {
+    const quotation = await app.db.query.quotations.findFirst({
+      where: eq(quotations.id, request.params.id),
+    });
+    if (!quotation) return reply.notFound('Quotation not found');
+    if (quotation.status !== 'DRAFT') return reply.badRequest('Only DRAFT quotations can be deleted');
+
+    await app.db.transaction(async (tx) => {
+      await tx.delete(quotationLines).where(eq(quotationLines.quotationId, quotation.id));
+      await tx.delete(quotations).where(eq(quotations.id, quotation.id));
+    });
+
+    return { success: true };
+  });
+
   // Generate quotation PDF
   app.get<{ Params: { id: string } }>('/quotations/:id/pdf', {
     preHandler: requireAuth,
@@ -1863,6 +1912,222 @@ export async function financeRoutes(app: FastifyInstance) {
       referenceId: po.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create PO issue notification'));
 
+    return { data: updated };
+  });
+
+  // ==========================================
+  // CREDIT NOTE WORKFLOW
+  // ==========================================
+
+  // List credit notes with line items
+  app.get('/credit-notes', { preHandler: requireAuth }, async (request) => {
+    const query = paginationSchema.parse(request.query);
+    const { page, limit, search } = query;
+    const offset = (page - 1) * limit;
+
+    const where = search
+      ? sql`${creditNotes.number} ILIKE ${'%' + search + '%'}`
+      : undefined;
+
+    const [items, countResult] = await Promise.all([
+      app.db.query.creditNotes.findMany({
+        where: where ? () => where : undefined,
+        with: {
+          partner: true,
+          invoice: true,
+          lines: { orderBy: (l, { asc }) => [asc(l.lineNumber)] },
+        },
+        orderBy: (cn, { desc: d }) => [d(cn.createdAt)],
+        limit,
+        offset,
+      }),
+      app.db.execute(sql`SELECT COUNT(*) AS count FROM ${creditNotes} ${where ? sql`WHERE ${where}` : sql``}`),
+    ]);
+
+    const count = Number(countResult[0]?.count ?? 0);
+    return { data: { items, total: count, page, limit } };
+  });
+
+  // Get single credit note with lines
+  app.get<{ Params: { id: string } }>('/credit-notes/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const cn = await app.db.query.creditNotes.findFirst({
+      where: eq(creditNotes.id, request.params.id),
+      with: {
+        partner: true,
+        invoice: true,
+        lines: { with: { title: true }, orderBy: (l, { asc }) => [asc(l.lineNumber)] },
+      },
+    });
+    if (!cn) return reply.notFound('Credit note not found');
+    return { data: cn };
+  });
+
+  // Edit draft credit note (DRAFT only)
+  app.patch<{ Params: { id: string } }>('/credit-notes/:id', { preHandler: requirePermission('finance', 'update') }, async (request, reply) => {
+    const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
+    if (!cn) return reply.notFound('Credit note not found');
+    if (cn.status !== 'DRAFT') return reply.badRequest('Only DRAFT credit notes can be edited');
+
+    const body = request.body as Record<string, any>;
+    
+    await app.db.transaction(async (tx) => {
+      // Update header
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (body.reason !== undefined) updates.reason = body.reason;
+      if (body.subtotal !== undefined) updates.subtotal = String(body.subtotal);
+      if (body.vatAmount !== undefined) updates.vatAmount = String(body.vatAmount);
+      if (body.total !== undefined) updates.total = String(body.total);
+      
+      await tx.update(creditNotes).set(updates).where(eq(creditNotes.id, request.params.id));
+
+      // Update lines if provided
+      if (body.lines && Array.isArray(body.lines)) {
+        // Delete existing lines
+        await tx.delete(creditNoteLines).where(eq(creditNoteLines.creditNoteId, request.params.id));
+        
+        // Insert new lines
+        if (body.lines.length > 0) {
+          await tx.insert(creditNoteLines).values(
+            body.lines.map((line: any, idx: number) => ({
+              creditNoteId: request.params.id,
+              lineNumber: idx + 1,
+              titleId: line.titleId || null,
+              description: line.description,
+              quantity: String(line.quantity),
+              unitPrice: String(line.unitPrice),
+              lineTotal: String(line.lineTotal),
+              lineTax: String(line.lineTax || 0),
+            }))
+          );
+        }
+      }
+    });
+
+    const updated = await app.db.query.creditNotes.findFirst({
+      where: eq(creditNotes.id, request.params.id),
+      with: { lines: { orderBy: (l, { asc }) => [asc(l.lineNumber)] } },
+    });
+
+    return { data: updated };
+  });
+
+  // Submit credit note for review (DRAFT → PENDING_REVIEW)
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/submit', { preHandler: requirePermission('finance', 'update') }, async (request, reply) => {
+    const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
+    if (!cn) return reply.notFound('Credit note not found');
+    if (cn.status !== 'DRAFT') return reply.badRequest('Only DRAFT credit notes can be submitted for review');
+
+    const [updated] = await app.db.update(creditNotes).set({
+      status: 'PENDING_REVIEW',
+      updatedAt: new Date(),
+    }).where(eq(creditNotes.id, request.params.id)).returning();
+
+    createBroadcastNotification(app, {
+      type: 'CREDIT_NOTE_REVIEW',
+      priority: 'HIGH',
+      title: `Credit note ${cn.number} needs review`,
+      message: `R ${Number(cn.total).toFixed(2)}`,
+      actionUrl: `/finance/credit-notes/${cn.id}`,
+      referenceType: 'CREDIT_NOTE',
+      referenceId: cn.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create credit note review notification'));
+
+    return { data: updated };
+  });
+
+  // Review credit note (PENDING_REVIEW → DRAFT or APPROVED)
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/review', { preHandler: requireRole(['ADMIN', 'FINANCE_MANAGER']) }, async (request, reply) => {
+    const body = request.body as { approve: boolean; notes?: string };
+    const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
+    if (!cn) return reply.notFound('Credit note not found');
+    if (cn.status !== 'PENDING_REVIEW') return reply.badRequest('Credit note is not in PENDING_REVIEW status');
+
+    const userId = (request.user as any).email || (request.user as any).id;
+    const newStatus = body.approve ? 'APPROVED' : 'DRAFT';
+    const updates: Record<string, any> = {
+      status: newStatus,
+      reviewedBy: userId,
+      reviewedAt: new Date(),
+      reviewNotes: body.notes || null,
+      updatedAt: new Date(),
+    };
+
+    if (body.approve) {
+      updates.approvedBy = userId;
+      updates.approvedAt = new Date();
+
+      // Recalculate invoice status after approval
+      const invoice = await app.db.query.invoices.findFirst({ where: eq(invoices.id, cn.invoiceId) });
+      if (invoice) {
+        const { amountPaid, effectiveTotal } = await computeInvoiceBalance(app.db, cn.invoiceId, Number(invoice.total));
+        const newInvoiceStatus = deriveInvoiceStatus(amountPaid, effectiveTotal);
+        if (newInvoiceStatus !== invoice.status) {
+          await app.db.update(invoices).set({ status: newInvoiceStatus, updatedAt: new Date() }).where(eq(invoices.id, cn.invoiceId));
+        }
+      }
+    }
+
+    const [updated] = await app.db.update(creditNotes).set(updates).where(eq(creditNotes.id, request.params.id)).returning();
+
+    createBroadcastNotification(app, {
+      type: body.approve ? 'CREDIT_NOTE_APPROVED' : 'CREDIT_NOTE_RETURNED',
+      priority: 'NORMAL',
+      title: `Credit note ${cn.number} ${body.approve ? 'approved' : 'returned to draft'}`,
+      message: body.notes || '',
+      actionUrl: `/finance/credit-notes/${cn.id}`,
+      referenceType: 'CREDIT_NOTE',
+      referenceId: cn.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create credit note review result notification'));
+
+    return { data: updated };
+  });
+
+  // Mark credit note as sent (APPROVED → SENT)
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/send', { preHandler: requirePermission('finance', 'update') }, async (request, reply) => {
+    const body = request.body as { sentTo?: string };
+    const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
+    if (!cn) return reply.notFound('Credit note not found');
+    if (cn.status !== 'APPROVED') return reply.badRequest('Only APPROVED credit notes can be marked as sent');
+
+    const [updated] = await app.db.update(creditNotes).set({
+      status: 'SENT',
+      sentAt: new Date(),
+      sentTo: body.sentTo || null,
+      updatedAt: new Date(),
+    }).where(eq(creditNotes.id, request.params.id)).returning();
+
+    return { data: updated };
+  });
+
+  // Void credit note (any status except already VOIDED)
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/void', { preHandler: requireRole(['ADMIN', 'FINANCE_MANAGER']) }, async (request, reply) => {
+    const body = request.body as { reason: string };
+    if (!body.reason) return reply.badRequest('Void reason is required');
+
+    const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
+    if (!cn) return reply.notFound('Credit note not found');
+    if (cn.status === 'VOIDED') return reply.badRequest('Credit note is already voided');
+
+    await app.db.transaction(async (tx) => {
+      await tx.update(creditNotes).set({
+        status: 'VOIDED',
+        voidedAt: new Date(),
+        voidedReason: body.reason,
+        updatedAt: new Date(),
+      }).where(eq(creditNotes.id, request.params.id));
+
+      // Recalculate invoice status
+      const invoice = await tx.query.invoices.findFirst({ where: eq(invoices.id, cn.invoiceId) });
+      if (invoice) {
+        const { amountPaid, effectiveTotal } = await computeInvoiceBalance(tx as any, cn.invoiceId, Number(invoice.total));
+        const newStatus = deriveInvoiceStatus(amountPaid, effectiveTotal);
+        if (newStatus !== invoice.status) {
+          await tx.update(invoices).set({ status: newStatus, updatedAt: new Date() }).where(eq(invoices.id, cn.invoiceId));
+        }
+      }
+    });
+
+    const updated = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
     return { data: updated };
   });
 

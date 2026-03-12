@@ -34,6 +34,7 @@ interface PlacedByUser {
 interface OrderDetail {
   id: string;
   number: string;
+  customerPoNumber: string | null;
   status: string;
   orderDate: string;
   createdAt: string;
@@ -75,6 +76,9 @@ export function PartnerOrderDetail() {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingPo, setEditingPo] = useState(false);
+  const [poValue, setPoValue] = useState('');
+  const [savingPo, setSavingPo] = useState(false);
 
   useEffect(() => {
     async function fetchOrder() {
@@ -91,6 +95,22 @@ export function PartnerOrderDetail() {
     }
     fetchOrder();
   }, [id]);
+
+  async function handleSavePo() {
+    setSavingPo(true);
+    try {
+      const res = await partnerApi<{ data: OrderDetail }>(`/orders/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ customerPoNumber: poValue }),
+      });
+      setOrder((prev) => prev ? { ...prev, customerPoNumber: res.data.customerPoNumber } : prev);
+      setEditingPo(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update PO number');
+    } finally {
+      setSavingPo(false);
+    }
+  }
 
   async function handleCancel() {
     if (!order) return;
@@ -179,6 +199,47 @@ export function PartnerOrderDetail() {
                 day: 'numeric',
               })}
             </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 uppercase">Your PO Number</p>
+            {editingPo ? (
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={poValue}
+                  onChange={(e) => setPoValue(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Enter PO number"
+                  autoFocus
+                />
+                <button
+                  onClick={handleSavePo}
+                  disabled={savingPo}
+                  className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {savingPo ? '...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setEditingPo(false)}
+                  className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-2">
+                <p className="text-sm text-gray-900">{order.customerPoNumber ?? '-'}</p>
+                <button
+                  onClick={() => { setPoValue(order.customerPoNumber ?? ''); setEditingPo(true); }}
+                  className="text-primary hover:text-primary/80 transition-colors"
+                  title="Edit PO number"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase">Branch</p>

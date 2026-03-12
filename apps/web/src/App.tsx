@@ -16,6 +16,7 @@ import { PartnerDetail } from './pages/partners/PartnerDetail';
 import { PartnerForm } from './pages/partners/PartnerForm';
 import { InventoryDashboard } from './pages/inventory/InventoryDashboard';
 import { StockAdjustment } from './pages/inventory/StockAdjustment';
+import { StockTake } from './pages/inventory/StockTake';
 import { MovementHistory } from './pages/inventory/MovementHistory';
 import { InvoiceList } from './pages/finance/InvoiceList';
 import { InvoiceCreate } from './pages/finance/InvoiceCreate';
@@ -28,6 +29,7 @@ import { RemittanceDetail } from './pages/finance/RemittanceDetail';
 import { DebitNoteList } from './pages/finance/DebitNoteList';
 import { DebitNoteCreate } from './pages/finance/DebitNoteCreate';
 import { CreditNoteList } from './pages/finance/CreditNoteList';
+import { CreditNoteCreate } from './pages/finance/CreditNoteCreate';
 import { CreditNoteDetail } from './pages/finance/CreditNoteDetail';
 import { DebitNoteDetail } from './pages/finance/DebitNoteDetail';
 import { PaymentDetail } from './pages/finance/PaymentDetail';
@@ -44,17 +46,21 @@ import { ConsignmentDetail } from './pages/consignments/ConsignmentDetail';
 import { SorProformaList } from './pages/consignments/SorProformaList';
 import { StatementGenerate } from './pages/statements/StatementGenerate';
 import { CompanySettings } from './pages/settings/CompanySettings';
-import { LogoManagement } from './pages/settings/LogoManagement';
 import { UserProfile } from './pages/settings/UserProfile';
 import { UserManagement } from './pages/settings/UserManagement';
 import { InvoiceReminders } from './pages/settings/InvoiceReminders';
 import { AutomationScheduling } from './pages/settings/AutomationScheduling';
 import { DataExport } from './pages/settings/DataExport';
+import { SystemConfiguration } from './pages/settings/SystemConfiguration';
+import { EmailSettings } from './pages/settings/EmailSettings';
+import { DocumentSeries } from './pages/settings/DocumentSeries';
 import { PortalDashboard } from './pages/portal/PortalDashboard';
+import { PortalSalesSummary } from './pages/portal/PortalSalesSummary';
 import { PortalRoyalties } from './pages/portal/PortalRoyalties';
 import { PortalContracts } from './pages/portal/PortalContracts';
 import { PortalContractDetail } from './pages/portal/PortalContractDetail';
 import { PortalPayments } from './pages/portal/PortalPayments';
+import { PortalContact } from './pages/portal/PortalContact';
 import { ReportsDashboard } from './pages/reports/ReportsDashboard';
 import { ProfitLoss } from './pages/reports/ProfitLoss';
 import { SalesReport } from './pages/reports/SalesReport';
@@ -68,6 +74,9 @@ import { Bestsellers } from './pages/reports/Bestsellers';
 import { ExpenseTrends } from './pages/reports/ExpenseTrends';
 import { CashFlowAnalysis } from './pages/reports/CashFlowAnalysis';
 import { TaxReport } from './pages/reports/TaxReport';
+import { PrintRunsReport } from './pages/reports/PrintRunsReport';
+import { SorReconciliation } from './pages/reports/SorReconciliation';
+import { RoyaltyDueReport } from './pages/reports/RoyaltyDueReport';
 import { ReturnsList } from './pages/returns/ReturnsList';
 import { ReturnsCreate } from './pages/returns/ReturnsCreate';
 import { ReturnsDetail } from './pages/returns/ReturnsDetail';
@@ -104,6 +113,10 @@ import { PartnerReturns } from './pages/partner-portal/PartnerReturns';
 import { PartnerReturnCreate } from './pages/partner-portal/PartnerReturnCreate';
 import { PartnerReturnDetail } from './pages/partner-portal/PartnerReturnDetail';
 import { PartnerShipments } from './pages/partner-portal/PartnerShipments';
+import { PartnerRemittances } from './pages/partner-portal/PartnerRemittances';
+import { PartnerRemittanceCreate } from './pages/partner-portal/PartnerRemittanceCreate';
+import { PartnerRemittanceDetail } from './pages/partner-portal/PartnerRemittanceDetail';
+import { PartnerBranchActivity } from './pages/partner-portal/PartnerBranchActivity';
 import { PartnerAccount } from './pages/partner-portal/PartnerAccount';
 import { PartnerNotifications } from './pages/partner-portal/PartnerNotifications';
 // Admin partner portal management
@@ -112,6 +125,8 @@ import { PartnerOrdersAdmin } from './pages/partners/PartnerOrdersAdmin';
 import { PartnerReturnRequestsAdmin } from './pages/partners/PartnerReturnRequestsAdmin';
 import { CourierShipmentsAdmin } from './pages/partners/CourierShipmentsAdmin';
 import { NotificationList } from './pages/notifications/NotificationList';
+import { RoyaltiesAdmin } from './pages/royalties/RoyaltiesAdmin';
+import { DocumentsSearch } from './pages/documents/DocumentsSearch';
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
@@ -150,6 +165,7 @@ const router = createBrowserRouter([
       { path: 'inventory', element: <InventoryDashboard /> },
       { path: 'inventory/receive', element: <StockAdjustment mode="receive" /> },
       { path: 'inventory/adjust', element: <StockAdjustment mode="adjust" /> },
+      { path: 'inventory/stock-take', element: <StockTake /> },
       { path: 'inventory/:titleId/movements', element: <MovementHistory /> },
 
       // Invoices
@@ -164,7 +180,8 @@ const router = createBrowserRouter([
 
       // Remittances
       { path: 'remittances', element: <RemittanceList /> },
-      { path: 'remittances/new', element: <RemittanceCreate /> },
+      // Remittance creation moved to partner portal (partner self-service)
+      // { path: 'remittances/new', element: <RemittanceCreate /> },
       { path: 'remittances/:id', element: <RemittanceDetail /> },
 
       // Debit Notes
@@ -174,6 +191,7 @@ const router = createBrowserRouter([
 
       // Credit Notes
       { path: 'credit-notes', element: <CreditNoteList /> },
+      { path: 'credit-notes/new', element: <CreditNoteCreate /> },
       { path: 'credit-notes/:id', element: <CreditNoteDetail /> },
 
       // Quotations
@@ -185,6 +203,12 @@ const router = createBrowserRouter([
       { path: 'finance/purchase-orders', element: <PurchaseOrderList /> },
       { path: 'finance/purchase-orders/new', element: <PurchaseOrderCreate /> },
       { path: 'finance/purchase-orders/:id', element: <PurchaseOrderDetail /> },
+
+      // Royalties
+      { path: 'royalties', element: <RoyaltiesAdmin /> },
+
+      // Documents search
+      { path: 'documents', element: <DocumentsSearch /> },
 
       // Cash Sales
       { path: 'sales/cash-sales', element: <CashSaleList /> },
@@ -238,18 +262,23 @@ const router = createBrowserRouter([
       { path: 'reports/expense-trends', element: <ExpenseTrends /> },
       { path: 'reports/cash-flow', element: <CashFlowAnalysis /> },
       { path: 'reports/tax', element: <TaxReport /> },
+      { path: 'reports/print-runs', element: <PrintRunsReport /> },
+      { path: 'reports/sor-reconciliation', element: <SorReconciliation /> },
+      { path: 'reports/royalty-due', element: <RoyaltyDueReport /> },
 
       // Sync
       { path: 'sync', element: <SyncDashboard /> },
 
       // Settings (admin)
       { path: 'settings', element: <CompanySettings /> },
-      { path: 'settings/logo', element: <LogoManagement /> },
       { path: 'settings/profile', element: <UserProfile /> },
       { path: 'settings/users', element: <UserManagement /> },
       { path: 'settings/reminders', element: <InvoiceReminders /> },
       { path: 'settings/scheduling', element: <AutomationScheduling /> },
       { path: 'settings/export', element: <DataExport /> },
+      { path: 'settings/system', element: <SystemConfiguration /> },
+      { path: 'settings/email', element: <EmailSettings /> },
+      { path: 'settings/document-series', element: <DocumentSeries /> },
 
       // Partner Portal Management (admin)
       { path: 'partners/portal-users', element: <PartnerPortalUsers /> },
@@ -282,6 +311,10 @@ const router = createBrowserRouter([
       { path: 'partner/credit-notes', element: <PartnerCreditNotes /> },
       { path: 'partner/consignments', element: <PartnerConsignments /> },
       { path: 'partner/statements', element: <PartnerStatements /> },
+      { path: 'partner/remittances', element: <PartnerRemittances /> },
+      { path: 'partner/remittances/new', element: <PartnerRemittanceCreate /> },
+      { path: 'partner/remittances/:id', element: <PartnerRemittanceDetail /> },
+      { path: 'partner/branches', element: <PartnerBranchActivity /> },
       { path: 'partner/returns', element: <PartnerReturns /> },
       { path: 'partner/returns/new', element: <PartnerReturnCreate /> },
       { path: 'partner/returns/:id', element: <PartnerReturnDetail /> },
@@ -300,10 +333,12 @@ const router = createBrowserRouter([
     ),
     children: [
       { path: 'portal', element: <PortalDashboard /> },
+      { path: 'portal/sales', element: <PortalSalesSummary /> },
       { path: 'portal/royalties', element: <PortalRoyalties /> },
       { path: 'portal/contracts', element: <PortalContracts /> },
       { path: 'portal/contracts/:id', element: <PortalContractDetail /> },
       { path: 'portal/payments', element: <PortalPayments /> },
+      { path: 'portal/contact', element: <PortalContact /> },
     ],
   },
 ]);

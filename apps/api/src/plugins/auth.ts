@@ -12,9 +12,17 @@ declare module 'fastify' {
 
 export default fp(async (fastify) => {
   // Mount Better Auth handler for /api/auth/* routes
+  // Note: Auth endpoints have stricter rate limiting applied at app level
   fastify.route({
     method: ['GET', 'POST'],
     url: '/api/auth/*',
+    config: {
+      // Apply stricter rate limiting for auth endpoints (5 requests per 15 minutes)
+      rateLimit: {
+        max: 5,
+        timeWindow: '15 minutes',
+      },
+    },
     async handler(request, reply) {
       try {
         const url = new URL(request.url, `http://${request.headers.host}`);

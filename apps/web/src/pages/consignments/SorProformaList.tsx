@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface Proforma {
   id: string;
@@ -39,6 +40,16 @@ export function SorProformaList() {
       api<PaginatedResponse<Proforma>>(
         `/consignments/proformas?page=${page}&limit=20${search ? `&search=${encodeURIComponent(search)}` : ''}`
       ),
+  });
+
+  const sendEmailMut = useMutation({
+    mutationFn: (consignmentId: string) =>
+      api<{ data: { message: string } }>(`/consignments/${consignmentId}/send-proforma`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (res) => alert(res.data.message),
+    onError: (err: any) => alert(err.message || 'Failed to send email'),
   });
 
   const items = data?.data ?? [];
@@ -136,24 +147,12 @@ export function SorProformaList() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex gap-2 justify-end">
-                          <button
-                            onClick={() => window.open(`/api/v1/consignments/${item.id}/proforma-pdf`, '_blank')}
-                            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                          >
-                            PDF
-                          </button>
-                          <button
-                            onClick={() => {
-                              const w = window.open(`/api/v1/consignments/${item.id}/proforma-pdf`, '_blank');
-                              w?.addEventListener('load', () => w.print());
-                            }}
-                            className="text-xs text-gray-600 hover:text-gray-700 font-medium"
-                          >
-                            Print
-                          </button>
-                          <SendEmailButton consignmentId={item.id} />
-                        </div>
+                        <ActionMenu items={[
+                          { label: 'View Details', onClick: () => navigate(`/consignments/${item.id}`) },
+                          { label: 'Download PDF', onClick: () => window.open(`/api/v1/consignments/${item.id}/proforma-pdf`, '_blank') },
+                          { label: 'Print', onClick: () => { const w = window.open(`/api/v1/consignments/${item.id}/proforma-pdf`, '_blank'); w?.addEventListener('load', () => w.print()); } },
+                          { label: 'Send Email', onClick: () => sendEmailMut.mutate(item.id) },
+                        ]} />
                       </td>
                     </tr>
                   );
@@ -188,27 +187,5 @@ export function SorProformaList() {
         </>
       )}
     </div>
-  );
-}
-
-function SendEmailButton({ consignmentId }: { consignmentId: string }) {
-  const mutation = useMutation({
-    mutationFn: () =>
-      api<{ data: { message: string } }>(`/consignments/${consignmentId}/send-proforma`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      }),
-    onSuccess: (res) => alert(res.data.message),
-    onError: (err: any) => alert(err.message || 'Failed to send email'),
-  });
-
-  return (
-    <button
-      onClick={() => mutation.mutate()}
-      disabled={mutation.isPending}
-      className="text-xs text-green-600 hover:text-green-700 font-medium disabled:opacity-50"
-    >
-      {mutation.isPending ? 'Sending...' : mutation.isSuccess ? 'Sent' : 'Email'}
-    </button>
   );
 }

@@ -173,8 +173,10 @@ export const recordPaymentSchema = z.object({
 
 export const stockAdjustmentSchema = z.object({
   titleId: z.string().uuid(),
+  adjustmentType: z.enum(['RESTOCK', 'WRITEOFF', 'TRANSFER', 'COMPLIMENTARY']).default('RESTOCK'),
   location: z.string(),
-  quantity: z.number().int(),
+  toLocation: z.string().optional(),
+  quantity: z.number().int().positive('Quantity must be positive'),
   reason: z.string().min(1, 'Reason is required'),
   notes: z.string().optional(),
 });
@@ -205,8 +207,8 @@ export const companySettingsSchema = z.object({
   postalCode: z.string().optional(),
   country: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email().optional(),
-  website: z.string().url().optional(),
+  email: z.preprocess((v) => (v === '' ? undefined : v), z.string().email().optional()),
+  website: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   bankDetails: z.object({
     bankName: z.string(),
     accountNumber: z.string(),
@@ -439,6 +441,7 @@ export const partnerLoginSchema = z.object({
 
 export const createPartnerOrderSchema = z.object({
   branchId: z.string().uuid().optional(),
+  customerPoNumber: z.string().max(50).optional(),
   deliveryAddress: z.string().optional(),
   lines: z.array(z.object({
     titleId: z.string().uuid(),
@@ -449,7 +452,7 @@ export const createPartnerOrderSchema = z.object({
 
 export const createPartnerReturnRequestSchema = z.object({
   branchId: z.string().uuid().optional(),
-  consignmentId: z.string().uuid().optional(),
+  consignmentId: z.string().uuid('Consignment / SOR pro-forma invoice is required'),
   reason: z.string().min(1, 'Reason is required'),
   lines: z.array(z.object({
     titleId: z.string().uuid(),

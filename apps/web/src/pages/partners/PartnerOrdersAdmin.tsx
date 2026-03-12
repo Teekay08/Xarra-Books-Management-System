@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface OrderLine {
   id: string;
@@ -23,6 +24,7 @@ interface OrderLine {
 interface PartnerOrder {
   id: string;
   number: string;
+  customerPoNumber: string | null;
   status: string;
   subtotal: string;
   vatAmount: string;
@@ -162,6 +164,11 @@ export function PartnerOrdersAdmin() {
         <span className="font-medium text-green-700">{o.number}</span>
       ),
     },
+    {
+      key: 'customerPoNumber',
+      header: 'Customer PO #',
+      render: (o: PartnerOrder) => o.customerPoNumber ?? '—',
+    },
     { key: 'partner', header: 'Partner', render: (o: PartnerOrder) => o.partner?.name ?? '—' },
     { key: 'branch', header: 'Branch', render: (o: PartnerOrder) => o.branch?.name ?? '—' },
     {
@@ -194,15 +201,16 @@ export function PartnerOrdersAdmin() {
       key: 'actions',
       header: 'Actions',
       render: (o: PartnerOrder) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setSelectedOrder(o);
-          }}
-          className="text-xs text-green-700 hover:underline"
-        >
-          View
-        </button>
+        <div onClick={(e) => e.stopPropagation()}>
+          <ActionMenu items={[
+            { label: 'View Details', onClick: () => setSelectedOrder(o) },
+            { label: 'Confirm', onClick: () => { setSelectedOrder(o); setTimeout(() => confirmMut.mutate(), 0); }, hidden: o.status !== 'SUBMITTED' },
+            { label: 'Cancel Order', onClick: () => { if (confirm('Cancel this order?')) { setSelectedOrder(o); setTimeout(() => cancelMut.mutate(), 0); } }, variant: 'danger', hidden: o.status !== 'SUBMITTED' },
+            { label: 'Process', onClick: () => { setSelectedOrder(o); setTimeout(() => processMut.mutate(), 0); }, hidden: o.status !== 'CONFIRMED' },
+            { label: 'Dispatch', onClick: () => { setSelectedOrder(o); setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' }); setDispatchModal(true); }, hidden: !['CONFIRMED', 'PROCESSING'].includes(o.status) },
+            { label: 'Mark Delivered', onClick: () => { setSelectedOrder(o); setDeliverSignedBy(''); setDeliverModal(true); }, hidden: o.status !== 'DISPATCHED' },
+          ]} />
+        </div>
       ),
     },
   ];
@@ -275,6 +283,12 @@ export function PartnerOrdersAdmin() {
                     <span className="text-gray-500">Partner:</span>{' '}
                     <span className="font-medium">{orderDetail.partner.name}</span>
                   </div>
+                  {orderDetail.customerPoNumber && (
+                    <div>
+                      <span className="text-gray-500">Customer PO #:</span>{' '}
+                      <span className="font-medium">{orderDetail.customerPoNumber}</span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-gray-500">Branch:</span>{' '}
                     <span className="font-medium">{orderDetail.branch?.name ?? '—'}</span>

@@ -17,6 +17,15 @@ export function UnsavedChangesGuard({
 }: UnsavedChangesGuardProps) {
   const blocker = useBlocker(hasUnsavedChanges);
 
+  // Auto-proceed if the form was saved (isDirty became false) while blocker was active.
+  // This fixes the race condition where setIsDirty(false) + navigate() in the same
+  // onSuccess handler causes the blocker to fire before the state update flushes.
+  useEffect(() => {
+    if (!hasUnsavedChanges && blocker.state === 'blocked') {
+      blocker.proceed();
+    }
+  }, [hasUnsavedChanges, blocker]);
+
   // Handle browser-level navigation (close tab, type URL, refresh)
   const handleBeforeUnload = useCallback(
     (e: BeforeUnloadEvent) => {
@@ -32,7 +41,8 @@ export function UnsavedChangesGuard({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [handleBeforeUnload]);
 
-  if (blocker.state !== 'blocked') return null;
+  // Don't show modal if changes were already saved (prevents flash)
+  if (blocker.state !== 'blocked' || !hasUnsavedChanges) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">

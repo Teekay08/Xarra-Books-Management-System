@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { VAT_RATE, roundAmount } from '@xarra/shared';
+import { formatR } from '../../lib/format';
 
 interface Title {
   id: string;
@@ -27,9 +28,6 @@ interface CreateResponse {
 
 const PAYMENT_METHODS = ['CASH', 'CARD', 'EFT', 'MOBILE'] as const;
 
-function formatCurrency(val: number): string {
-  return `R ${val.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function CashSaleCreate() {
   const navigate = useNavigate();
@@ -264,7 +262,7 @@ export function CashSaleCreate() {
                 </div>
                 <div className="col-span-1 text-right text-sm font-mono text-gray-600 pb-1">
                   {i === 0 && <label className="block text-xs text-gray-500 mb-1">Line Total</label>}
-                  {formatCurrency(
+                  {formatR(
                     roundAmount(
                       line.quantity * line.unitPrice -
                         roundAmount(line.quantity * line.unitPrice * (line.discount / 100))
@@ -307,15 +305,15 @@ export function CashSaleCreate() {
             <div className="w-64 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal</span>
-                <span className="font-mono">{formatCurrency(totals.subtotal)}</span>
+                <span className="font-mono">{formatR(totals.subtotal)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">VAT (15%)</span>
-                <span className="font-mono">{formatCurrency(totals.vatAmount)}</span>
+                <span className="font-mono">{formatR(totals.vatAmount)}</span>
               </div>
               <div className="flex justify-between border-t border-gray-300 pt-2 font-semibold">
                 <span>Total</span>
-                <span className="font-mono">{formatCurrency(totals.total)}</span>
+                <span className="font-mono">{formatR(totals.total)}</span>
               </div>
             </div>
           </div>

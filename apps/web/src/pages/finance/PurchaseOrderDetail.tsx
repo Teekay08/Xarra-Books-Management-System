@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { RecipientEditModal } from '../../components/RecipientEditModal';
 import { DocumentEmailModal } from '../../components/DocumentEmailModal';
+import { formatR } from '../../lib/format';
 
 interface PurchaseOrderLine {
   id: string;
@@ -61,9 +62,6 @@ const statusColors: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-700',
 };
 
-function formatR(val: string | number) {
-  return `R ${Number(val).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function PurchaseOrderDetail() {
   const { id } = useParams();
