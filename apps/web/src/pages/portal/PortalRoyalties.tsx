@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface RoyaltyEntry {
   id: string;
@@ -21,13 +22,6 @@ function fmt(v: string | number) {
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
 }
-
-const statusColors: Record<string, string> = {
-  PAID: 'bg-green-100 text-green-700',
-  APPROVED: 'bg-blue-100 text-blue-700',
-  CALCULATED: 'bg-amber-100 text-amber-700',
-  VOIDED: 'bg-gray-100 text-gray-500',
-};
 
 export function PortalRoyalties() {
   const [page, setPage] = useState(1);

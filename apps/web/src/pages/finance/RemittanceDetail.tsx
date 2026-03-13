@@ -85,13 +85,7 @@ const STATUS_LABELS: Record<string, string> = {
   MATCHED: 'Matched',
   DISPUTED: 'Disputed',
 };
-const STATUS_COLORS: Record<string, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-800',
-  UNDER_REVIEW: 'bg-blue-100 text-blue-800',
-  APPROVED: 'bg-green-100 text-green-800',
-  MATCHED: 'bg-green-100 text-green-800',
-  DISPUTED: 'bg-red-100 text-red-800',
-};
+import { STATUS_COLORS } from '../../lib/statusColors';
 
 export function RemittanceDetail() {
   const { id } = useParams();

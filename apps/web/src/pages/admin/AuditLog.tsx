@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { Pagination } from '../../components/Pagination';
+import { AUDIT_ACTION_COLORS as actionColors } from '../../lib/statusColors';
 
 interface AuditEntry {
   id: string;
@@ -17,20 +18,6 @@ interface AuditEntry {
   metadata: Record<string, unknown> | null;
   createdAt: string;
 }
-
-const actionColors: Record<string, string> = {
-  CREATE: 'bg-green-100 text-green-700',
-  UPDATE: 'bg-blue-100 text-blue-700',
-  DELETE: 'bg-red-100 text-red-700',
-  VOID: 'bg-red-100 text-red-600',
-  APPROVE: 'bg-emerald-100 text-emerald-700',
-  REJECT: 'bg-amber-100 text-amber-700',
-  LOGIN: 'bg-gray-100 text-gray-600',
-  LOGOUT: 'bg-gray-100 text-gray-500',
-  EXPORT: 'bg-purple-100 text-purple-700',
-  PDF_GENERATE: 'bg-indigo-100 text-indigo-700',
-  STATUS_CHANGE: 'bg-cyan-100 text-cyan-700',
-};
 
 export function AuditLog() {
   const [page, setPage] = useState(1);

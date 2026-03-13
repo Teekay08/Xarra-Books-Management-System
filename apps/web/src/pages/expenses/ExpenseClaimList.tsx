@@ -11,6 +11,7 @@ import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 import { ActionMenu } from '../../components/ActionMenu';
 import { formatR } from '../../lib/format';
+import { EXPENSE_STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface ExpenseClaim {
   id: string;
@@ -21,14 +22,6 @@ interface ExpenseClaim {
   notes: string | null;
   claimant: { name: string };
 }
-
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600',
-  SUBMITTED: 'bg-blue-100 text-blue-700',
-  APPROVED: 'bg-green-100 text-green-700',
-  REJECTED: 'bg-red-100 text-red-700',
-  PAID: 'bg-purple-100 text-purple-700',
-};
 
 
 export function ExpenseClaimList() {

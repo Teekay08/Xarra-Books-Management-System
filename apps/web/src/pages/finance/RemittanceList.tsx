@@ -7,6 +7,7 @@ import { ExportButton } from '../../components/ExportButton';
 import { downloadFromApi, exportUrl } from '../../lib/export';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
 import { ActionMenu } from '../../components/ActionMenu';
+import { STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface Remittance {
   id: string;
@@ -31,13 +32,7 @@ export function RemittanceList() {
     queryFn: () => api<PaginatedResponse<Remittance>>(`/finance/remittances?page=${page}&limit=20&search=${search}`),
   });
 
-  const statusColors: Record<string, string> = {
-    PENDING: 'bg-yellow-100 text-yellow-800',
-    UNDER_REVIEW: 'bg-blue-100 text-blue-800',
-    APPROVED: 'bg-green-100 text-green-800',
-    MATCHED: 'bg-green-100 text-green-800',
-    DISPUTED: 'bg-red-100 text-red-800',
-  };
+  
 
   const statusLabels: Record<string, string> = {
     PENDING: 'Pending',

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { formatR } from '../../lib/format';
+import { EXPENSE_STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface ClaimLine {
   id: string;
@@ -31,14 +32,6 @@ interface ExpenseClaim {
   paidReference: string | null;
   lines: ClaimLine[];
 }
-
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600',
-  SUBMITTED: 'bg-blue-100 text-blue-700',
-  APPROVED: 'bg-green-100 text-green-700',
-  REJECTED: 'bg-red-100 text-red-700',
-  PAID: 'bg-purple-100 text-purple-700',
-};
 
 
 export function ExpenseClaimDetail() {

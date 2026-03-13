@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { ActionMenu } from '../../components/ActionMenu';
 import { RecipientEditModal, type RecipientDetails } from '../../components/RecipientEditModal';
 import { DocumentEmailModal } from '../../components/DocumentEmailModal';
+import { STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface QuotationLine {
   id: string;
@@ -45,14 +46,6 @@ interface Quotation {
   lines: QuotationLine[];
   convertedInvoice: { id: string; number: string } | null;
 }
-
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600',
-  SENT: 'bg-blue-100 text-blue-700',
-  ACCEPTED: 'bg-green-100 text-green-700',
-  EXPIRED: 'bg-red-100 text-red-700',
-  CONVERTED: 'bg-purple-100 text-purple-700',
-};
 
 export function QuotationDetail() {
   const { id } = useParams();

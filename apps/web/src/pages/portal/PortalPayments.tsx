@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { ActionMenu } from '../../components/ActionMenu';
+import { STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface Payment {
   id: string;
@@ -27,15 +28,6 @@ function fmt(v: number) {
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
 }
-
-const statusColors: Record<string, string> = {
-  COMPLETED: 'bg-green-100 text-green-800',
-  PAID: 'bg-green-100 text-green-800',
-  PENDING: 'bg-amber-100 text-amber-800',
-  PROCESSING: 'bg-blue-100 text-blue-800',
-  FAILED: 'bg-red-100 text-red-800',
-  REVERSED: 'bg-red-100 text-red-800',
-};
 
 export function PortalPayments() {
   const [page, setPage] = useState(1);

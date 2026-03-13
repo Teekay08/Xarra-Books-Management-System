@@ -7,6 +7,7 @@ import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 import { ActionMenu } from '../../components/ActionMenu';
+import { STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface ReturnLine {
   id: string;
@@ -32,17 +33,6 @@ interface ReturnRequest {
   requestedBy: { name: string } | null;
   lines: ReturnLine[];
 }
-
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600',
-  SUBMITTED: 'bg-yellow-100 text-yellow-700',
-  AUTHORIZED: 'bg-blue-100 text-blue-700',
-  REJECTED: 'bg-red-100 text-red-600',
-  RECEIVED: 'bg-indigo-100 text-indigo-700',
-  INSPECTED: 'bg-purple-100 text-purple-700',
-  CREDITED: 'bg-green-100 text-green-700',
-  CANCELLED: 'bg-gray-200 text-gray-500',
-};
 
 export function PartnerReturnRequestsAdmin() {
   const navigate = useNavigate();

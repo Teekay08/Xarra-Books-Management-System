@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { ActionMenu } from '../../components/ActionMenu';
 import { DocumentEmailModal } from '../../components/DocumentEmailModal';
+import { CONSIGNMENT_STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface ConLine {
   id: string;
@@ -40,16 +41,6 @@ interface SalesEntry {
   qtyReturned: number;
   qtyDamaged: number;
 }
-
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600',
-  DISPATCHED: 'bg-blue-100 text-blue-700',
-  DELIVERED: 'bg-indigo-100 text-indigo-700',
-  ACKNOWLEDGED: 'bg-green-100 text-green-700',
-  PARTIAL_RETURN: 'bg-amber-100 text-amber-700',
-  RECONCILED: 'bg-purple-100 text-purple-700',
-  CLOSED: 'bg-gray-100 text-gray-500',
-};
 
 const nextAction: Record<string, { label: string; endpoint: string; color: string }> = {
   DRAFT: { label: 'Dispatch', endpoint: 'dispatch', color: 'bg-blue-600 hover:bg-blue-700' },

@@ -10,6 +10,7 @@ import { SearchBar } from '../../components/SearchBar';
 import { DataTable } from '../../components/DataTable';
 import { Pagination } from '../../components/Pagination';
 import { ActionMenu } from '../../components/ActionMenu';
+import { STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface Invoice {
   id: string;
@@ -22,15 +23,6 @@ interface Invoice {
   status: string;
   partner?: { name: string };
 }
-
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600',
-  ISSUED: 'bg-blue-100 text-blue-700',
-  PAID: 'bg-green-100 text-green-700',
-  PARTIAL: 'bg-amber-100 text-amber-700',
-  OVERDUE: 'bg-red-100 text-red-700',
-  VOIDED: 'bg-red-50 text-red-400 line-through',
-};
 
 export function InvoiceList() {
   const navigate = useNavigate();

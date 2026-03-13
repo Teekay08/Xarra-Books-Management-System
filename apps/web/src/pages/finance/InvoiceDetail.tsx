@@ -7,6 +7,7 @@ import { RecipientEditModal, type RecipientDetails } from '../../components/Reci
 import { DocumentEmailModal } from '../../components/DocumentEmailModal';
 import { VoidReasonModal } from '../../components/VoidReasonModal';
 import { formatR } from '../../lib/format';
+import { STATUS_COLORS as statusColors } from '../../lib/statusColors';
 
 interface InvoiceLine {
   id: string;
@@ -67,15 +68,6 @@ interface Invoice {
   creditNotes?: { id: string; number: string; total: string; reason: string }[];
   paymentHistory?: PaymentRecord[];
 }
-
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600',
-  ISSUED: 'bg-blue-100 text-blue-700',
-  PAID: 'bg-green-100 text-green-700',
-  PARTIAL: 'bg-amber-100 text-amber-700',
-  OVERDUE: 'bg-red-100 text-red-700',
-  VOIDED: 'bg-red-50 text-red-400',
-};
 
 
 export function InvoiceDetail() {

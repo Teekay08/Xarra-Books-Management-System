@@ -276,7 +276,7 @@ export function DocumentEmailModal({
             <button
               onClick={() => onSend({ email, cc, bcc, subject, message })}
               disabled={!email || isPending}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
             >
               {isPending ? 'Sending...' : 'Send Email'}
             </button>
