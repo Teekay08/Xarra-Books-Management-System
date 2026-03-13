@@ -1,6 +1,7 @@
 import fp from 'fastify-plugin';
 import { fromNodeHeaders } from 'better-auth/node';
 import { auth, type Auth } from '../auth/index.js';
+import { config } from '../config.js';
 
 type Session = Awaited<ReturnType<Auth['api']['getSession']>>;
 
@@ -17,11 +18,10 @@ export default fp(async (fastify) => {
     method: ['GET', 'POST'],
     url: '/api/auth/*',
     config: {
-      // Apply stricter rate limiting for auth endpoints (5 requests per 15 minutes)
-      rateLimit: {
-        max: 5,
-        timeWindow: '15 minutes',
-      },
+      // Stricter rate limiting for auth endpoints — production only
+      rateLimit: config.nodeEnv === 'production'
+        ? { max: 5, timeWindow: '15 minutes' }
+        : false,
     },
     async handler(request, reply) {
       try {
