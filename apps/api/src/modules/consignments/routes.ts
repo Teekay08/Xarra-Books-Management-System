@@ -4,7 +4,7 @@ import {
   consignments, consignmentLines, channelPartners, partnerOrders,
   inventoryMovements, titles, companySettings, partnerBranches,
 } from '@xarra/db';
-import { createConsignmentSchema, paginationSchema, VAT_RATE, roundAmount } from '@xarra/shared';
+import { createConsignmentSchema, paginationSchema, VAT_RATE, roundAmount, DEFAULT_SOR_DAYS } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
@@ -87,7 +87,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
     const dispatchDate = body.dispatchDate ? new Date(body.dispatchDate) : undefined;
 
     // Calculate SOR expiry if dispatching
-    const sorDays = partner.sorDays ? Number(partner.sorDays) : 90;
+    const sorDays = partner.sorDays ? Number(partner.sorDays) : DEFAULT_SOR_DAYS;
     const sorExpiryDate = dispatchDate ? new Date(dispatchDate) : undefined;
     if (sorExpiryDate) sorExpiryDate.setDate(sorExpiryDate.getDate() + sorDays);
 
@@ -191,7 +191,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
     const dispatchDate = new Date();
 
     // Calculate SOR expiry from partner terms
-    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : 90;
+    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : DEFAULT_SOR_DAYS;
     const sorExpiryDate = new Date(dispatchDate);
     sorExpiryDate.setDate(sorExpiryDate.getDate() + sorDays);
 
@@ -493,7 +493,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
     }
 
     // Calculate SOR days from partner terms
-    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : 90;
+    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : DEFAULT_SOR_DAYS;
 
     // Build line items with pricing
     const isTaxInclusive = true; // SA RRP is always tax-inclusive
@@ -609,7 +609,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
     }
 
     const settings = await app.db.query.companySettings.findFirst();
-    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : 90;
+    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : DEFAULT_SOR_DAYS;
 
     // Build line items (same logic as proforma-pdf)
     let subtotal = 0;

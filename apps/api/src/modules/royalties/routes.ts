@@ -9,7 +9,7 @@ import {
   createAuthorPaymentRunSchema,
   processAuthorPaymentSchema,
 } from '@xarra/shared';
-import { roundAmount } from '@xarra/shared';
+import { roundAmount, DEFAULT_PAYMENT_TERMS_DAYS } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { logAudit } from '../../middleware/audit.js';
 
@@ -89,9 +89,9 @@ function computeNextPaymentDue(
     }
   }
 
-  // Due date is 30 days after period end
+  // Due date is DEFAULT_PAYMENT_TERMS_DAYS after period end
   const dueDate = new Date(periodTo);
-  dueDate.setDate(dueDate.getDate() + 30);
+  dueDate.setDate(dueDate.getDate() + DEFAULT_PAYMENT_TERMS_DAYS);
 
   return { periodFrom, periodTo, dueDate };
 }

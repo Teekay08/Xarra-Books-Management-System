@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and, or, isNull, sql, desc } from 'drizzle-orm';
+import { eq, and, or, isNull, sql, desc, inArray } from 'drizzle-orm';
 import { scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   partnerUsers,
@@ -32,6 +32,9 @@ import {
   paginationSchema,
   VAT_RATE,
   roundAmount,
+  DEFAULT_SOR_DAYS,
+  DEFAULT_PAYMENT_TERMS_DAYS,
+  PARTNER_ACTIVITY_LOOKBACK_DAYS,
 } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { nextPartnerOrderNumber, nextPartnerReturnRequestNumber, nextCreditNoteNumber, nextReturnNumber } from '../finance/invoice-number.js';
@@ -686,7 +689,7 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
       }) as any;
     }
 
-    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : 90;
+    const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : DEFAULT_SOR_DAYS;
     let subtotal = 0;
     let totalVat = 0;
 
@@ -823,20 +826,26 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
       return reply.badRequest('A valid total amount is required');
     }
 
-    // Validate all invoices belong to this partner
-    for (const alloc of body.invoiceAllocations) {
-      const inv = await app.db.query.invoices.findFirst({
-        where: and(eq(invoices.id, alloc.invoiceId), eq(invoices.partnerId, session.partnerId)),
-      });
-      if (!inv) return reply.badRequest(`Invoice ${alloc.invoiceId} not found or not yours`);
-    }
+    // Validate all invoices belong to this partner — batch fetch instead of N queries
+    const invoiceIds = body.invoiceAllocations.map((a) => a.invoiceId);
+    const allocatedInvoices = await app.db.query.invoices.findMany({
+      where: and(inArray(invoices.id, invoiceIds), eq(invoices.partnerId, session.partnerId)),
+      columns: { id: true },
+    });
+    const validInvoiceIds = new Set(allocatedInvoices.map((i) => i.id));
+    const missingInvoiceId = invoiceIds.find((id) => !validInvoiceIds.has(id));
+    if (missingInvoiceId) return reply.badRequest(`Invoice ${missingInvoiceId} not found or not yours`);
 
-    // Validate all credit notes belong to this partner
+    // Validate all credit notes belong to this partner — batch fetch instead of N queries
     if (body.creditNoteAllocations?.length) {
+      const cnIds = body.creditNoteAllocations.map((a) => a.creditNoteId);
+      const allocatedCreditNotes = await app.db.query.creditNotes.findMany({
+        where: and(inArray(creditNotes.id, cnIds), eq(creditNotes.partnerId, session.partnerId)),
+        columns: { id: true, number: true, voidedAt: true },
+      });
+      const validCnMap = new Map(allocatedCreditNotes.map((cn) => [cn.id, cn]));
       for (const alloc of body.creditNoteAllocations) {
-        const cn = await app.db.query.creditNotes.findFirst({
-          where: and(eq(creditNotes.id, alloc.creditNoteId), eq(creditNotes.partnerId, session.partnerId)),
-        });
+        const cn = validCnMap.get(alloc.creditNoteId);
         if (!cn) return reply.badRequest(`Credit note ${alloc.creditNoteId} not found or not yours`);
         if (cn.voidedAt) return reply.badRequest(`Credit note ${cn.number} has been voided`);
       }
@@ -973,7 +982,7 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
       where: and(eq(partnerBranches.partnerId, session.partnerId), eq(partnerBranches.isActive, true)),
     });
 
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const thirtyDaysAgo = new Date(Date.now() - PARTNER_ACTIVITY_LOOKBACK_DAYS * 86400000);
 
     const result = await Promise.all(branches.map(async (branch) => {
       const [orderCount, returnCount, lastOrder] = await Promise.all([
@@ -1204,8 +1213,8 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
         contactPhone: partner.contactPhone ?? '',
         address,
         discountRate: Number(partner.discountPct ?? 0),
-        paymentTerms: partner.paymentTermsDays ?? 30,
-        sorDays: partner.sorDays ?? 90,
+        paymentTerms: partner.paymentTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS,
+        sorDays: partner.sorDays ?? DEFAULT_SOR_DAYS,
       },
     };
   });

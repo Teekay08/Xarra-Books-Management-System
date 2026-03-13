@@ -82,9 +82,24 @@ export const DOCUMENT_PREFIXES = {
 export const VAT_RATE = 0.15; // South Africa VAT rate
 export const DEFAULT_CURRENCY = 'ZAR';
 
+// Business rule constants — change here to propagate everywhere
+export const DEFAULT_PAYMENT_TERMS_DAYS = 30;
+export const DEFAULT_SOR_DAYS = 90;
+export const DELETION_REQUEST_EXPIRY_HOURS = 72;
+export const PARTNER_ACTIVITY_LOOKBACK_DAYS = 30;
+
 /** Round to 2 decimal places — use for all monetary calculations */
 export function roundAmount(amount: number): number {
   return Math.round(amount * 100) / 100;
+}
+
+/** Calculate the discount amount for a line item. Shared across invoices, credit notes, and quotations. */
+export function calculateLineDiscount(lineSubtotal: number, discountPct: number, discountType: 'PERCENT' | 'FIXED'): number {
+  return roundAmount(
+    discountType === 'FIXED'
+      ? Math.min(discountPct, lineSubtotal) // FIXED: discount amount capped at line subtotal
+      : lineSubtotal * (discountPct / 100),
+  );
 }
 
 export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;

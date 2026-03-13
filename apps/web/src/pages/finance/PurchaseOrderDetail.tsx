@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
@@ -71,10 +71,20 @@ export function PurchaseOrderDetail() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showRecipientModal, setShowRecipientModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-order', id],
     queryFn: () => api<{ data: PurchaseOrder }>(`/finance/purchase-orders/${id}`),
+  });
+
+  const editMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api(`/finance/purchase-orders/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-order', id] });
+      setShowEditModal(false);
+    },
   });
 
   const issueMutation = useMutation({
@@ -147,6 +157,13 @@ export function PurchaseOrderDetail() {
                   Issue PO
                 </button>
               </>
+            )}
+
+            {['ISSUED', 'PARTIAL', 'RECEIVED', 'CLOSED'].includes(po.status) && (
+              <button onClick={() => setShowEditModal(true)}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                Edit Details
+              </button>
             )}
 
             <a href={`/api/v1/finance/purchase-orders/${id}/pdf`} target="_blank" rel="noopener noreferrer"
@@ -351,6 +368,17 @@ export function PurchaseOrderDetail() {
         />
       )}
 
+      {/* Edit Details Modal */}
+      {showEditModal && (
+        <EditDetailsModal
+          po={po}
+          isPending={editMutation.isPending}
+          error={editMutation.isError ? (editMutation.error as Error).message : ''}
+          onClose={() => setShowEditModal(false)}
+          onSubmit={(body) => editMutation.mutate(body)}
+        />
+      )}
+
       {/* Recipient Edit Modal */}
       {showRecipientModal && po.supplierId && po.supplier && (
         <RecipientEditModal
@@ -371,6 +399,116 @@ export function PurchaseOrderDetail() {
           onSaved={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
         />
       )}
+    </div>
+  );
+}
+
+function EditDetailsModal({ po, isPending, error, onClose, onSubmit }: {
+  po: PurchaseOrder;
+  isPending: boolean;
+  error: string;
+  onClose: () => void;
+  onSubmit: (body: Record<string, unknown>) => void;
+}) {
+  const isNotesOnly = ['RECEIVED', 'CLOSED'].includes(po.status);
+
+  const [fields, setFields] = useState({
+    expectedDeliveryDate: po.expectedDeliveryDate ? po.expectedDeliveryDate.split('T')[0] : '',
+    deliveryAddress: po.deliveryAddress ?? '',
+    contactName: po.contactName ?? '',
+    contactEmail: po.contactEmail ?? '',
+    notes: po.notes ?? '',
+  });
+
+  useEffect(() => {
+    setFields({
+      expectedDeliveryDate: po.expectedDeliveryDate ? po.expectedDeliveryDate.split('T')[0] : '',
+      deliveryAddress: po.deliveryAddress ?? '',
+      contactName: po.contactName ?? '',
+      contactEmail: po.contactEmail ?? '',
+      notes: po.notes ?? '',
+    });
+  }, [po]);
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    const body: Record<string, unknown> = { notes: fields.notes || null };
+    if (!isNotesOnly) {
+      body.expectedDeliveryDate = fields.expectedDeliveryDate || null;
+      body.deliveryAddress = fields.deliveryAddress || null;
+      body.contactName = fields.contactName || null;
+      body.contactEmail = fields.contactEmail || null;
+    }
+    onSubmit(body);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Edit Details</h3>
+            {isNotesOnly && (
+              <p className="text-xs text-gray-500 mt-1">Only notes can be edited on a {po.status.toLowerCase()} purchase order.</p>
+            )}
+            {!isNotesOnly && (
+              <p className="text-xs text-gray-500 mt-1">Logistics and contact details can be updated. Line items are locked.</p>
+            )}
+          </div>
+
+          {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+          {!isNotesOnly && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Expected Delivery Date</label>
+                  <input type="date" value={fields.expectedDeliveryDate}
+                    onChange={(e) => setFields((p) => ({ ...p, expectedDeliveryDate: e.target.value }))}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600" />
+                </div>
+                <div />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Contact Name</label>
+                  <input type="text" value={fields.contactName}
+                    onChange={(e) => setFields((p) => ({ ...p, contactName: e.target.value }))}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Contact Email</label>
+                  <input type="email" value={fields.contactEmail}
+                    onChange={(e) => setFields((p) => ({ ...p, contactEmail: e.target.value }))}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Address</label>
+                <textarea rows={3} value={fields.deliveryAddress}
+                  onChange={(e) => setFields((p) => ({ ...p, deliveryAddress: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600" />
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+            <textarea rows={3} value={fields.notes}
+              onChange={(e) => setFields((p) => ({ ...p, notes: e.target.value }))}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600" />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={isPending}
+              className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+              {isPending ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

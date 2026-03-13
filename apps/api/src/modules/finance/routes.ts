@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, sql, desc } from 'drizzle-orm';
+import { eq, sql, desc, inArray } from 'drizzle-orm';
 import {
   invoices, invoiceLines, creditNotes, creditNoteLines, debitNotes,
   payments, paymentAllocations, channelPartners,
@@ -9,7 +9,7 @@ import {
   inventoryMovements,
 } from '@xarra/db';
 import { createInvoiceSchema, recordPaymentSchema, paginationSchema, createRemittanceSchema, createDebitNoteSchema, sendDocumentSchema, createPurchaseOrderSchema } from '@xarra/shared';
-import { VAT_RATE, roundAmount } from '@xarra/shared';
+import { VAT_RATE, roundAmount, calculateLineDiscount, DEFAULT_PAYMENT_TERMS_DAYS } from '@xarra/shared';
 import { requireAuth, requireRole, requirePermission } from '../../middleware/require-auth.js';
 import { requireIdempotencyKey, getIdempotencyKey } from '../../middleware/idempotency.js';
 import { nextInvoiceNumber, nextCreditNoteNumber, nextDebitNoteNumber, nextQuotationNumber, nextPurchaseOrderNumber } from './invoice-number.js';
@@ -260,11 +260,7 @@ export async function financeRoutes(app: FastifyInstance) {
     const lineData = body.lines.map((line, i) => {
       const lineSubtotal = roundAmount(line.quantity * line.unitPrice);
       const discountType = line.discountType ?? 'PERCENT';
-      const discount = roundAmount(
-        discountType === 'FIXED'
-          ? Math.min(line.discountPct, lineSubtotal) // FIXED: discount amount capped at line subtotal
-          : lineSubtotal * (line.discountPct / 100)
-      );
+      const discount = calculateLineDiscount(lineSubtotal, line.discountPct, discountType);
       const lineTotal = roundAmount(lineSubtotal - discount);
       // Tax-inclusive: extract VAT from the price. Tax-exclusive: add VAT on top.
       const lineTax = roundAmount(isTaxInclusive
@@ -300,7 +296,7 @@ export async function financeRoutes(app: FastifyInstance) {
     if (partner.paymentTermsDays) {
       dueDate.setDate(dueDate.getDate() + partner.paymentTermsDays);
     } else {
-      dueDate.setDate(dueDate.getDate() + 30); // default 30 days
+      dueDate.setDate(dueDate.getDate() + DEFAULT_PAYMENT_TERMS_DAYS);
     }
 
     // Insert invoice + lines in transaction
@@ -436,12 +432,8 @@ export async function financeRoutes(app: FastifyInstance) {
       let totalVat = 0;
       const lineData = body.lines.map((line, i) => {
         const lineSubtotal = roundAmount(line.quantity * line.unitPrice);
-        const discountType = line.discountType ?? 'PERCENT';
-        const discount = roundAmount(
-          discountType === 'FIXED'
-            ? Math.min(line.discountPct, lineSubtotal)
-            : lineSubtotal * (line.discountPct / 100)
-        );
+        const discountType = (line.discountType ?? 'PERCENT') as 'PERCENT' | 'FIXED';
+        const discount = calculateLineDiscount(lineSubtotal, line.discountPct, discountType);
         const lineTotal = roundAmount(lineSubtotal - discount);
         const lineTax = roundAmount(isTaxInclusive
           ? lineTotal - (lineTotal / (1 + VAT_RATE))
@@ -937,23 +929,21 @@ export async function financeRoutes(app: FastifyInstance) {
           }))
         );
 
-        // Update invoice statuses based on total allocated (payments + credit notes)
-        for (const alloc of body.invoiceAllocations) {
-          const invoice = await tx.query.invoices.findFirst({
-            where: eq(invoices.id, alloc.invoiceId),
-          });
-
-          if (invoice) {
-            const { amountPaid, effectiveTotal } = await computeInvoiceBalance(
-              tx, alloc.invoiceId, Number(invoice.total),
-            );
-            const newStatus = deriveInvoiceStatus(amountPaid, effectiveTotal);
-
-            await tx.update(invoices).set({
-              status: newStatus,
-              updatedAt: new Date(),
-            }).where(eq(invoices.id, alloc.invoiceId));
-          }
+        // Update invoice statuses — batch fetch then update sequentially
+        const allocInvoiceIds = body.invoiceAllocations.map((a) => a.invoiceId);
+        const allocInvoiceBatch = await tx.query.invoices.findMany({
+          where: inArray(invoices.id, allocInvoiceIds),
+          columns: { id: true, total: true },
+        });
+        for (const invoice of allocInvoiceBatch) {
+          const { amountPaid, effectiveTotal } = await computeInvoiceBalance(
+            tx, invoice.id, Number(invoice.total),
+          );
+          const newStatus = deriveInvoiceStatus(amountPaid, effectiveTotal);
+          await tx.update(invoices).set({
+            status: newStatus,
+            updatedAt: new Date(),
+          }).where(eq(invoices.id, invoice.id));
         }
       }
 
@@ -1832,16 +1822,28 @@ export async function financeRoutes(app: FastifyInstance) {
       where: eq(purchaseOrders.id, request.params.id),
     });
     if (!po) return reply.notFound('Purchase order not found');
-    if (po.status !== 'DRAFT') return reply.badRequest('Only DRAFT purchase orders can be edited');
+    if (po.status === 'CANCELLED') return reply.badRequest('Cancelled purchase orders cannot be edited');
 
     const body = request.body as Record<string, any>;
     const updates: Record<string, any> = { updatedAt: new Date() };
 
-    for (const key of ['supplierId', 'supplierName', 'contactName', 'contactEmail', 'deliveryAddress', 'notes'] as const) {
-      if (body[key] !== undefined) updates[key] = body[key];
+    if (po.status === 'DRAFT') {
+      // Full edit: all header fields + line items allowed
+      for (const key of ['supplierId', 'supplierName', 'contactName', 'contactEmail', 'deliveryAddress', 'notes'] as const) {
+        if (body[key] !== undefined) updates[key] = body[key];
+      }
+      if (body.orderDate) updates.orderDate = new Date(body.orderDate);
+      if (body.expectedDeliveryDate !== undefined) updates.expectedDeliveryDate = body.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : null;
+    } else if (['ISSUED', 'PARTIAL'].includes(po.status)) {
+      // Limited edit: logistics & contact fields only (no line items, no supplier change)
+      for (const key of ['contactName', 'contactEmail', 'deliveryAddress', 'notes'] as const) {
+        if (body[key] !== undefined) updates[key] = body[key];
+      }
+      if (body.expectedDeliveryDate !== undefined) updates.expectedDeliveryDate = body.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : null;
+    } else if (['RECEIVED', 'CLOSED'].includes(po.status)) {
+      // Notes only
+      if (body.notes !== undefined) updates.notes = body.notes;
     }
-    if (body.orderDate) updates.orderDate = new Date(body.orderDate);
-    if (body.expectedDeliveryDate) updates.expectedDeliveryDate = new Date(body.expectedDeliveryDate);
 
     const [updated] = await app.db.update(purchaseOrders).set(updates).where(eq(purchaseOrders.id, request.params.id)).returning();
     return { data: updated };

@@ -24,6 +24,12 @@ export const auth = betterAuth({
   baseURL: `http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`,
   trustedOrigins: config.cors.origins,
 
+  rateLimit: {
+    enabled: config.nodeEnv === 'production',
+    window: 60,
+    max: 20,
+  },
+
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,

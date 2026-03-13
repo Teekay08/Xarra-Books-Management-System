@@ -3,7 +3,7 @@ import { eq, sql, desc, and, gte, lte } from 'drizzle-orm';
 import { auditLogs, deletionRequests, users } from '@xarra/db';
 import { requirePermission } from '../../middleware/require-auth.js';
 import { logAudit } from '../../middleware/audit.js';
-import { paginationSchema } from '@xarra/shared';
+import { paginationSchema, DELETION_REQUEST_EXPIRY_HOURS } from '@xarra/shared';
 import { z } from 'zod';
 
 export async function auditRoutes(app: FastifyInstance) {
@@ -157,8 +157,7 @@ export async function auditRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: `Invalid entity type: ${body.entityType}` });
     }
 
-    // 72-hour expiration
-    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + DELETION_REQUEST_EXPIRY_HOURS * 60 * 60 * 1000);
 
     const [request_] = await app.db.insert(deletionRequests).values({
       requestedBy: userId,

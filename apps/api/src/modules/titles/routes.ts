@@ -144,6 +144,8 @@ export async function titleRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { id: string } }>('/:id/costs', { preHandler: requireRole('admin', 'finance') }, async (request, reply) => {
     const body = request.body as { category: string; description: string; amount: number; vendor?: string; paidDate?: string };
+    const title = await app.db.query.titles.findFirst({ where: eq(titles.id, request.params.id), columns: { id: true } });
+    if (!title) return reply.notFound('Title not found');
     const [cost] = await app.db.insert(titleProductionCosts).values({
       titleId: request.params.id,
       category: body.category,

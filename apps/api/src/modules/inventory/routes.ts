@@ -310,6 +310,48 @@ export async function inventoryRoutes(app: FastifyInstance) {
     }
   );
 
+  // Edit a stock receipt (IN/PRINT_RUN movements only)
+  app.patch<{ Params: { id: string } }>(
+    '/movements/:id',
+    { preHandler: requireRole('admin', 'operations') },
+    async (request, reply) => {
+      const movement = await app.db.query.inventoryMovements.findFirst({
+        where: eq(inventoryMovements.id, request.params.id),
+      });
+      if (!movement) return reply.notFound('Movement not found');
+      if (movement.movementType !== 'IN' || movement.referenceType !== 'PRINT_RUN') {
+        return reply.badRequest('Only stock receipts can be edited');
+      }
+
+      const body = request.body as {
+        quantity?: number;
+        toLocation?: string;
+        receivedDate?: string;
+        batchNumber?: string | null;
+        supplierName?: string | null;
+        supplierId?: string | null;
+        notes?: string | null;
+      };
+
+      const updates: Record<string, unknown> = {};
+      if (body.quantity !== undefined) updates.quantity = body.quantity;
+      if (body.toLocation !== undefined) updates.toLocation = body.toLocation;
+      if (body.receivedDate !== undefined) updates.receivedDate = new Date(body.receivedDate);
+      if ('batchNumber' in body) updates.batchNumber = body.batchNumber;
+      if ('supplierName' in body) updates.supplierName = body.supplierName;
+      if ('supplierId' in body) updates.supplierId = body.supplierId;
+      if ('notes' in body) updates.notes = body.notes;
+
+      const [updated] = await app.db
+        .update(inventoryMovements)
+        .set(updates)
+        .where(eq(inventoryMovements.id, request.params.id))
+        .returning();
+
+      return { data: updated };
+    }
+  );
+
   // Aggregate stock summary metrics
   app.get('/stock/summary', { preHandler: requireAuth }, async () => {
     const result = await app.db.execute<{
