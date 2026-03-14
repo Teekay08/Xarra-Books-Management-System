@@ -61,16 +61,18 @@ export async function buildApp() {
   await app.register(helmet);
   await app.register(sensible);
   
-  // Rate limiting - protect against abuse and DoS attacks
-  await app.register(rateLimit, {
-    max: 100, // 100 requests
-    timeWindow: '15 minutes',
-    errorResponseBuilder: () => ({
-      statusCode: 429,
-      error: 'Too Many Requests',
-      message: 'Rate limit exceeded. Please try again later.',
-    }),
-  });
+  // Rate limiting - production only (dev has no limit to avoid blocking local work)
+  if (config.nodeEnv === 'production') {
+    await app.register(rateLimit, {
+      max: 100,
+      timeWindow: '15 minutes',
+      errorResponseBuilder: () => ({
+        statusCode: 429,
+        error: 'Too Many Requests',
+        message: 'Rate limit exceeded. Please try again later.',
+      }),
+    });
+  }
   
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB max
 
