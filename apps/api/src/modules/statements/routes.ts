@@ -73,7 +73,7 @@ async function computeStatementData(
       SELECT 'PAYMENT', p.id, p.bank_reference,
              'Payment received',
              p.payment_date::text,
-             0, SUM(pa.amount_allocated::numeric)
+             0, SUM(pa.amount::numeric)
       FROM payments p
       JOIN payment_allocations pa ON pa.payment_id = p.id
       JOIN invoices inv ON inv.id = pa.invoice_id AND inv.partner_id = ${partnerId}
@@ -130,7 +130,7 @@ async function computeStatementData(
     if (r.type === 'CREDIT_NOTE') totalCredits += credit;
     if (r.type === 'DEBIT_NOTE') totalDebits += debit;
     return {
-      date: r.date,
+      date: r.tx_date,
       type: r.type as 'INVOICE' | 'PAYMENT' | 'CREDIT_NOTE' | 'DEBIT_NOTE',
       reference: r.reference,
       description: r.description,

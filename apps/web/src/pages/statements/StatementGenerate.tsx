@@ -83,6 +83,7 @@ function BatchManagement() {
   const queryClient = useQueryClient();
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState<{ itemId: string; email: string } | null>(null);
+  const [downloadingItemId, setDownloadingItemId] = useState<string | null>(null);
   const [compileMonth, setCompileMonth] = useState('');
   const [compileYear, setCompileYear] = useState('');
   const [error, setError] = useState('');
@@ -157,6 +158,32 @@ function BatchManagement() {
     onError: (err) => setError(err.message),
   });
 
+  async function downloadBatchItem(item: BatchItem, b: Batch) {
+    setDownloadingItemId(item.id);
+    try {
+      const res = await fetch('/api/v1/statements/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partnerId: item.partnerId,
+          branchId: item.branchId ?? undefined,
+          periodFrom: b.periodFrom.slice(0, 10),
+          periodTo: b.periodTo.slice(0, 10),
+          consolidated: item.sendToType === 'HQ_CONSOLIDATED',
+        }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      } else {
+        setError('Failed to generate PDF');
+      }
+    } finally {
+      setDownloadingItemId(null);
+    }
+  }
+
   const batches = batchesData?.data ?? [];
   const batch = batchDetail?.data;
   const items = batch?.items ?? [];
@@ -173,7 +200,7 @@ function BatchManagement() {
         <div className="col-span-4 space-y-4">
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Compile Statements</h3>
-            <div className="flex gap-2">
+            <div className="flex gap-2 mb-2">
               <select
                 value={compileMonth}
                 onChange={e => setCompileMonth(e.target.value)}
@@ -187,25 +214,25 @@ function BatchManagement() {
               <select
                 value={compileYear}
                 onChange={e => setCompileYear(e.target.value)}
-                className="w-24 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
               >
                 <option value="">Year</option>
                 {[2024, 2025, 2026, 2027].map(y => (
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>
-              <button
-                onClick={() => {
-                  if (!compileMonth || !compileYear) { setError('Select month and year'); return; }
-                  setError('');
-                  compileMutation.mutate({ month: Number(compileMonth), year: Number(compileYear) });
-                }}
-                disabled={compileMutation.isPending}
-                className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
-              >
-                {compileMutation.isPending ? '...' : 'Compile'}
-              </button>
             </div>
+            <button
+              onClick={() => {
+                if (!compileMonth || !compileYear) { setError('Select month and year'); return; }
+                setError('');
+                compileMutation.mutate({ month: Number(compileMonth), year: Number(compileYear) });
+              }}
+              disabled={compileMutation.isPending}
+              className="w-full rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
+            >
+              {compileMutation.isPending ? 'Compiling...' : 'Compile'}
+            </button>
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
@@ -363,22 +390,32 @@ function BatchManagement() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {['DRAFT', 'REVIEWED'].includes(batch.status) && (
-                            <>
-                              {item.status === 'PENDING' && (
-                                <button
-                                  onClick={() => excludeMutation.mutate({ batchId: batch.id, itemId: item.id })}
-                                  className="text-xs text-orange-600 hover:text-orange-700 font-medium"
-                                >Exclude</button>
-                              )}
-                              {item.status === 'EXCLUDED' && (
-                                <button
-                                  onClick={() => includeMutation.mutate({ batchId: batch.id, itemId: item.id })}
-                                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                                >Include</button>
-                              )}
-                            </>
-                          )}
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              onClick={() => downloadBatchItem(item, batch)}
+                              disabled={downloadingItemId === item.id}
+                              className="text-xs text-green-700 hover:text-green-800 font-medium disabled:opacity-50"
+                              title="Download PDF"
+                            >
+                              {downloadingItemId === item.id ? '...' : 'Download'}
+                            </button>
+                            {['DRAFT', 'REVIEWED'].includes(batch.status) && (
+                              <>
+                                {item.status === 'PENDING' && (
+                                  <button
+                                    onClick={() => excludeMutation.mutate({ batchId: batch.id, itemId: item.id })}
+                                    className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+                                  >Exclude</button>
+                                )}
+                                {item.status === 'EXCLUDED' && (
+                                  <button
+                                    onClick={() => includeMutation.mutate({ batchId: batch.id, itemId: item.id })}
+                                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                  >Include</button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
