@@ -200,30 +200,30 @@ export async function dashboardRoutes(app: FastifyInstance) {
   app.get('/outstanding-sors', { preHandler: requireAuth }, async () => {
     const rows = await app.db.execute(sql`
       SELECT
-        c.id, c.number, c.dispatch_date, c.return_by_date, c.status,
+        c.id, c.proforma_number, c.dispatch_date, c.sor_expiry_date, c.status,
         cp.name AS partner_name,
         COALESCE(SUM(cl.qty_dispatched - COALESCE(cl.qty_sold, 0) - COALESCE(cl.qty_returned, 0)), 0)::int AS outstanding_units
       FROM consignments c
       JOIN channel_partners cp ON cp.id = c.partner_id
       LEFT JOIN consignment_lines cl ON cl.consignment_id = c.id
-      WHERE c.status IN ('ACTIVE', 'PARTIAL')
-        AND c.return_by_date IS NOT NULL
-        AND c.return_by_date <= CURRENT_DATE + INTERVAL '30 days'
-      GROUP BY c.id, c.number, c.dispatch_date, c.return_by_date, c.status, cp.name
-      ORDER BY c.return_by_date ASC
+      WHERE c.status IN ('DISPATCHED', 'DELIVERED', 'ACKNOWLEDGED', 'PARTIAL_RETURN')
+        AND c.sor_expiry_date IS NOT NULL
+        AND c.sor_expiry_date <= CURRENT_DATE + INTERVAL '30 days'
+      GROUP BY c.id, c.proforma_number, c.dispatch_date, c.sor_expiry_date, c.status, cp.name
+      ORDER BY c.sor_expiry_date ASC
       LIMIT 10
     `);
     return {
       data: (rows as any[]).map((r) => ({
         id: r.id,
-        number: r.number,
+        number: r.proforma_number,
         partnerName: r.partner_name,
         dispatchDate: r.dispatch_date,
-        returnByDate: r.return_by_date,
+        returnByDate: r.sor_expiry_date,
         status: r.status,
         outstandingUnits: Number(r.outstanding_units),
-        isOverdue: new Date(r.return_by_date) < new Date(),
-        daysUntilDue: Math.ceil((new Date(r.return_by_date).getTime() - Date.now()) / 86400000),
+        isOverdue: new Date(r.sor_expiry_date) < new Date(),
+        daysUntilDue: Math.ceil((new Date(r.sor_expiry_date).getTime() - Date.now()) / 86400000),
       })),
     };
   });
@@ -239,7 +239,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
       FROM authors a
       JOIN author_contracts ac ON ac.author_id = a.id AND ac.is_active = true
       LEFT JOIN author_payments ap ON ap.author_id = a.id
-        AND ap.status IN ('AWAITING_APPROVAL', 'APPROVED')
+        AND ap.status IN ('PENDING', 'PROCESSING')
       WHERE a.is_active = true
       GROUP BY a.id, a.legal_name, a.pen_name
       HAVING COALESCE(SUM(ap.amount_due::numeric - COALESCE(ap.amount_paid::numeric, 0)), 0) > 0
@@ -272,7 +272,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         ), 0)::int AS stock_on_hand
       FROM titles t
       LEFT JOIN inventory_movements im ON im.title_id = t.id
-      WHERE t.is_active = true
+      WHERE t.status != 'OUT_OF_PRINT'
       GROUP BY t.id, t.title, t.isbn_13
       HAVING COALESCE(SUM(
         CASE
