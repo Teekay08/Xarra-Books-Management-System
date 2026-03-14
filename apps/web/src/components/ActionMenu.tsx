@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface ActionMenuItem {
   label: string;
@@ -15,11 +16,19 @@ interface ActionMenuProps {
 
 export function ActionMenu({ items }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, right: 0, left: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (
+        buttonRef.current && !buttonRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
+      ) {
+        setOpen(false);
+      }
     }
     if (open) document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -28,10 +37,25 @@ export function ActionMenu({ items }: ActionMenuProps) {
   const visible = items.filter((i) => !i.hidden);
   if (visible.length === 0) return null;
 
+  function handleToggle() {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const spaceOnRight = window.innerWidth - rect.right;
+      setCoords({
+        top: rect.bottom + 4,
+        right: spaceOnRight >= 192 ? window.innerWidth - rect.right : 0,
+        left: spaceOnRight < 192 ? rect.left : 0,
+      });
+    }
+    setOpen((prev) => !prev);
+  }
+
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
-        onClick={() => setOpen(!open)}
+        ref={buttonRef}
+        type="button"
+        onClick={handleToggle}
         className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
         title="More actions"
       >
@@ -40,11 +64,22 @@ export function ActionMenu({ items }: ActionMenuProps) {
         </svg>
       </button>
 
-      {open && (
-        <div className="absolute right-0 mt-1 w-48 rounded-md bg-white shadow-lg border border-gray-200 z-50 py-1">
+      {open && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'fixed',
+            top: coords.top,
+            right: coords.right || undefined,
+            left: coords.right ? undefined : coords.left,
+            zIndex: 9999,
+          }}
+          className="w-48 rounded-md bg-white shadow-lg border border-gray-200 py-1"
+        >
           {visible.map((item, i) => (
             <button
               key={i}
+              type="button"
               onClick={() => { item.onClick(); setOpen(false); }}
               disabled={item.disabled}
               className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50 ${
@@ -57,8 +92,9 @@ export function ActionMenu({ items }: ActionMenuProps) {
               {item.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }

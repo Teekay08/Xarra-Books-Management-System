@@ -420,7 +420,7 @@ export const sendDocumentSchema = z.object({
 
 export const createPartnerUserSchema = z.object({
   partnerId: z.string().uuid(),
-  branchId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
+  branchId: z.string().uuid().or(z.literal('')).nullable().optional().transform(v => v === '' ? null : (v ?? undefined)),
   email: z.string().email(),
   name: z.string().min(1, 'Name is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),

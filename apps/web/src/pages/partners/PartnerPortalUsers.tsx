@@ -172,10 +172,10 @@ export function PartnerPortalUsers() {
     label: p.name,
   }));
 
-  const branchOptions = (branchesData?.data ?? []).map((b) => ({
-    value: b.id,
-    label: b.name,
-  }));
+  const branchOptions = [
+    { value: '', label: 'None (HQ user — no branch)' },
+    ...(branchesData?.data ?? []).map((b) => ({ value: b.id, label: b.name })),
+  ];
 
   const columns = [
     { key: 'name', header: 'Name' },
