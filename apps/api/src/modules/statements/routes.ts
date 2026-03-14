@@ -216,9 +216,11 @@ export async function statementRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'Invalid month or year' });
       }
 
-      const periodFrom = new Date(year, month - 1, 1);
-      const periodTo = new Date(year, month, 0, 23, 59, 59, 999);
-      const periodLabel = periodFrom.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+      const periodFromDate = new Date(year, month - 1, 1);
+      const periodToDate = new Date(year, month, 0, 23, 59, 59, 999);
+      const periodFrom = periodFromDate.toISOString();
+      const periodTo = periodToDate.toISOString();
+      const periodLabel = periodFromDate.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
 
       // Prevent duplicate batches for same period
       const existing = await app.db.execute(sql`
