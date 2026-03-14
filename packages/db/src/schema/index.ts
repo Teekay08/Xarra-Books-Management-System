@@ -14,4 +14,3 @@ export * from './expenses';
 export * from './audit';
 export * from './notifications';
 export * from './suppliers';
-export * from './statements';

@@ -15,26 +15,11 @@ async function computeStatementData(
   periodTo: string,
   consolidated: boolean,
 ) {
-  const branchFilter = consolidated
-    ? sql`TRUE`
-    : branchId
-      ? sql`TRUE` // applied per-table below
-      : sql`TRUE`;
-
-  // Branch filter snippets (different tables handle branch differently)
-  const invBranchFilter = consolidated
-    ? sql`TRUE`
-    : branchId
-      ? sql`i.branch_id = ${branchId}`
-      : sql`i.branch_id IS NULL`;
-
-  const payBranchFilter = consolidated
-    ? sql`TRUE`
-    : branchId
-      ? sql`p.branch_id = ${branchId}`
-      : sql`p.branch_id IS NULL`;
-
-  void branchFilter; // suppress unused warning
+  // Factory functions — each call returns a fresh sql object to avoid
+  // Drizzle parameter-numbering issues when the same condition appears
+  // in multiple queries or multiple UNION branches.
+  const ibc = () => consolidated ? sql`TRUE` : branchId ? sql`i.branch_id = ${branchId}` : sql`i.branch_id IS NULL`;
+  const pbc = () => consolidated ? sql`TRUE` : branchId ? sql`p.branch_id = ${branchId}` : sql`p.branch_id IS NULL`;
 
   const [preInv, prePay, preCN, preDN, txRows] = await Promise.all([
     // Opening: invoices issued before period
@@ -42,7 +27,7 @@ async function computeStatementData(
       SELECT COALESCE(SUM(i.total::numeric), 0) AS total
       FROM invoices i
       WHERE i.partner_id = ${partnerId}
-        AND ${invBranchFilter}
+        AND ${ibc()}
         AND i.status NOT IN ('VOIDED', 'DRAFT')
         AND i.invoice_date < ${periodFrom}
     `),
@@ -51,7 +36,7 @@ async function computeStatementData(
       SELECT COALESCE(SUM(p.amount::numeric), 0) AS total
       FROM payments p
       WHERE p.partner_id = ${partnerId}
-        AND ${payBranchFilter}
+        AND ${pbc()}
         AND p.payment_date < ${periodFrom}
     `),
     // Opening: credit notes applied before period
@@ -60,7 +45,7 @@ async function computeStatementData(
       FROM credit_notes cn
       JOIN invoices i ON i.id = cn.invoice_id
       WHERE cn.partner_id = ${partnerId}
-        AND ${invBranchFilter}
+        AND ${ibc()}
         AND cn.status NOT IN ('VOIDED', 'DRAFT')
         AND cn.created_at < ${periodFrom}
     `),
@@ -72,15 +57,15 @@ async function computeStatementData(
         AND dn.voided_at IS NULL
         AND dn.created_at < ${periodFrom}
     `),
-    // Transactions within period (union of invoices, payments, credit notes, debit notes)
+    // Transactions within period — alias 'tx_date' avoids PostgreSQL reserved word 'date'
     db.execute(sql`
       SELECT 'INVOICE' AS type, i.id, i.number AS reference,
              'Invoice' AS description,
-             i.invoice_date::text AS date,
+             i.invoice_date::text AS tx_date,
              i.total::numeric AS debit, 0::numeric AS credit
       FROM invoices i
       WHERE i.partner_id = ${partnerId}
-        AND ${invBranchFilter}
+        AND ${ibc()}
         AND i.status NOT IN ('VOIDED', 'DRAFT')
         AND i.invoice_date >= ${periodFrom}
         AND i.invoice_date <= ${periodTo}
@@ -93,7 +78,7 @@ async function computeStatementData(
       JOIN payment_allocations pa ON pa.payment_id = p.id
       JOIN invoices inv ON inv.id = pa.invoice_id AND inv.partner_id = ${partnerId}
       WHERE p.partner_id = ${partnerId}
-        AND ${payBranchFilter}
+        AND ${pbc()}
         AND p.payment_date >= ${periodFrom}
         AND p.payment_date <= ${periodTo}
       GROUP BY p.id, p.bank_reference, p.payment_date
@@ -105,7 +90,7 @@ async function computeStatementData(
       FROM credit_notes cn
       JOIN invoices i ON i.id = cn.invoice_id
       WHERE cn.partner_id = ${partnerId}
-        AND ${invBranchFilter}
+        AND ${ibc()}
         AND cn.status NOT IN ('VOIDED', 'DRAFT')
         AND cn.created_at >= ${periodFrom}
         AND cn.created_at <= ${periodTo}
@@ -119,7 +104,7 @@ async function computeStatementData(
         AND dn.voided_at IS NULL
         AND dn.created_at >= ${periodFrom}
         AND dn.created_at <= ${periodTo}
-      ORDER BY date ASC
+      ORDER BY tx_date ASC
     `),
   ]);
 
