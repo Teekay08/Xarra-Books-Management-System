@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc, inArray } from 'drizzle-orm';
 import {
+
+
   invoices, invoiceLines, creditNotes, creditNoteLines, debitNotes,
   payments, paymentAllocations, channelPartners,
   partnerBranches, remittances, remittanceInvoices, remittanceCreditNotes, companySettings,
   quotations, quotationLines,
   purchaseOrders, purchaseOrderLines,
-  inventoryMovements,
+  inventoryMovements, partnerOrders,
 } from '@xarra/db';
 import { createInvoiceSchema, recordPaymentSchema, paginationSchema, createRemittanceSchema, createDebitNoteSchema, sendDocumentSchema, createPurchaseOrderSchema } from '@xarra/shared';
 import { VAT_RATE, roundAmount, calculateLineDiscount, DEFAULT_PAYMENT_TERMS_DAYS } from '@xarra/shared';
@@ -17,6 +19,7 @@ import { generatePdf } from '../../services/pdf.js';
 import { renderInvoiceHtml } from '../../services/templates/invoice.js';
 import { renderDebitNoteHtml } from '../../services/templates/debit-note.js';
 import { renderQuotationHtml } from '../../services/templates/quotation.js';
+import { renderCreditNoteHtml } from '../../services/templates/credit-note.js';
 import { renderReceiptHtml } from '../../services/templates/receipt.js';
 import { renderPurchaseOrderHtml } from '../../services/templates/purchase-order.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
@@ -42,15 +45,24 @@ async function totalCreditNotesForInvoice(db: any, invoiceId: string): Promise<n
  * amountDue = effectiveTotal - amountPaid
  */
 async function computeInvoiceBalance(db: any, invoiceId: string, invoiceTotal: number) {
-  const [paidResult, creditTotal] = await Promise.all([
+  const [paidResult, creditTotal, remittancePaidResult] = await Promise.all([
     db.execute(sql`
       SELECT COALESCE(SUM(amount::numeric), 0) AS total
       FROM payment_allocations
       WHERE invoice_id = ${invoiceId}
     `),
     totalCreditNotesForInvoice(db, invoiceId),
+    db.execute(sql`
+      SELECT COALESCE(SUM(ri.amount::numeric), 0) AS total
+      FROM remittance_invoices ri
+      JOIN remittances r ON r.id = ri.remittance_id
+      WHERE ri.invoice_id = ${invoiceId}
+        AND r.status IN ('APPROVED', 'MATCHED')
+    `),
   ]);
-  const amountPaid = Number(paidResult[0]?.total ?? 0);
+  const amountPaid = roundAmount(
+    Number(paidResult[0]?.total ?? 0) + Number(remittancePaidResult[0]?.total ?? 0),
+  );
   const effectiveTotal = Math.max(0, roundAmount(invoiceTotal - creditTotal));
   const amountDue = Math.max(0, roundAmount(effectiveTotal - amountPaid));
   return { amountPaid, creditTotal, effectiveTotal, amountDue };
@@ -170,9 +182,11 @@ export async function financeRoutes(app: FastifyInstance) {
     const { status } = request.query as { status?: string };
     const offset = (page - 1) * limit;
 
+    const { partnerId } = request.query as { partnerId?: string };
     const conditions: ReturnType<typeof sql>[] = [];
     if (search) conditions.push(sql`(${invoices.number} ILIKE ${'%' + search + '%'})`);
     if (status) conditions.push(sql`${invoices.status} = ${status}`);
+    if (partnerId) conditions.push(sql`${invoices.partnerId} = ${partnerId}`);
     const where = conditions.length > 0
       ? sql.join(conditions, sql` AND `)
       : undefined;
@@ -237,6 +251,7 @@ export async function financeRoutes(app: FastifyInstance) {
     preHandler: [requireRole('admin', 'finance'), requireIdempotencyKey],
   }, async (request, reply) => {
     const body = createInvoiceSchema.parse(request.body);
+    const { partnerOrderId } = request.body as { partnerOrderId?: string };
     const idempotencyKey = getIdempotencyKey(request)!;
     const userId = request.session?.user?.id;
 
@@ -328,6 +343,14 @@ export async function financeRoutes(app: FastifyInstance) {
       return { ...inv, lines };
     });
 
+    // Auto-link back to partner order if created from one
+    if (partnerOrderId) {
+      await app.db.update(partnerOrders).set({
+        invoiceId: result.id,
+        updatedAt: new Date(),
+      }).where(eq(partnerOrders.id, partnerOrderId));
+    }
+
     return reply.status(201).send({ data: result });
   });
 
@@ -347,14 +370,15 @@ export async function financeRoutes(app: FastifyInstance) {
       updatedAt: new Date(),
     }).where(eq(invoices.id, request.params.id)).returning();
 
-    createBroadcastNotification(app, {
+    // Notify the partner, not Xarra staff
+    notifyPartner(app, updated.partnerId, {
       type: 'INVOICE_ISSUED',
       title: `Invoice ${updated.number} issued`,
-      message: `Invoice ${updated.number} for R ${Number(updated.total).toFixed(2)} has been issued`,
-      actionUrl: `/invoices/${updated.id}`,
+      message: `Invoice ${updated.number} for R ${Number(updated.total).toFixed(2)} has been issued.`,
+      actionUrl: `/partner/invoices`,
       referenceType: 'INVOICE',
       referenceId: updated.id,
-    });
+    }).catch((err) => app.log.error({ err }, 'Failed to notify partner of invoice issue'));
 
     return { data: updated };
   });
@@ -384,7 +408,7 @@ export async function financeRoutes(app: FastifyInstance) {
       priority: 'HIGH',
       title: `Invoice ${invoice.number} voided`,
       message: `R ${Number(invoice.total).toFixed(2)} — ${reason}`,
-      actionUrl: `/finance/invoices/${invoice.id}`,
+      actionUrl: `/invoices/${invoice.id}`,
       referenceType: 'INVOICE',
       referenceId: invoice.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create void notification'));
@@ -830,7 +854,7 @@ export async function financeRoutes(app: FastifyInstance) {
       priority: 'NORMAL',
       title: `Credit note ${number} created`,
       message: `R ${total.toFixed(2)} against invoice ${invoice.number} — ${reason}`,
-      actionUrl: `/finance/credit-notes/${cn.id}`,
+      actionUrl: `/credit-notes/${cn.id}`,
       referenceType: 'CREDIT_NOTE',
       referenceId: cn.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create credit note notification'));
@@ -1106,7 +1130,7 @@ export async function financeRoutes(app: FastifyInstance) {
       priority: 'LOW',
       title: `Remittance ${remittance.partnerRef ?? remittance.id.slice(0, 8)} matched`,
       message: `R ${Number(remittance.totalAmount).toFixed(2)} matched to payment`,
-      actionUrl: `/finance/remittances/${remittance.id}`,
+      actionUrl: `/remittances/${remittance.id}`,
       referenceType: 'REMITTANCE',
       referenceId: remittance.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create remittance notification'));
@@ -1229,7 +1253,23 @@ export async function financeRoutes(app: FastifyInstance) {
       approvedAt: new Date(),
     }).where(eq(remittances.id, request.params.id)).returning();
 
-    // Fire reconciliation for all linked invoices
+    // Now that remittance is APPROVED, recompute invoice statuses.
+    // computeInvoiceBalance now includes approved remittance allocations so each
+    // invoice correctly reflects the remittance payment and may transition to PAID.
+    for (const allocation of remittance.invoiceAllocations) {
+      const inv = await app.db.query.invoices.findFirst({
+        where: eq(invoices.id, allocation.invoiceId),
+        columns: { id: true, total: true, status: true },
+      });
+      if (!inv || inv.status === 'PAID' || inv.status === 'VOIDED') continue;
+      const { amountPaid, effectiveTotal } = await computeInvoiceBalance(app.db, inv.id, Number(inv.total));
+      const newStatus = deriveInvoiceStatus(amountPaid, effectiveTotal);
+      if (newStatus !== inv.status) {
+        await app.db.update(invoices).set({ status: newStatus, updatedAt: new Date() }).where(eq(invoices.id, inv.id));
+      }
+    }
+
+    // Fire reconciliation for all linked invoices that are now PAID
     reconcileRemittanceInvoices(app, request.params.id, userId).catch((err) =>
       app.log.error({ err }, 'Failed to reconcile remittance invoices'),
     );
@@ -1239,7 +1279,7 @@ export async function financeRoutes(app: FastifyInstance) {
       priority: 'NORMAL',
       title: `Remittance ${remittance.partnerRef ?? remittance.id.slice(0, 8)} approved`,
       message: `R ${declaredAmount.toFixed(2)} remittance approved — reconciliation in progress`,
-      actionUrl: `/finance/remittances/${remittance.id}`,
+      actionUrl: `/remittances/${remittance.id}`,
       referenceType: 'REMITTANCE',
       referenceId: remittance.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create remittance notification'));
@@ -1364,7 +1404,7 @@ export async function financeRoutes(app: FastifyInstance) {
       priority: 'NORMAL',
       title: `Debit note ${number} created`,
       message: `R ${total.toFixed(2)} — ${body.reason}`,
-      actionUrl: `/finance/debit-notes/${dn.id}`,
+      actionUrl: `/debit-notes/${dn.id}`,
       referenceType: 'DEBIT_NOTE',
       referenceId: dn.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create debit note notification'));
@@ -1401,10 +1441,14 @@ export async function financeRoutes(app: FastifyInstance) {
   app.get('/quotations', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search } = query;
+    const { partnerId } = request.query as { partnerId?: string };
     const offset = (page - 1) * limit;
 
-    const where = search
-      ? sql`${quotations.number} ILIKE ${'%' + search + '%'}`
+    const conditions: ReturnType<typeof sql>[] = [];
+    if (search) conditions.push(sql`${quotations.number} ILIKE ${'%' + search + '%'}`);
+    if (partnerId) conditions.push(sql`${quotations.partnerId} = ${partnerId}`);
+    const where = conditions.length > 0
+      ? sql.join(conditions, sql` AND `)
       : undefined;
 
     const [items, countResult] = await Promise.all([
@@ -1562,7 +1606,7 @@ export async function financeRoutes(app: FastifyInstance) {
       priority: 'NORMAL',
       title: `Quotation ${quotation.number} converted`,
       message: `Created invoice ${invoiceNumber} — R ${Number(quotation.total).toFixed(2)}`,
-      actionUrl: `/finance/invoices/${invoice.id}`,
+      actionUrl: `/invoices/${invoice.id}`,
       referenceType: 'INVOICE',
       referenceId: invoice.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create quotation conversion notification'));
@@ -1914,7 +1958,68 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     });
     if (!cn) return reply.notFound('Credit note not found');
-    return { data: cn };
+
+    // Compute applied and remaining balance
+    const appliedResult = await app.db.execute(sql`
+      SELECT COALESCE(SUM(rcn.amount::numeric), 0) AS applied
+      FROM remittance_credit_notes rcn
+      JOIN remittances r ON r.id = rcn.remittance_id
+      WHERE rcn.credit_note_id = ${cn.id}
+        AND r.status IN ('APPROVED', 'MATCHED', 'UNDER_REVIEW', 'PENDING')
+    `);
+    const applied = roundAmount(Number(appliedResult[0]?.applied ?? 0));
+    const available = cn.voidedAt ? 0 : Math.max(0, roundAmount(Number(cn.total) - applied));
+
+    return { data: { ...cn, applied: applied.toFixed(2), available: available.toFixed(2) } };
+  });
+
+  // Generate credit note PDF
+  app.get<{ Params: { id: string } }>('/credit-notes/:id/pdf', { preHandler: requireAuth }, async (request, reply) => {
+    const cn = await app.db.query.creditNotes.findFirst({
+      where: eq(creditNotes.id, request.params.id),
+      with: {
+        partner: true,
+        invoice: true,
+        lines: { orderBy: (l, { asc }) => [asc(l.lineNumber)] },
+      },
+    });
+    if (!cn) return reply.notFound('Credit note not found');
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    const html = renderCreditNoteHtml({
+      number: cn.number,
+      createdAt: cn.createdAt.toISOString(),
+      reason: cn.reason,
+      invoiceNumber: cn.invoice?.number,
+      company: settings ? {
+        name: settings.companyName, tradingAs: settings.tradingAs, vatNumber: settings.vatNumber,
+        registrationNumber: settings.registrationNumber, addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2, city: settings.city, province: settings.province,
+        postalCode: settings.postalCode, phone: settings.phone, email: settings.email,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+      recipient: {
+        name: cn.partner.name, contactName: cn.partner.contactName,
+        contactEmail: cn.partner.contactEmail, addressLine1: cn.partner.addressLine1,
+        addressLine2: cn.partner.addressLine2, city: cn.partner.city,
+        province: cn.partner.province, postalCode: cn.partner.postalCode,
+        vatNumber: cn.partner.vatNumber,
+      },
+      lines: cn.lines.map((l) => ({
+        lineNumber: l.lineNumber,
+        description: l.description,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        lineTotal: l.lineTotal,
+      })),
+      subtotal: cn.subtotal, vatAmount: cn.vatAmount, total: cn.total,
+    });
+
+    const pdf = await generatePdf(html);
+    return reply.type('application/pdf')
+      .header('Content-Disposition', `inline; filename="${cn.number}.pdf"`)
+      .send(pdf);
   });
 
   // Edit draft credit note (DRAFT only)
@@ -1982,7 +2087,7 @@ export async function financeRoutes(app: FastifyInstance) {
       priority: 'HIGH',
       title: `Credit note ${cn.number} needs review`,
       message: `R ${Number(cn.total).toFixed(2)}`,
-      actionUrl: `/finance/credit-notes/${cn.id}`,
+      actionUrl: `/credit-notes/${cn.id}`,
       referenceType: 'CREDIT_NOTE',
       referenceId: cn.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create credit note review notification'));
@@ -2029,7 +2134,7 @@ export async function financeRoutes(app: FastifyInstance) {
       priority: 'NORMAL',
       title: `Credit note ${cn.number} ${body.approve ? 'approved' : 'returned to draft'}`,
       message: body.notes || '',
-      actionUrl: `/finance/credit-notes/${cn.id}`,
+      actionUrl: `/credit-notes/${cn.id}`,
       referenceType: 'CREDIT_NOTE',
       referenceId: cn.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create credit note review result notification'));

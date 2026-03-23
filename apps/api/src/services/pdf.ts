@@ -58,11 +58,18 @@ async function inlineLocalImages(html: string): Promise<string> {
 }
 
 export async function generatePdf(html: string): Promise<Buffer> {
-  const browser = await getBrowser();
+  let browser;
+  try {
+    browser = await getBrowser();
+  } catch {
+    // Force fresh browser if cached one is dead
+    browserInstance = null;
+    browser = await getBrowser();
+  }
   const page = await browser.newPage();
   try {
     const resolved = await inlineLocalImages(html);
-    await page.setContent(resolved, { waitUntil: 'networkidle0' });
+    await page.setContent(resolved, { waitUntil: 'domcontentloaded', timeout: 15000 });
     const pdf = await page.pdf({
       format: 'A4',
       margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },

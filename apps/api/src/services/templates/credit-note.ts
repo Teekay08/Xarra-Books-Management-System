@@ -1,9 +1,8 @@
-interface DebitNoteLine {
+interface CreditNoteLine {
   lineNumber: number;
   description: string;
-  quantity: number;
+  quantity: string;
   unitPrice: string;
-  discountPct: string;
   lineTotal: string;
 }
 
@@ -34,13 +33,14 @@ interface RecipientInfo {
   vatNumber?: string | null;
 }
 
-interface DebitNoteData {
+interface CreditNoteData {
   number: string;
   createdAt: string;
   reason: string;
   invoiceNumber?: string | null;
   company?: CompanyInfo;
   recipient: RecipientInfo;
+  lines: CreditNoteLine[];
   subtotal: string;
   vatAmount: string;
   total: string;
@@ -59,7 +59,7 @@ function formatAddress(addr: { addressLine1?: string | null; addressLine2?: stri
   return parts.map(p => `<p style="margin:2px 0">${p}</p>`).join('');
 }
 
-export function renderDebitNoteHtml(data: DebitNoteData): string {
+export function renderCreditNoteHtml(data: CreditNoteData): string {
   const company = data.company ?? { name: 'Xarra Books' };
 
   const logoHtml = company.logoUrl
@@ -69,6 +69,16 @@ export function renderDebitNoteHtml(data: DebitNoteData): string {
   const companyAddressHtml = formatAddress(company as any);
   const recipientAddressHtml = formatAddress(data.recipient);
 
+  const linesHtml = data.lines.map(line => `
+    <tr>
+      <td style="padding:8px;border-bottom:1px solid #f0fdf4">${line.lineNumber}</td>
+      <td style="padding:8px;border-bottom:1px solid #f0fdf4">${line.description}</td>
+      <td style="padding:8px;border-bottom:1px solid #f0fdf4;text-align:center">${line.quantity}</td>
+      <td style="padding:8px;border-bottom:1px solid #f0fdf4;text-align:right">${formatCurrency(line.unitPrice)}</td>
+      <td style="padding:8px;border-bottom:1px solid #f0fdf4;text-align:right">${formatCurrency(line.lineTotal)}</td>
+    </tr>
+  `).join('');
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -76,19 +86,23 @@ export function renderDebitNoteHtml(data: DebitNoteData): string {
   <style>
     body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a1a; font-size: 13px; line-height: 1.5; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
-    .company { font-size: 24px; font-weight: bold; color: #991b1b; }
+    .company { font-size: 24px; font-weight: bold; color: #166534; }
     .company-sub { font-size: 11px; color: #666; margin-top: 4px; }
-    .doc-title { font-size: 28px; font-weight: bold; color: #991b1b; text-align: right; }
+    .doc-title { font-size: 28px; font-weight: bold; color: #166534; text-align: right; }
     .doc-meta { text-align: right; font-size: 12px; color: #555; margin-top: 8px; }
     .parties { display: flex; justify-content: space-between; margin-bottom: 30px; }
     .party { width: 48%; }
     .party h3 { font-size: 11px; text-transform: uppercase; color: #999; margin: 0 0 8px; }
     .party p { margin: 2px 0; }
-    .reason { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px; }
-    .reason strong { color: #991b1b; }
+    .reason { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px; }
+    .reason strong { color: #166534; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    thead th { background: #f0fdf4; color: #166534; font-size: 11px; text-transform: uppercase; padding: 8px; text-align: left; }
+    thead th:last-child, thead th:nth-child(3), thead th:nth-child(4) { text-align: right; }
+    thead th:nth-child(3) { text-align: center; }
     .totals { margin-left: auto; width: 280px; }
     .totals tr td { padding: 6px 8px; }
-    .totals .grand-total td { border-top: 2px solid #991b1b; font-weight: bold; font-size: 16px; }
+    .totals .grand-total td { border-top: 2px solid #166534; font-weight: bold; font-size: 16px; }
     .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 11px; color: #888; }
   </style>
 </head>
@@ -100,7 +114,7 @@ export function renderDebitNoteHtml(data: DebitNoteData): string {
       ${company.tradingAs ? `<div class="company-sub">Trading as ${company.tradingAs}</div>` : ''}
     </div>
     <div>
-      <div class="doc-title">DEBIT NOTE</div>
+      <div class="doc-title">CREDIT NOTE</div>
       <div class="doc-meta">
         <strong>${data.number}</strong><br>
         Date: ${formatDate(data.createdAt)}
@@ -133,6 +147,23 @@ export function renderDebitNoteHtml(data: DebitNoteData): string {
     <strong>Reason:</strong> ${data.reason}
   </div>
 
+  ${data.lines.length > 0 ? `
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Description</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${linesHtml}
+    </tbody>
+  </table>
+  ` : ''}
+
   <table class="totals">
     <tr>
       <td>Subtotal</td>
@@ -143,14 +174,14 @@ export function renderDebitNoteHtml(data: DebitNoteData): string {
       <td style="text-align:right">${formatCurrency(data.vatAmount)}</td>
     </tr>
     <tr class="grand-total">
-      <td>Total</td>
+      <td>Total Credit</td>
       <td style="text-align:right">${formatCurrency(data.total)}</td>
     </tr>
   </table>
 
   <div class="footer">
     <p>${company.name}${company.registrationNumber ? ` (Reg: ${company.registrationNumber})` : ''}</p>
-    <p>This debit note increases the amount owed. Reference: ${data.number}</p>
+    <p>This credit note reduces the amount owed. Reference: ${data.number}</p>
   </div>
 </body>
 </html>`;

@@ -22,6 +22,7 @@ interface Settings {
   logoUrl: string | null;
   invoiceFooterText: string | null;
   statementFooterText: string | null;
+  minimumOrderQty: number | null;
 }
 
 const TABS = [
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'branding', label: 'Branding & Logo' },
   { id: 'banking', label: 'Banking Details' },
   { id: 'documents', label: 'Document Settings' },
+  { id: 'operational', label: 'Operational' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -85,6 +87,7 @@ export function CompanySettings() {
       website: fd.get('website') || undefined,
       invoiceFooterText: fd.get('invoiceFooterText') || undefined,
       statementFooterText: fd.get('statementFooterText') || undefined,
+      minimumOrderQty: fd.get('minimumOrderQty') ? Number(fd.get('minimumOrderQty')) : undefined,
     };
 
     const bankName = fd.get('bankName') as string;
@@ -431,6 +434,41 @@ export function CompanySettings() {
             className="rounded-md bg-green-700 px-6 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
           >
             {mutation.isPending ? 'Saving...' : 'Save Document Settings'}
+          </button>
+        </form>
+      )}
+
+      {/* Operational Settings Tab */}
+      {activeTab === 'operational' && (
+        <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
+          <input type="hidden" name="companyName" value={s?.companyName ?? 'Xarra Books'} />
+
+          <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+            <legend className="px-2 text-sm font-semibold text-gray-700">Partner Portal Settings</legend>
+            <p className="mb-4 text-xs text-gray-500">Configure rules and thresholds for the partner ordering portal.</p>
+            <div className="space-y-4">
+              <div className="max-w-xs">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Minimum Order Quantity</label>
+                <input
+                  name="minimumOrderQty"
+                  type="number"
+                  min={1}
+                  defaultValue={s?.minimumOrderQty ?? 1}
+                  className={cls}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  The minimum total number of books a partner must order. Orders below this quantity will be rejected.
+                </p>
+              </div>
+            </div>
+          </fieldset>
+
+          <button
+            type="submit"
+            disabled={mutation.isPending}
+            className="rounded-md bg-green-700 px-6 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
+          >
+            {mutation.isPending ? 'Saving...' : 'Save Operational Settings'}
           </button>
         </form>
       )}

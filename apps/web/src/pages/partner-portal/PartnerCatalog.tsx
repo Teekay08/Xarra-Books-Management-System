@@ -57,6 +57,7 @@ export function PartnerCatalog() {
 
   // Quantity inputs per title (before adding to cart)
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [minimumOrderQty, setMinimumOrderQty] = useState(1);
 
   const isHQ = !user?.branchId;
 
@@ -78,6 +79,13 @@ export function PartnerCatalog() {
   useEffect(() => {
     fetchCatalog(page, search);
   }, [page, fetchCatalog]);
+
+  // Fetch minimum order qty setting
+  useEffect(() => {
+    partnerApi<{ data: { minimumOrderQty: number } }>('/portal-settings')
+      .then((res) => setMinimumOrderQty(res.data.minimumOrderQty))
+      .catch(() => {});
+  }, []);
 
   // Fetch branches for HQ users
   useEffect(() => {
@@ -125,6 +133,8 @@ export function PartnerCatalog() {
   const subtotal = cart.reduce((sum, item) => sum + item.title.partnerPrice * item.qty, 0);
   const vat = subtotal * VAT_RATE;
   const total = subtotal + vat;
+  const totalQty = cart.reduce((sum, item) => sum + item.qty, 0);
+  const belowMinimum = totalQty > 0 && totalQty < minimumOrderQty;
 
   async function placeOrder() {
     if (cart.length === 0) return;
@@ -499,6 +509,13 @@ export function PartnerCatalog() {
             </div>
           </div>
 
+          {/* Minimum order warning */}
+          {belowMinimum && (
+            <div className="mt-3 rounded-md bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
+              Minimum order is <span className="font-semibold">{minimumOrderQty} books</span>. You have {totalQty} — add {minimumOrderQty - totalQty} more.
+            </div>
+          )}
+
           {/* Error */}
           {orderError && (
             <div className="mt-3 rounded-md bg-red-50 border border-red-200 p-2 text-xs text-red-700">
@@ -509,7 +526,7 @@ export function PartnerCatalog() {
           {/* Place order */}
           <button
             onClick={placeOrder}
-            disabled={cart.length === 0 || placing}
+            disabled={cart.length === 0 || placing || belowMinimum}
             className="mt-4 w-full rounded-md bg-[#8B1A1A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#6F1515] focus:outline-none focus:ring-2 focus:ring-[#8B1A1A] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {placing ? 'Placing Order...' : 'Place Order'}

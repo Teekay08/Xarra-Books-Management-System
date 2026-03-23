@@ -41,6 +41,15 @@ function addDays(date: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
+interface ConsignmentOption {
+  id: string;
+  proformaNumber: string | null;
+  status: string;
+  partnerPoNumber: string | null;
+  dispatchDate: string | null;
+  lines: { titleId: string; qtyDispatched: number; unitRrp: string; discountPct: string; title?: { title: string; isbn13: string | null } | null }[];
+}
+
 export function InvoiceCreate() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -50,6 +59,7 @@ export function InvoiceCreate() {
   const [taxInclusive, setTaxInclusive] = useState(false);
   const [selectedPartnerId, setSelectedPartnerId] = useState(searchParams.get('partnerId') ?? '');
   const partnerOrderId = searchParams.get('partnerOrderId');
+  const [selectedConsignmentId, setSelectedConsignmentId] = useState(searchParams.get('consignmentId') ?? '');
   const [showRecipientModal, setShowRecipientModal] = useState(false);
   const [showPartnerCreate, setShowPartnerCreate] = useState(false);
   const [paymentTermsDays, setPaymentTermsDays] = useState(30);
@@ -60,9 +70,61 @@ export function InvoiceCreate() {
     { titleId: '', description: '', quantity: 1, unitPrice: 0, discountPct: 0 },
   ]);
 
+  // Load consignments for selected partner
+  const { data: consignmentsData } = useQuery({
+    queryKey: ['partner-consignments', selectedPartnerId],
+    queryFn: () => api<{ data: ConsignmentOption[] }>(`/consignments?partnerId=${selectedPartnerId}&limit=100`),
+    enabled: !!selectedPartnerId,
+  });
+
+  // Consignment options — only uninvoiced, active consignments
+  const consignmentOptions = (consignmentsData?.data ?? []).filter(
+    (c) => ['DISPATCHED', 'DELIVERED', 'ACKNOWLEDGED', 'PARTIAL_RETURN'].includes(c.status),
+  );
+
+  // Auto-select consignment from URL param
+  useEffect(() => {
+    const urlConsignmentId = searchParams.get('consignmentId');
+    if (urlConsignmentId && consignmentOptions.find((c) => c.id === urlConsignmentId)) {
+      handleConsignmentChange(urlConsignmentId);
+    }
+  }, [consignmentOptions.length]);
+
+  function handleConsignmentChange(consignmentId: string) {
+    setSelectedConsignmentId(consignmentId);
+    setIsDirty(true);
+    if (!consignmentId) return;
+
+    const consignment = consignmentOptions.find((c) => c.id === consignmentId);
+    if (!consignment) return;
+
+    // Auto-populate PO number from consignment
+    const poInput = document.querySelector('input[name="purchaseOrderNumber"]') as HTMLInputElement | null;
+    if (poInput && consignment.partnerPoNumber) {
+      poInput.value = consignment.partnerPoNumber;
+    }
+
+    // Auto-populate line items from consignment lines
+    if (consignment.lines?.length) {
+      const partnerDiscount = selectedPartner ? Number(selectedPartner.discountPct) : 0;
+      setLines(consignment.lines.map((l) => {
+        const rrp = Number(l.unitRrp);
+        const disc = Number(l.discountPct) || partnerDiscount;
+        const unitPrice = roundAmount(rrp * (1 - disc / 100));
+        return {
+          titleId: l.titleId,
+          description: l.title?.title ?? '',
+          quantity: l.qtyDispatched,
+          unitPrice,
+          discountPct: disc,
+        };
+      }));
+    }
+  }
+
   // Pre-fill lines from partner order if coming from partner order workflow
   useEffect(() => {
-    if (!partnerOrderId) return;
+    if (!partnerOrderId || selectedConsignmentId) return;
     api<{ data: { lines: { titleId: string; title: { title: string } | null; quantity: number; unitPrice: string; discountPct: string }[] } }>(`/partner-admin/orders/${partnerOrderId}`)
       .then((res) => {
         const orderLines = res.data.lines;
@@ -141,6 +203,8 @@ export function InvoiceCreate() {
 
   function handlePartnerChange(partnerId: string) {
     setSelectedPartnerId(partnerId);
+    setSelectedConsignmentId('');
+    setLines([{ titleId: '', description: '', quantity: 1, unitPrice: 0, discountPct: 0 }]);
     setIsDirty(true);
     const partner = partners?.data.find((p) => p.id === partnerId);
     if (partner?.paymentTermsDays) {
@@ -194,6 +258,7 @@ export function InvoiceCreate() {
       partnerId: selectedPartnerId,
       invoiceDate,
       taxInclusive,
+      ...(selectedConsignmentId ? { consignmentId: selectedConsignmentId } : {}),
       lines: lines.map((l) => ({
         titleId: l.titleId,
         description: l.description,
@@ -205,6 +270,7 @@ export function InvoiceCreate() {
       customerReference: fd.get('customerReference') || undefined,
       paymentTermsText,
       notes: fd.get('notes') || undefined,
+      ...(partnerOrderId ? { partnerOrderId } : {}),
     }, { onError: (err) => setError(err.message) });
   }
 
@@ -248,6 +314,33 @@ export function InvoiceCreate() {
             />
           </div>
         </div>
+
+        {/* SOR Proforma / Consignment Selection */}
+        {selectedPartnerId && consignmentOptions.length > 0 && (
+          <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              SOR Proforma Invoice (Consignment)
+            </label>
+            <select
+              value={selectedConsignmentId}
+              onChange={(e) => handleConsignmentChange(e.target.value)}
+              className={cls}
+            >
+              <option value="">-- Select a consignment to invoice --</option>
+              {consignmentOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.proformaNumber ?? c.id.slice(0, 8)} — {c.status}
+                  {c.partnerPoNumber ? ` (PO: ${c.partnerPoNumber})` : ''}
+                  {c.dispatchDate ? ` — ${new Date(c.dispatchDate).toLocaleDateString('en-ZA')}` : ''}
+                  {` — ${c.lines?.length ?? 0} items`}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Selecting a consignment auto-fills line items, quantities, prices, and PO number.
+            </p>
+          </div>
+        )}
 
         {/* Recipient details card */}
         {selectedPartner && (

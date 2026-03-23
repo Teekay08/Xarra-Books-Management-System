@@ -33,6 +33,7 @@ export const companySettings = pgTable('company_settings', {
   lowStockThreshold: integer('low_stock_threshold').default(10), // Show amber warning if stock below this
   sorAlertDays: integer('sor_alert_days').default(30), // Show amber alert when SOR expires within this many days
   exchangeRateSource: varchar('exchange_rate_source', { length: 50 }).default('MANUAL'), // MANUAL, SARB, XE
+  minimumOrderQty: integer('minimum_order_qty').default(1), // Minimum total quantity for partner portal orders
   // Email/SMTP settings
   emailSettings: jsonb('email_settings').$type<{
     smtpHost?: string;

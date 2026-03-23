@@ -28,8 +28,10 @@ interface Consignment {
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-800',
   DISPATCHED: 'bg-blue-100 text-blue-800',
-  DELIVERED: 'bg-green-100 text-green-800',
+  DELIVERED: 'bg-emerald-100 text-emerald-800',
   ACKNOWLEDGED: 'bg-purple-100 text-purple-800',
+  PARTIAL_RETURN: 'bg-amber-100 text-amber-800',
+  RECONCILED: 'bg-teal-100 text-teal-800',
   CLOSED: 'bg-gray-100 text-gray-800',
 };
 
@@ -259,12 +261,30 @@ function ExpandableRow({
               {
                 label: 'Acknowledge Receipt',
                 icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>,
-                hidden: consignment.status !== 'DISPATCHED' && consignment.status !== 'DELIVERED',
+                hidden: consignment.status !== 'DELIVERED',
                 onClick: async () => {
                   try {
                     await partnerApi(`/documents/consignments/${consignment.id}/acknowledge`, { method: 'POST' });
                     window.location.reload();
                   } catch { /* handled by partnerApi */ }
+                },
+              },
+              {
+                label: 'Request Tax Invoice',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+                hidden: !['DISPATCHED', 'DELIVERED', 'ACKNOWLEDGED'].includes(consignment.status),
+                onClick: async () => {
+                  const notes = prompt('Optional: Add a note for this invoice request (e.g., reason for early payment)');
+                  if (notes === null) return; // cancelled
+                  try {
+                    const res = await partnerApi<{ data: { message: string } }>(`/documents/consignments/${consignment.id}/request-invoice`, {
+                      method: 'POST',
+                      body: JSON.stringify({ notes: notes || undefined }),
+                    });
+                    alert(res.data.message);
+                  } catch (err: any) {
+                    alert(err.message || 'Failed to request invoice');
+                  }
                 },
               },
               {

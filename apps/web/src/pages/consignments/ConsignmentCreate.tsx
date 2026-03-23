@@ -104,6 +104,7 @@ export function ConsignmentCreate() {
       courierWaybill: fd.get('courierWaybill') || undefined,
       notes: fd.get('notes') || undefined,
       lines,
+      ...(partnerOrderId ? { partnerOrderId } : {}),
     }, { onError: (err) => setError(err.message) });
   }
 
@@ -137,7 +138,7 @@ export function ConsignmentCreate() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Partner PO Number</label>
-            <input name="partnerPoNumber" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="Partner's purchase order reference" />
+            <input name="partnerPoNumber" defaultValue={searchParams.get('poNumber') ?? ''} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="Partner's purchase order reference" />
           </div>
           <div />
         </div>

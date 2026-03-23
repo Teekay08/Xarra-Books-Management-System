@@ -28,6 +28,8 @@ interface CreditNote {
   subtotal: string;
   vatAmount: string;
   total: string;
+  applied: string;
+  available: string;
   reason: string;
   status: string;
   pdfUrl: string | null;
@@ -121,12 +123,10 @@ export function CreditNoteDetail() {
         backTo={{ label: 'Back to Credit Notes', href: '/credit-notes' }}
         action={
           <div className="flex gap-2 items-center flex-wrap">
-            {cn.pdfUrl && (
-              <a href={cn.pdfUrl} target="_blank" rel="noopener noreferrer"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                Download PDF
-              </a>
-            )}
+            <a href={`/api/v1/finance/credit-notes/${cn.id}/pdf`} target="_blank" rel="noopener noreferrer"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              Download PDF
+            </a>
             {status !== 'VOIDED' && (
               <button onClick={() => setShowVoidModal(true)}
                 className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">
@@ -145,7 +145,7 @@ export function CreditNoteDetail() {
         <InfoCard
           label="Status"
           value={STATUS_LABELS[status] || status}
-          color={status === 'VOIDED' ? 'red' : status === 'APPROVED' || status === 'SENT' ? 'green' : status === 'PENDING_REVIEW' ? 'yellow' : undefined}
+          color={status === 'VOIDED' ? 'red' : status === 'APPROVED' || status === 'SENT' ? 'green' : undefined}
         />
         <InfoCard label="Lines" value={String(cn.lines?.length ?? 0)} />
       </div>
@@ -228,6 +228,41 @@ export function CreditNoteDetail() {
 
       {/* Financial Summary */}
       <FinancialSummary subtotal={cn.subtotal} vatAmount={cn.vatAmount} total={cn.total} />
+
+      {/* Credit Balance */}
+      {status !== 'VOIDED' && (
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+            <h3 className="text-sm font-semibold text-gray-900">Credit Balance</h3>
+          </div>
+          <div className="grid grid-cols-3 divide-x divide-gray-200">
+            <div className="px-5 py-4 text-center">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Credit</p>
+              <p className="text-xl font-semibold text-gray-900">R {Number(cn.total).toFixed(2)}</p>
+            </div>
+            <div className="px-5 py-4 text-center">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Applied</p>
+              <p className="text-xl font-semibold text-orange-600">R {Number(cn.applied).toFixed(2)}</p>
+            </div>
+            <div className="px-5 py-4 text-center">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Remaining</p>
+              <p className={`text-xl font-semibold ${Number(cn.available) > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                R {Number(cn.available).toFixed(2)}
+              </p>
+            </div>
+          </div>
+          {Number(cn.available) > 0 && (
+            <div className="px-5 py-2 bg-green-50 border-t border-green-100 text-xs text-green-700">
+              R {Number(cn.available).toFixed(2)} available to apply against outstanding invoices
+            </div>
+          )}
+          {Number(cn.available) === 0 && Number(cn.applied) > 0 && (
+            <div className="px-5 py-2 bg-gray-50 border-t border-gray-100 text-xs text-gray-500">
+              This credit note has been fully applied
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Line Items */}
       {cn.lines && cn.lines.length > 0 && (

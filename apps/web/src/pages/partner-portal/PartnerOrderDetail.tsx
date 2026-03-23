@@ -50,6 +50,9 @@ interface OrderDetail {
   courierTrackingUrl: string | null;
   dispatchedAt: string | null;
   deliveredAt: string | null;
+  deliverySignedBy: string | null;
+  deliveryCondition: string | null;
+  deliveryNotes: string | null;
   // Linked document IDs
   consignmentId: string | null;
   invoiceId: string | null;
@@ -70,6 +73,9 @@ export function PartnerOrderDetail() {
   const [editingPo, setEditingPo] = useState(false);
   const [poValue, setPoValue] = useState('');
   const [savingPo, setSavingPo] = useState(false);
+  const [showDeliveryForm, setShowDeliveryForm] = useState(false);
+  const [deliveryForm, setDeliveryForm] = useState({ deliverySignedBy: '', deliveryCondition: 'GOOD', deliveryNotes: '' });
+  const [confirmingDelivery, setConfirmingDelivery] = useState(false);
 
   useEffect(() => {
     async function fetchOrder() {
@@ -121,6 +127,27 @@ export function PartnerOrderDetail() {
     }
   }
 
+  async function handleConfirmDelivery() {
+    if (!order) return;
+    setConfirmingDelivery(true);
+    try {
+      await partnerApi(`/orders/${id}/confirm-delivery`, {
+        method: 'POST',
+        body: JSON.stringify({
+          deliverySignedBy: deliveryForm.deliverySignedBy || undefined,
+          deliveryCondition: deliveryForm.deliveryCondition,
+          deliveryNotes: deliveryForm.deliveryNotes || undefined,
+        }),
+      });
+      setOrder((prev) => prev ? { ...prev, status: 'DELIVERED', deliveredAt: new Date().toISOString() } : prev);
+      setShowDeliveryForm(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to confirm delivery');
+    } finally {
+      setConfirmingDelivery(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -143,6 +170,7 @@ export function PartnerOrderDetail() {
   }
 
   const canCancel = order.status === 'DRAFT' || order.status === 'SUBMITTED';
+  const canConfirmDelivery = order.status === 'DISPATCHED';
   const hasCourier = !!(order.courierCompany || order.courierWaybill);
   const hasLinkedDocs = !!(order.consignmentId || order.invoiceId || order.quotationId);
 
@@ -164,16 +192,86 @@ export function PartnerOrderDetail() {
             {order.status}
           </span>
         </div>
-        {canCancel && (
-          <button
-            onClick={handleCancel}
-            disabled={cancelling}
-            className="inline-flex items-center gap-2 rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {cancelling ? 'Cancelling...' : 'Cancel Order'}
-          </button>
-        )}
+        <div className="flex gap-2">
+          {canConfirmDelivery && (
+            <button
+              onClick={() => setShowDeliveryForm((v) => !v)}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+            >
+              Confirm Delivery Received
+            </button>
+          )}
+          {canCancel && (
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="inline-flex items-center gap-2 rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {cancelling ? 'Cancelling...' : 'Cancel Order'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Confirm Delivery Form */}
+      {showDeliveryForm && (
+        <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm">
+          <div className="border-b border-green-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">Confirm Delivery Received</h2>
+            <p className="mt-0.5 text-sm text-gray-500">Record that you have received this order at your premises.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Received by (name)</label>
+              <input
+                type="text"
+                value={deliveryForm.deliverySignedBy}
+                onChange={(e) => setDeliveryForm((f) => ({ ...f, deliverySignedBy: e.target.value }))}
+                placeholder="Name of person who received the order"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Condition of goods</label>
+              <select
+                value={deliveryForm.deliveryCondition}
+                onChange={(e) => setDeliveryForm((f) => ({ ...f, deliveryCondition: e.target.value }))}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="GOOD">Good — all items in order</option>
+                <option value="PARTIAL">Partial — some items missing</option>
+                <option value="DAMAGED">Damaged — items arrived damaged</option>
+                <option value="MIXED">Mixed — some good, some damaged</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Notes (optional)</label>
+              <input
+                type="text"
+                value={deliveryForm.deliveryNotes}
+                onChange={(e) => setDeliveryForm((f) => ({ ...f, deliveryNotes: e.target.value }))}
+                placeholder="Any additional notes on delivery"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-green-200 px-6 py-3">
+            <button
+              onClick={() => setShowDeliveryForm(false)}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDelivery}
+              disabled={confirmingDelivery}
+              className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+            >
+              {confirmingDelivery ? 'Confirming...' : 'Confirm Delivery'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Order Info */}
       <div className="rounded-lg border bg-white shadow-sm">
@@ -333,6 +431,37 @@ export function PartnerOrderDetail() {
                 <p className="mt-1 text-sm text-gray-500">No tracking link available</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivery Details (if delivered and condition recorded) */}
+      {order.status === 'DELIVERED' && order.deliveryCondition && (
+        <div className="rounded-lg border bg-white shadow-sm">
+          <div className="border-b px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">Delivery Receipt</h2>
+          </div>
+          <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-3">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Received By</p>
+              <p className="mt-1 text-sm text-gray-900">{order.deliverySignedBy ?? '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Condition</p>
+              <span className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                order.deliveryCondition === 'GOOD' ? 'bg-green-100 text-green-800' :
+                order.deliveryCondition === 'DAMAGED' ? 'bg-red-100 text-red-800' :
+                'bg-amber-100 text-amber-800'
+              }`}>
+                {order.deliveryCondition}
+              </span>
+            </div>
+            {order.deliveryNotes && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase">Notes</p>
+                <p className="mt-1 text-sm text-gray-900">{order.deliveryNotes}</p>
+              </div>
+            )}
           </div>
         </div>
       )}

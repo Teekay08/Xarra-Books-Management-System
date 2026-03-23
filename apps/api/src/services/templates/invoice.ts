@@ -119,15 +119,15 @@ export function renderInvoiceHtml(data: InvoiceData): string {
   <meta charset="utf-8">
   <style>
     body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a1a; font-size: 13px; line-height: 1.5; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
     .company { font-size: 24px; font-weight: bold; color: #166534; }
     .company-sub { font-size: 11px; color: #666; margin-top: 4px; }
     .invoice-title { font-size: 28px; font-weight: bold; color: #166534; text-align: right; }
     .invoice-meta { text-align: right; font-size: 12px; color: #555; margin-top: 8px; }
     .parties { display: flex; justify-content: space-between; margin-bottom: 30px; }
     .party { width: 48%; }
-    .party h3 { font-size: 11px; text-transform: uppercase; color: #999; margin: 0 0 8px; }
-    .party p { margin: 2px 0; }
+    .party h3 { font-size: 11px; text-transform: uppercase; color: #999; margin: 0 0 8px; letter-spacing: 0.5px; }
+    .party p { margin: 2px 0; font-size: 12px; }
     table { width: 100%; border-collapse: collapse; margin: 20px 0; }
     th { text-align: left; padding: 10px 8px; border-bottom: 2px solid #166534; font-size: 11px; text-transform: uppercase; color: #555; }
     .totals { width: 280px; }
@@ -143,11 +143,6 @@ export function renderInvoiceHtml(data: InvoiceData): string {
       ${logoHtml}
       <div class="company">${company.name}</div>
       ${company.tradingAs ? `<div class="company-sub">Trading as ${company.tradingAs}</div>` : ''}
-      ${companyAddressHtml ? `<div class="company-sub">${companyAddressHtml}</div>` : '<div class="company-sub">Midrand, Gauteng, South Africa</div>'}
-      ${company.vatNumber ? `<div class="company-sub">VAT: ${company.vatNumber}</div>` : ''}
-      ${company.registrationNumber ? `<div class="company-sub">Reg: ${company.registrationNumber}</div>` : ''}
-      ${company.phone ? `<div class="company-sub">Tel: ${company.phone}</div>` : ''}
-      ${company.email ? `<div class="company-sub">Email: ${company.email}</div>` : ''}
     </div>
     <div>
       <div class="invoice-title">TAX INVOICE</div>
@@ -162,6 +157,15 @@ export function renderInvoiceHtml(data: InvoiceData): string {
   </div>
 
   <div class="parties">
+    <div class="party">
+      <h3>From</h3>
+      <p><strong>${company.name}</strong></p>
+      ${companyAddressHtml ? companyAddressHtml : '<p>Midrand, Gauteng, South Africa</p>'}
+      ${company.vatNumber ? `<p>VAT: ${company.vatNumber}</p>` : ''}
+      ${company.registrationNumber ? `<p>Reg: ${company.registrationNumber}</p>` : ''}
+      ${company.phone ? `<p>Tel: ${company.phone}</p>` : ''}
+      ${company.email ? `<p>${company.email}</p>` : ''}
+    </div>
     <div class="party">
       <h3>Bill To</h3>
       <p><strong>${data.recipient.name}</strong></p>

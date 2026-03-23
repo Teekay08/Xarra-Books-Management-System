@@ -348,7 +348,7 @@ export async function statementRoutes(app: FastifyInstance) {
     const { id } = request.params;
     const result = await app.db.execute(sql`
       UPDATE statement_batches
-      SET status = 'REVIEWED', reviewed_at = NOW(), updated_at = NOW()
+      SET status = 'REVIEWED', reviewed_at = NOW()
       WHERE id = ${id} AND status = 'DRAFT'
       RETURNING id
     `);
@@ -361,7 +361,7 @@ export async function statementRoutes(app: FastifyInstance) {
     const { id } = request.params;
     const result = await app.db.execute(sql`
       UPDATE statement_batches
-      SET status = 'APPROVED', approved_at = NOW(), updated_at = NOW()
+      SET status = 'APPROVED', approved_at = NOW()
       WHERE id = ${id} AND status = 'REVIEWED'
       RETURNING id
     `);
@@ -382,7 +382,7 @@ export async function statementRoutes(app: FastifyInstance) {
     const batch = (batchRows as any[])[0];
 
     await app.db.execute(sql`
-      UPDATE statement_batches SET status = 'SENDING', updated_at = NOW() WHERE id = ${id}
+      UPDATE statement_batches SET status = 'SENDING' WHERE id = ${id}
     `);
 
     const items = await app.db.execute(sql`
@@ -400,27 +400,29 @@ export async function statementRoutes(app: FastifyInstance) {
     for (const item of items as any[]) {
       try {
         const consolidated = item.send_to_type === 'HQ_CONSOLIDATED';
+        const periodFrom = typeof batch.period_from === 'string' ? batch.period_from : new Date(batch.period_from).toISOString();
+        const periodTo = typeof batch.period_to === 'string' ? batch.period_to : new Date(batch.period_to).toISOString();
         const stmtData = await computeStatementData(
           app.db,
           item.partner_id,
           item.branch_id,
-          batch.period_from.toISOString(),
-          batch.period_to.toISOString(),
+          periodFrom,
+          periodTo,
           consolidated,
         );
 
         // Update closing balance
         await app.db.execute(sql`
           UPDATE statement_batch_items
-          SET closing_balance = ${stmtData.closingBalance}, updated_at = NOW()
+          SET closing_balance = ${stmtData.closingBalance}
           WHERE id = ${item.id}
         `);
 
         if (emailReady && item.recipient_email) {
           const html = renderStatementHtml({
             statementDate: new Date().toISOString().split('T')[0],
-            periodFrom: batch.period_from.toISOString().split('T')[0],
-            periodTo: batch.period_to.toISOString().split('T')[0],
+            periodFrom: periodFrom.split('T')[0],
+            periodTo: periodTo.split('T')[0],
             company: settings ? {
               name: settings.companyName,
               tradingAs: settings.tradingAs,
@@ -472,7 +474,7 @@ export async function statementRoutes(app: FastifyInstance) {
     const finalStatus = failed === 0 ? 'SENT' : sent === 0 ? 'APPROVED' : 'SENT';
     await app.db.execute(sql`
       UPDATE statement_batches
-      SET status = ${finalStatus}, sent_at = ${finalStatus === 'SENT' ? new Date() : null}, updated_at = NOW()
+      SET status = ${finalStatus}, sent_at = ${finalStatus === 'SENT' ? new Date() : null}
       WHERE id = ${id}
     `);
 

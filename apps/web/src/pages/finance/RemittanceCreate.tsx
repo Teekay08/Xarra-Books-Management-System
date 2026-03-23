@@ -1,4 +1,4 @@
-import { useState, useMemo, type FormEvent } from 'react';
+import { useState, useMemo, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
@@ -63,8 +63,33 @@ export function RemittanceCreate() {
     enabled: !!partnerId,
   });
 
-  const outstandingInvoices = invoicesData?.data ?? [];
+  // Sort: overdue first, then by due date ascending
+  const outstandingInvoices = useMemo(() => {
+    const list = invoicesData?.data ?? [];
+    return [...list].sort((a, b) => {
+      const aOverdue = a.dueDate && new Date(a.dueDate) < new Date() ? 0 : 1;
+      const bOverdue = b.dueDate && new Date(b.dueDate) < new Date() ? 0 : 1;
+      if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+      return (a.dueDate ?? '').localeCompare(b.dueDate ?? '');
+    });
+  }, [invoicesData]);
   const availableCreditNotes = creditNotesData?.data ?? [];
+
+  // Auto-select overdue invoices when data loads
+  useEffect(() => {
+    if (!outstandingInvoices.length) return;
+    const now = new Date();
+    const autoSelected: Record<string, number> = {};
+    for (const inv of outstandingInvoices) {
+      const due = Number(inv.amountDue);
+      if (due > 0 && inv.dueDate && new Date(inv.dueDate) <= now) {
+        autoSelected[inv.id] = due;
+      }
+    }
+    if (Object.keys(autoSelected).length > 0) {
+      setSelectedInvoices(autoSelected);
+    }
+  }, [outstandingInvoices]);
 
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -239,9 +264,31 @@ export function RemittanceCreate() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-2 w-8" />
+                    <th className="px-3 py-2 w-8">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={outstandingInvoices.length > 0 && outstandingInvoices.every((inv) => selectedInvoices[inv.id] !== undefined)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            const all: Record<string, number> = {};
+                            for (const inv of outstandingInvoices) {
+                              const due = Number(inv.amountDue);
+                              if (due > 0) all[inv.id] = due;
+                            }
+                            setSelectedInvoices(all);
+                          } else {
+                            setSelectedInvoices({});
+                            setCreditAllocations([]);
+                          }
+                          setIsDirty(true);
+                        }}
+                        title="Select all"
+                      />
+                    </th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Invoice Total</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Credits</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Paid</th>
@@ -265,6 +312,17 @@ export function RemittanceCreate() {
                         <td className="px-3 py-2 text-sm text-gray-900">{inv.number}</td>
                         <td className="px-3 py-2 text-sm text-gray-500">
                           {new Date(inv.invoiceDate).toLocaleDateString()}
+                        </td>
+                        <td className="px-3 py-2 text-sm">
+                          {inv.dueDate ? (() => {
+                            const due = new Date(inv.dueDate);
+                            const now = new Date();
+                            const daysUntil = Math.ceil((due.getTime() - now.getTime()) / 86400000);
+                            const dateStr = due.toLocaleDateString('en-ZA');
+                            if (daysUntil < 0) return <span className="text-red-600 font-medium">{dateStr} <span className="text-xs">(overdue)</span></span>;
+                            if (daysUntil <= 7) return <span className="text-amber-600 font-medium">{dateStr} <span className="text-xs">(due soon)</span></span>;
+                            return <span className="text-gray-500">{dateStr}</span>;
+                          })() : <span className="text-gray-400">&mdash;</span>}
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-900 text-right">
                           R {Number(inv.total).toFixed(2)}

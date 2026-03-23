@@ -44,6 +44,7 @@ export function PartnerRemittanceCreate() {
   const [availableCreditNotes, setAvailableCreditNotes] = useState<AvailableCreditNote[]>([]);
   const [selectedInvoices, setSelectedInvoices] = useState<Record<string, number>>({});
   const [creditAllocations, setCreditAllocations] = useState<CreditNoteAllocation[]>([]);
+  const [paymentAmount, setPaymentAmount] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -54,8 +55,28 @@ export function PartnerRemittanceCreate() {
           partnerApi<{ data: OutstandingInvoice[] }>('/invoices/outstanding'),
           partnerApi<{ data: AvailableCreditNote[] }>('/credit-notes/available'),
         ]);
-        setOutstandingInvoices(invRes.data);
+        // Sort: overdue first, then by due date ascending
+        const sorted = [...invRes.data].sort((a, b) => {
+          const aOverdue = a.dueDate && new Date(a.dueDate) < new Date() ? 0 : 1;
+          const bOverdue = b.dueDate && new Date(b.dueDate) < new Date() ? 0 : 1;
+          if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+          return (a.dueDate ?? '').localeCompare(b.dueDate ?? '');
+        });
+        setOutstandingInvoices(sorted);
         setAvailableCreditNotes(cnRes.data);
+
+        // Auto-select all due/overdue invoices
+        const now = new Date();
+        const autoSelected: Record<string, number> = {};
+        for (const inv of sorted) {
+          const due = Number(inv.amountDue);
+          if (due > 0 && inv.dueDate && new Date(inv.dueDate) <= now) {
+            autoSelected[inv.id] = due;
+          }
+        }
+        if (Object.keys(autoSelected).length > 0) {
+          setSelectedInvoices(autoSelected);
+        }
       } catch {
         // handled by partnerApi
       } finally {
@@ -127,6 +148,13 @@ export function PartnerRemittanceCreate() {
   const totalCreditsApplied = creditAllocations.reduce((s, a) => s + a.amount, 0);
   const netPayable = allocatedTotal - totalCreditsApplied;
 
+  // Auto-sync payment amount with net payable
+  useEffect(() => {
+    if (netPayable > 0) {
+      setPaymentAmount(netPayable.toFixed(2));
+    }
+  }, [netPayable]);
+
   const selectedInvoiceIds = Object.keys(selectedInvoices);
   const hasSelectedInvoices = selectedInvoiceIds.length > 0;
   const hasAvailableCredits = availableCreditNotes.length > 0;
@@ -141,7 +169,7 @@ export function PartnerRemittanceCreate() {
     }
 
     const fd = new FormData(e.currentTarget);
-    const totalAmount = Number(fd.get('totalAmount'));
+    const totalAmount = Number(paymentAmount);
 
     if (!totalAmount || totalAmount <= 0) {
       setError('Please enter a valid payment amount.');
@@ -203,8 +231,6 @@ export function PartnerRemittanceCreate() {
   const cls =
     'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
 
-  const amountDiffWarning =
-    hasSelectedInvoices && Math.abs(netPayable - Number((document.querySelector('input[name="totalAmount"]') as HTMLInputElement)?.value || 0)) > 1;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -247,9 +273,16 @@ export function PartnerRemittanceCreate() {
                 type="number"
                 step="0.01"
                 required
-                defaultValue={netPayable > 0 ? netPayable.toFixed(2) : ''}
+                value={paymentAmount}
+                onChange={(e) => { setPaymentAmount(e.target.value); if (!isDirty) setIsDirty(true); }}
                 className={cls}
               />
+              {hasSelectedInvoices && Math.abs(Number(paymentAmount) - netPayable) > 0.01 && (
+                <p className="mt-1 text-xs text-amber-600">
+                  Suggested amount based on selected invoices: R {netPayable.toFixed(2)}{' '}
+                  <button type="button" onClick={() => setPaymentAmount(netPayable.toFixed(2))} className="underline text-primary">Use this amount</button>
+                </p>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -278,12 +311,36 @@ export function PartnerRemittanceCreate() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-2 w-8" />
+                    <th className="px-3 py-2 w-8">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={outstandingInvoices.length > 0 && outstandingInvoices.every((inv) => selectedInvoices[inv.id] !== undefined)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            const all: Record<string, number> = {};
+                            for (const inv of outstandingInvoices) {
+                              const due = Number(inv.amountDue);
+                              if (due > 0) all[inv.id] = due;
+                            }
+                            setSelectedInvoices(all);
+                          } else {
+                            setSelectedInvoices({});
+                            setCreditAllocations([]);
+                          }
+                          if (!isDirty) setIsDirty(true);
+                        }}
+                        title="Select all"
+                      />
+                    </th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                       Invoice
                     </th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                       Date
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Due Date
                     </th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                       Total
@@ -323,6 +380,17 @@ export function PartnerRemittanceCreate() {
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-500">
                           {new Date(inv.invoiceDate).toLocaleDateString('en-ZA')}
+                        </td>
+                        <td className="px-3 py-2 text-sm">
+                          {inv.dueDate ? (() => {
+                            const due = new Date(inv.dueDate);
+                            const now = new Date();
+                            const daysUntil = Math.ceil((due.getTime() - now.getTime()) / 86400000);
+                            const dateStr = due.toLocaleDateString('en-ZA');
+                            if (daysUntil < 0) return <span className="text-red-600 font-medium">{dateStr} <span className="text-xs">(overdue)</span></span>;
+                            if (daysUntil <= 7) return <span className="text-amber-600 font-medium">{dateStr} <span className="text-xs">(due soon)</span></span>;
+                            return <span className="text-gray-500">{dateStr}</span>;
+                          })() : <span className="text-gray-400">&mdash;</span>}
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-900 text-right">
                           R {Number(inv.total).toFixed(2)}

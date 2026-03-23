@@ -42,6 +42,8 @@ interface PartnerOrder {
   courierWaybill: string | null;
   courierTrackingUrl: string | null;
   deliverySignedBy: string | null;
+  deliveryCondition: string | null;
+  deliveryNotes: string | null;
   consignmentId: string | null;
   invoiceId: string | null;
   quotationId: string | null;
@@ -55,11 +57,7 @@ export function PartnerOrdersAdmin() {
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PartnerOrder | null>(null);
   const [dispatchModal, setDispatchModal] = useState(false);
-  const [deliverModal, setDeliverModal] = useState(false);
-  const [linkModal, setLinkModal] = useState(false);
   const [dispatchForm, setDispatchForm] = useState({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' });
-  const [deliverSignedBy, setDeliverSignedBy] = useState('');
-  const [linkForm, setLinkForm] = useState({ consignmentId: '', invoiceId: '', quotationId: '' });
 
   const queryParams = new URLSearchParams({
     page: String(page),
@@ -119,29 +117,6 @@ export function PartnerOrdersAdmin() {
     },
   });
 
-  const deliverMut = useMutation({
-    mutationFn: (body?: Record<string, unknown>) =>
-      api(`/partner-admin/orders/${selectedOrder!.id}/deliver`, { method: 'POST', body: JSON.stringify(body || {}) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['partner-admin-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['partner-admin-order', selectedOrder?.id] });
-      setDeliverModal(false);
-    },
-  });
-
-  const linkMut = useMutation({
-    mutationFn: (body: Record<string, string>) =>
-      api(`/partner-admin/orders/${selectedOrder!.id}/link`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['partner-admin-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['partner-admin-order', selectedOrder?.id] });
-      setLinkModal(false);
-    },
-  });
-
   const handleSearch = useCallback((v: string) => {
     setSearch(v);
     setPage(1);
@@ -198,8 +173,8 @@ export function PartnerOrdersAdmin() {
             { label: 'Confirm', onClick: () => { setSelectedOrder(o); setTimeout(() => confirmMut.mutate(), 0); }, hidden: o.status !== 'SUBMITTED' },
             { label: 'Cancel Order', onClick: () => { if (confirm('Cancel this order?')) { setSelectedOrder(o); setTimeout(() => cancelMut.mutate(), 0); } }, variant: 'danger', hidden: o.status !== 'SUBMITTED' },
             { label: 'Process', onClick: () => { setSelectedOrder(o); setTimeout(() => processMut.mutate(), 0); }, hidden: o.status !== 'CONFIRMED' },
-            { label: 'Dispatch', onClick: () => { setSelectedOrder(o); setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' }); setDispatchModal(true); }, hidden: !['CONFIRMED', 'PROCESSING'].includes(o.status) },
-            { label: 'Mark Delivered', onClick: () => { setSelectedOrder(o); setDeliverSignedBy(''); setDeliverModal(true); }, hidden: o.status !== 'DISPATCHED' },
+            { label: 'Create SOR Proforma Invoice', onClick: () => { const p = new URLSearchParams({ partnerId: o.partner.id, partnerOrderId: o.id, ...(o.branch?.id ? { branchId: o.branch.id } : {}), ...(o.customerPoNumber ? { poNumber: o.customerPoNumber } : {}) }); navigate(`/consignments/new?${p}`); }, hidden: o.status !== 'PROCESSING' || !!o.consignmentId },
+            { label: 'Dispatch', onClick: () => { setSelectedOrder(o); setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' }); setDispatchModal(true); }, hidden: o.status !== 'PROCESSING' || !o.consignmentId },
           ]} />
         </div>
       ),
@@ -341,13 +316,47 @@ export function PartnerOrdersAdmin() {
                   </div>
                 )}
 
+                {/* Delivery receipt (partner-confirmed) */}
+                {orderDetail.status === 'DELIVERED' && orderDetail.deliveryCondition && (
+                  <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm">
+                    <h4 className="mb-1 font-semibold text-green-800">Delivery Confirmed by Partner</h4>
+                    <div className="flex flex-wrap gap-4 text-gray-700">
+                      {orderDetail.deliverySignedBy && (
+                        <span><span className="text-gray-500">Received by:</span> {orderDetail.deliverySignedBy}</span>
+                      )}
+                      <span>
+                        <span className="text-gray-500">Condition:</span>{' '}
+                        <span className={`font-medium ${
+                          orderDetail.deliveryCondition === 'GOOD' ? 'text-green-700' :
+                          orderDetail.deliveryCondition === 'DAMAGED' ? 'text-red-700' : 'text-amber-700'
+                        }`}>{orderDetail.deliveryCondition}</span>
+                      </span>
+                      {orderDetail.deliveryNotes && (
+                        <span><span className="text-gray-500">Notes:</span> {orderDetail.deliveryNotes}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Linked Documents */}
                 <div className="text-sm">
                   <h4 className="mb-1 font-semibold text-gray-700">Linked Documents</h4>
                   <div className="flex flex-wrap gap-3 text-gray-600">
-                    <span>Consignment: {orderDetail.consignmentId ?? '—'}</span>
-                    <span>Invoice: {orderDetail.invoiceId ?? '—'}</span>
-                    <span>Quotation: {orderDetail.quotationId ?? '—'}</span>
+                    <span>SOR Proforma:{' '}
+                      {orderDetail.consignmentId ? (
+                        <button onClick={() => { setSelectedOrder(null); navigate(`/consignments/${orderDetail.consignmentId}`); }} className="text-teal-600 hover:underline font-medium">View</button>
+                      ) : '—'}
+                    </span>
+                    <span>Invoice:{' '}
+                      {orderDetail.invoiceId ? (
+                        <button onClick={() => { setSelectedOrder(null); navigate(`/invoices/${orderDetail.invoiceId}`); }} className="text-blue-600 hover:underline font-medium">View</button>
+                      ) : '—'}
+                    </span>
+                    <span>Quotation:{' '}
+                      {orderDetail.quotationId ? (
+                        <button onClick={() => { setSelectedOrder(null); navigate(`/quotations/${orderDetail.quotationId}`); }} className="text-blue-600 hover:underline font-medium">View</button>
+                      ) : '—'}
+                    </span>
                   </div>
                 </div>
 
@@ -374,26 +383,31 @@ export function PartnerOrdersAdmin() {
                     </>
                   )}
                   {orderDetail.status === 'CONFIRMED' && (
-                    <>
-                      <button
-                        onClick={() => processMut.mutate()}
-                        disabled={processMut.isPending}
-                        className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                      >
-                        {processMut.isPending ? 'Processing...' : 'Process'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' });
-                          setDispatchModal(true);
-                        }}
-                        className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
-                      >
-                        Dispatch
-                      </button>
-                    </>
+                    <button
+                      onClick={() => processMut.mutate()}
+                      disabled={processMut.isPending}
+                      className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {processMut.isPending ? 'Processing...' : 'Process'}
+                    </button>
                   )}
-                  {orderDetail.status === 'PROCESSING' && (
+                  {orderDetail.status === 'PROCESSING' && !orderDetail.consignmentId && (
+                    <button
+                      onClick={() => {
+                        const params = new URLSearchParams({
+                          partnerId: orderDetail.partner.id,
+                          partnerOrderId: orderDetail.id,
+                          ...(orderDetail.branch?.id ? { branchId: orderDetail.branch.id } : {}),
+                          ...(orderDetail.customerPoNumber ? { poNumber: orderDetail.customerPoNumber } : {}),
+                        });
+                        navigate(`/consignments/new?${params}`);
+                      }}
+                      className="rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700"
+                    >
+                      Create SOR Proforma Invoice
+                    </button>
+                  )}
+                  {orderDetail.status === 'PROCESSING' && !!orderDetail.consignmentId && (
                     <button
                       onClick={() => {
                         setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '' });
@@ -404,45 +418,9 @@ export function PartnerOrdersAdmin() {
                       Dispatch
                     </button>
                   )}
-                  {orderDetail.status === 'DISPATCHED' && (
+                  {!orderDetail.invoiceId && !!orderDetail.consignmentId && orderDetail.status !== 'CANCELLED' && (
                     <button
                       onClick={() => {
-                        setDeliverSignedBy('');
-                        setDeliverModal(true);
-                      }}
-                      className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800"
-                    >
-                      Mark Delivered
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setLinkForm({
-                        consignmentId: orderDetail.consignmentId ?? '',
-                        invoiceId: orderDetail.invoiceId ?? '',
-                        quotationId: orderDetail.quotationId ?? '',
-                      });
-                      setLinkModal(true);
-                    }}
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    Link Documents
-                  </button>
-                  {!orderDetail.consignmentId && orderDetail.status !== 'CANCELLED' && orderDetail.status !== 'DRAFT' && (
-                    <button
-                      onClick={() => {
-                        // Navigate to consignment create with partner order context
-                        navigate(`/consignments/new?partnerId=${orderDetail.partner.id}&partnerOrderId=${orderDetail.id}&branchId=${orderDetail.branch?.id ?? ''}`);
-                      }}
-                      className="rounded-md border border-teal-300 bg-teal-50 px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-100"
-                    >
-                      Create Consignment
-                    </button>
-                  )}
-                  {!orderDetail.invoiceId && orderDetail.status !== 'CANCELLED' && orderDetail.status !== 'DRAFT' && (
-                    <button
-                      onClick={() => {
-                        // Navigate to invoice create with partner order context
                         navigate(`/invoices/new?partnerId=${orderDetail.partner.id}&partnerOrderId=${orderDetail.id}&branchId=${orderDetail.branch?.id ?? ''}`);
                       }}
                       className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
@@ -519,112 +497,6 @@ export function PartnerOrdersAdmin() {
         </div>
       )}
 
-      {/* Deliver Modal */}
-      {deliverModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">Mark as Delivered</h3>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                deliverMut.mutate({ signedBy: deliverSignedBy });
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Signed By</label>
-                <input
-                  type="text"
-                  value={deliverSignedBy}
-                  onChange={(e) => setDeliverSignedBy(e.target.value)}
-                  required
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setDeliverModal(false)}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={deliverMut.isPending}
-                  className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
-                >
-                  {deliverMut.isPending ? 'Saving...' : 'Confirm Delivery'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Link Documents Modal */}
-      {linkModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">Link Documents</h3>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const body: Record<string, string> = {};
-                if (linkForm.consignmentId) body.consignmentId = linkForm.consignmentId;
-                if (linkForm.invoiceId) body.invoiceId = linkForm.invoiceId;
-                if (linkForm.quotationId) body.quotationId = linkForm.quotationId;
-                linkMut.mutate(body);
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Consignment ID</label>
-                <input
-                  type="text"
-                  value={linkForm.consignmentId}
-                  onChange={(e) => setLinkForm((p) => ({ ...p, consignmentId: e.target.value }))}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Invoice ID</label>
-                <input
-                  type="text"
-                  value={linkForm.invoiceId}
-                  onChange={(e) => setLinkForm((p) => ({ ...p, invoiceId: e.target.value }))}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Quotation ID</label>
-                <input
-                  type="text"
-                  value={linkForm.quotationId}
-                  onChange={(e) => setLinkForm((p) => ({ ...p, quotationId: e.target.value }))}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setLinkModal(false)}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={linkMut.isPending}
-                  className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
-                >
-                  {linkMut.isPending ? 'Linking...' : 'Save Links'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

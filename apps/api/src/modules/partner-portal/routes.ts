@@ -22,6 +22,7 @@ import {
   paymentAllocations,
   returnsAuthorizations,
   returnsAuthorizationLines,
+  companySettings,
 } from '@xarra/db';
 import {
   partnerLoginSchema,
@@ -41,6 +42,7 @@ import { nextPartnerOrderNumber, nextPartnerReturnRequestNumber, nextCreditNoteN
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
 import { renderSorProformaHtml } from '../../services/templates/sor-proforma.js';
+import { renderPartnerOrderHtml } from '../../services/templates/partner-order.js';
 import { generatePdf } from '../../services/pdf.js';
 
 // Password hashing using Node.js built-in scrypt
@@ -239,6 +241,16 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
   // CATALOG (browse available titles)
   // ==========================================
 
+  // Portal settings (public config for partner portal UI)
+  app.get('/portal-settings', { preHandler: requirePartnerAuth }, async () => {
+    const settings = await app.db.query.companySettings.findFirst();
+    return {
+      data: {
+        minimumOrderQty: settings?.minimumOrderQty ?? 1,
+      },
+    };
+  });
+
   app.get('/catalog', { preHandler: requirePartnerAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search } = query;
@@ -348,10 +360,80 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     return { data: order };
   });
 
+  // Download order PDF
+  app.get<{ Params: { id: string } }>('/orders/:id/pdf', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    const order = await app.db.query.partnerOrders.findFirst({
+      where: and(eq(partnerOrders.id, request.params.id), eq(partnerOrders.partnerId, session.partnerId)),
+      with: {
+        partner: true,
+        branch: true,
+        lines: { with: { title: true } },
+        placedBy: true,
+      },
+    });
+    if (!order) return reply.notFound('Order not found');
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    const html = renderPartnerOrderHtml({
+      number: order.number,
+      orderDate: (order.orderDate ?? order.createdAt).toISOString(),
+      customerPoNumber: order.customerPoNumber,
+      expectedDeliveryDate: order.expectedDeliveryDate?.toISOString(),
+      deliveryAddress: order.deliveryAddress,
+      status: order.status,
+      partnerName: order.partner?.name ?? 'Partner',
+      branchName: order.branch?.name,
+      placedByName: order.placedBy?.name,
+      confirmedAt: order.confirmedAt?.toISOString(),
+      dispatchedAt: order.dispatchedAt?.toISOString(),
+      deliveredAt: order.deliveredAt?.toISOString(),
+      deliverySignedBy: order.deliverySignedBy,
+      deliveryCondition: order.deliveryCondition,
+      courierCompany: order.courierCompany,
+      courierWaybill: order.courierWaybill,
+      company: settings ? {
+        name: settings.companyName, tradingAs: settings.tradingAs, vatNumber: settings.vatNumber,
+        registrationNumber: settings.registrationNumber, addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2, city: settings.city, province: settings.province,
+        postalCode: settings.postalCode, phone: settings.phone, email: settings.email,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+      lines: order.lines.map((l: any) => ({
+        title: l.title?.title ?? 'Unknown Title',
+        isbn13: l.title?.isbn13,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        discountPct: l.discountPct,
+        lineTotal: l.lineTotal,
+        lineTax: l.lineTax,
+        rrp: l.title?.rrpZar,
+      })),
+      subtotal: order.subtotal,
+      vatAmount: order.vatAmount,
+      total: order.total,
+      notes: order.notes,
+    });
+
+    const pdf = await generatePdf(html);
+    return reply.type('application/pdf')
+      .header('Content-Disposition', `inline; filename="${order.number}.pdf"`)
+      .send(pdf);
+  });
+
   // Place new order
   app.post('/orders', { preHandler: requirePartnerAuth }, async (request, reply) => {
     const body = createPartnerOrderSchema.parse(request.body);
     const session = request.partnerSession!;
+
+    // Enforce minimum order quantity
+    const totalQty = body.lines.reduce((sum, l) => sum + l.quantity, 0);
+    const settings = await app.db.query.companySettings.findFirst();
+    const minQty = settings?.minimumOrderQty ?? 1;
+    if (totalQty < minQty) {
+      return reply.badRequest(`Minimum order quantity is ${minQty} books. Your order has ${totalQty}.`);
+    }
 
     // Get partner discount
     const partner = await app.db.query.channelPartners.findFirst({
@@ -669,6 +751,74 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
     });
     if (!consignment) return reply.notFound('Consignment not found');
     return { data: consignment };
+  });
+
+  // Partner requests a tax invoice for a consignment (for early payment)
+  app.post<{ Params: { id: string } }>('/documents/consignments/:id/request-invoice', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    const consignment = await app.db.query.consignments.findFirst({
+      where: and(eq(consignments.id, request.params.id), eq(consignments.partnerId, session.partnerId)),
+      with: { partner: true, lines: { with: { title: true } } },
+    });
+    if (!consignment) return reply.notFound('Consignment not found');
+    if (!['DISPATCHED', 'DELIVERED', 'ACKNOWLEDGED'].includes(consignment.status)) {
+      return reply.badRequest('Consignment must be dispatched or delivered to request an invoice');
+    }
+
+    const body = request.body as { notes?: string } | undefined;
+
+    // Check if an invoice already exists for this consignment
+    const existingInvoice = await app.db.query.invoices.findFirst({
+      where: eq(invoices.consignmentId, consignment.id),
+    });
+    if (existingInvoice) {
+      return reply.badRequest(`Invoice ${existingInvoice.number} already exists for this consignment`);
+    }
+
+    // Calculate total for the notification
+    const totalQty = consignment.lines.reduce((s, l) => s + l.qtyDispatched, 0);
+
+    // Notify Xarra staff
+    createBroadcastNotification(app, {
+      type: 'INVOICE_ISSUED',
+      priority: 'HIGH',
+      title: `Invoice requested by ${consignment.partner.name}`,
+      message: `${session.name} from ${consignment.partner.name} has requested a tax invoice for consignment ${consignment.proformaNumber ?? consignment.id.slice(0, 8)} (${totalQty} items).${body?.notes ? ` Note: ${body.notes}` : ''} This is for early payment before SOR expiry.`,
+      actionUrl: `/invoices/new?partnerId=${consignment.partnerId}&consignmentId=${consignment.id}`,
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    });
+
+    return { data: { message: 'Invoice request sent to Xarra Books. You will be notified when the invoice is ready.' } };
+  });
+
+  // Partner acknowledges consignment receipt (DELIVERED → ACKNOWLEDGED)
+  app.post<{ Params: { id: string } }>('/documents/consignments/:id/acknowledge', { preHandler: requirePartnerAuth }, async (request, reply) => {
+    const session = request.partnerSession!;
+    const consignment = await app.db.query.consignments.findFirst({
+      where: and(eq(consignments.id, request.params.id), eq(consignments.partnerId, session.partnerId)),
+    });
+    if (!consignment) return reply.notFound('Consignment not found');
+    if (consignment.status !== 'DELIVERED') {
+      return reply.badRequest('Consignment must be DELIVERED before acknowledging');
+    }
+
+    await app.db.update(consignments).set({
+      status: 'ACKNOWLEDGED',
+      acknowledgedAt: new Date(),
+    }).where(eq(consignments.id, consignment.id));
+
+    createBroadcastNotification(app, {
+      type: 'CONSIGNMENT_DISPATCHED',
+      priority: 'NORMAL',
+      title: `Consignment ${consignment.proformaNumber} acknowledged`,
+      message: `${session.name} from partner has acknowledged receipt of consignment ${consignment.proformaNumber}.`,
+      actionUrl: `/consignments/${consignment.id}`,
+      referenceType: 'CONSIGNMENT',
+      referenceId: consignment.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create acknowledge notification'));
+
+    return { data: { message: 'Consignment acknowledged' } };
   });
 
   // Partner consignment proforma PDF
@@ -1363,6 +1513,50 @@ export async function partnerPortalRoutes(app: FastifyInstance) {
 
     return { data: { success: true } };
   });
+
+  // Partner confirms delivery received (DISPATCHED → DELIVERED)
+  app.post<{ Params: { id: string } }>('/orders/:id/confirm-delivery', {
+    preHandler: requirePartnerAuth,
+  }, async (request, reply) => {
+    const session = request.partnerSession!;
+    const body = request.body as { deliverySignedBy?: string; deliveryCondition?: string; deliveryNotes?: string };
+
+    const order = await app.db.query.partnerOrders.findFirst({
+      where: eq(partnerOrders.id, request.params.id),
+    });
+    if (!order) return reply.notFound('Order not found');
+    if (order.partnerId !== session.partnerId) return reply.forbidden('Access denied');
+    if (order.status !== 'DISPATCHED') return reply.badRequest('Order must be dispatched before confirming delivery');
+
+    await app.db.update(partnerOrders).set({
+      status: 'DELIVERED',
+      deliveredAt: new Date(),
+      deliverySignedBy: body?.deliverySignedBy ?? null,
+      deliveryCondition: body?.deliveryCondition ?? null,
+      deliveryNotes: body?.deliveryNotes ?? null,
+      updatedAt: new Date(),
+    }).where(eq(partnerOrders.id, order.id));
+
+    // Also update the linked consignment to DELIVERED
+    if (order.consignmentId) {
+      await app.db.update(consignments).set({
+        status: 'DELIVERED',
+      }).where(eq(consignments.id, order.consignmentId));
+    }
+
+    const conditionNote = body?.deliveryCondition ? ` — Condition: ${body.deliveryCondition}` : '';
+    createBroadcastNotification(app, {
+      type: 'ORDER_STATUS_CHANGED',
+      priority: 'NORMAL',
+      title: `Order ${order.number} delivery confirmed by partner`,
+      message: `${session.name} confirmed delivery of order ${order.number}${conditionNote}`,
+      actionUrl: `/partners/orders/${order.id}`,
+      referenceType: 'PARTNER_ORDER',
+      referenceId: order.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create delivery notification'));
+
+    return { data: { message: 'Delivery confirmed' } };
+  });
 }
 
 // ==========================================
@@ -1561,6 +1755,7 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
   });
 
   // Mark as DISPATCHED (with courier details)
+  // Requires a consignment/SOR proforma to exist first
   app.post<{ Params: { id: string } }>('/orders/:id/dispatch', {
     preHandler: requireRole('admin', 'operations'),
   }, async (request, reply) => {
@@ -1569,8 +1764,11 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       with: { lines: true, partner: true },
     });
     if (!order) return reply.notFound('Order not found');
-    if (!['CONFIRMED', 'PROCESSING'].includes(order.status)) {
-      return reply.badRequest('Order must be confirmed or processing');
+    if (order.status !== 'PROCESSING') {
+      return reply.badRequest('Order must be in PROCESSING status');
+    }
+    if (!order.consignmentId) {
+      return reply.badRequest('An SOR Proforma Invoice (consignment) must be created before dispatching');
     }
 
     const body = request.body as any;
@@ -1605,6 +1803,23 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       dispatchedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(partnerOrders.id, order.id));
+
+    // Also dispatch the linked consignment
+    if (order.consignmentId) {
+      const now = new Date();
+      const partner = order.partner;
+      const sorDays = partner?.sorDays ? Number(partner.sorDays) : 60;
+      const sorExpiryDate = new Date(now);
+      sorExpiryDate.setDate(sorExpiryDate.getDate() + sorDays);
+
+      await app.db.update(consignments).set({
+        status: 'DISPATCHED',
+        dispatchDate: now,
+        sorExpiryDate,
+        courierCompany: body?.courierCompany,
+        courierWaybill: body?.courierWaybill,
+      }).where(eq(consignments.id, order.consignmentId));
+    }
 
     // Auto-create courier shipment record for partner tracking
     if (body?.courierWaybill) {

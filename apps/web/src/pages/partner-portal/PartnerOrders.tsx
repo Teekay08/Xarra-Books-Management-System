@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { partnerApi, type PaginatedResponse } from '../../lib/partner-api';
+import { partnerApi, getPartnerToken, type PaginatedResponse } from '../../lib/partner-api';
 import { downloadCsv } from '../../lib/export';
 import { ExportButton } from '../../components/ExportButton';
 import { DateRangeExportModal } from '../../components/DateRangeExportModal';
@@ -49,27 +49,31 @@ export function PartnerOrders() {
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<'csv' | 'pdf'>('csv');
   const [exporting, setExporting] = useState(false);
   const [branchFilter, setBranchFilter] = useState('');
+
+  async function fetchFilteredOrders(from: string, to: string) {
+    const params = new URLSearchParams({ page: '1', limit: '10000' });
+    if (statusFilter) params.set('status', statusFilter);
+    const res = await partnerApi<PaginatedResponse<Order>>(`/orders?${params}`);
+
+    let filtered = res.data;
+    if (from) {
+      const fromDate = new Date(from);
+      filtered = filtered.filter((o) => new Date(o.createdAt) >= fromDate);
+    }
+    if (to) {
+      const toDate = new Date(to + 'T23:59:59');
+      filtered = filtered.filter((o) => new Date(o.createdAt) <= toDate);
+    }
+    return filtered;
+  }
 
   async function handleExportCsv(from: string, to: string) {
     setExporting(true);
     try {
-      // Fetch all orders within date range (no pagination limit)
-      const params = new URLSearchParams({ page: '1', limit: '10000' });
-      if (statusFilter) params.set('status', statusFilter);
-      const res = await partnerApi<PaginatedResponse<Order>>(`/orders?${params}`);
-
-      let filtered = res.data;
-      if (from) {
-        const fromDate = new Date(from);
-        filtered = filtered.filter((o) => new Date(o.createdAt) >= fromDate);
-      }
-      if (to) {
-        const toDate = new Date(to + 'T23:59:59');
-        filtered = filtered.filter((o) => new Date(o.createdAt) <= toDate);
-      }
-
+      const filtered = await fetchFilteredOrders(from, to);
       downloadCsv(
         filtered.map((o) => ({
           number: o.number,
@@ -95,6 +99,85 @@ export function PartnerOrders() {
       // handled by partnerApi
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleExportPdf(from: string, to: string) {
+    setExporting(true);
+    try {
+      const filtered = await fetchFilteredOrders(from, to);
+      const rows = filtered.map((o) => `
+        <tr>
+          <td style="padding:8px;border-bottom:1px solid #eee">${o.number}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee">${o.customerPoNumber ?? '-'}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee">${new Date(o.createdAt).toLocaleDateString('en-ZA')}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee">${o.branch?.name ?? '-'}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee">${o.status}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${o.lines?.length ?? 0}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">R ${Number(o.total).toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+      const grandTotal = filtered.reduce((s, o) => s + Number(o.total), 0);
+      const dateRange = from && to ? `${from} to ${to}` : from ? `From ${from}` : to ? `Up to ${to}` : 'All dates';
+
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+        <style>
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a1a; font-size: 12px; }
+          h1 { color: #8B1A1A; font-size: 22px; margin-bottom: 4px; }
+          .meta { color: #666; font-size: 11px; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { text-align: left; padding: 10px 8px; border-bottom: 2px solid #8B1A1A; font-size: 11px; text-transform: uppercase; color: #555; }
+          .summary { margin-top: 20px; text-align: right; font-size: 14px; font-weight: bold; }
+          .footer { margin-top: 30px; font-size: 10px; color: #999; border-top: 1px solid #ddd; padding-top: 10px; }
+        </style>
+      </head><body>
+        <h1>Purchase Orders</h1>
+        <div class="meta">${dateRange} &mdash; ${filtered.length} orders &mdash; Generated ${new Date().toLocaleDateString('en-ZA')}</div>
+        <table>
+          <thead><tr>
+            <th>Order #</th><th>PO #</th><th>Date</th><th>Branch</th><th>Status</th>
+            <th style="text-align:right">Items</th><th style="text-align:right">Total</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="summary">Grand Total: R ${grandTotal.toFixed(2)}</div>
+        <div class="footer">Xarra Books &mdash; We mainstream the African book</div>
+      </body></html>`;
+
+      // Send HTML to a lightweight print window
+      const printWin = window.open('', '_blank');
+      if (printWin) {
+        printWin.document.write(html);
+        printWin.document.close();
+        printWin.focus();
+        printWin.print();
+      }
+    } catch {
+      // handled
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function downloadOrderPdf(orderId: string, orderNumber: string) {
+    try {
+      const token = getPartnerToken();
+      const res = await fetch(`/api/v1/partner-portal/orders/${orderId}/pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('PDF generation failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${orderNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download PDF. Please try again.');
     }
   }
 
@@ -170,8 +253,8 @@ export function PartnerOrders() {
           <ExportButton
             loading={exporting}
             options={[
-              { label: 'Export CSV', onClick: () => setExportModalOpen(true) },
-              { label: 'Print / PDF', onClick: () => window.print() },
+              { label: 'Export CSV', onClick: () => { setExportMode('csv'); setExportModalOpen(true); } },
+              { label: 'Export PDF List', onClick: () => { setExportMode('pdf'); setExportModalOpen(true); } },
             ]}
           />
         </div>
@@ -273,9 +356,29 @@ export function PartnerOrders() {
                             onClick: () => navigator.clipboard.writeText(order.number),
                           },
                           {
+                            label: 'Download PDF',
+                            icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+                            onClick: () => downloadOrderPdf(order.id, order.number),
+                          },
+                          {
                             label: 'Print',
                             icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>,
-                            onClick: () => window.print(),
+                            onClick: async () => {
+                              try {
+                                const token = getPartnerToken();
+                                const res = await fetch(`/api/v1/partner-portal/orders/${order.id}/pdf`, {
+                                  headers: token ? { Authorization: `Bearer ${token}` } : {},
+                                });
+                                if (!res.ok) throw new Error('Failed');
+                                const blob = await res.blob();
+                                const url = URL.createObjectURL(blob);
+                                const w = window.open(url);
+                                if (w) { w.onload = () => { w.focus(); w.print(); }; }
+                                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                              } catch {
+                                alert('Failed to load order for printing.');
+                              }
+                            },
                           },
                           {
                             label: 'Delete Order',
@@ -330,8 +433,8 @@ export function PartnerOrders() {
       <DateRangeExportModal
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
-        onExport={handleExportCsv}
-        title="Export Orders"
+        onExport={exportMode === 'csv' ? handleExportCsv : handleExportPdf}
+        title={exportMode === 'csv' ? 'Export Orders (CSV)' : 'Export Orders (PDF)'}
       />
     </div>
   );

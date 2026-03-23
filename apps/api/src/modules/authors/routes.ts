@@ -241,8 +241,13 @@ export async function authorRoutes(app: FastifyInstance) {
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      return reply.badRequest(`Failed to create portal user: ${err}`);
+      const errText = await response.text();
+      let parsed: any;
+      try { parsed = JSON.parse(errText); } catch { parsed = null; }
+      if (parsed?.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
+        return reply.badRequest('A user with this email already exists. Use a different email address.');
+      }
+      return reply.badRequest(`Failed to create portal user: ${errText}`);
     }
 
     const { user: newUser } = await response.json() as { user: { id: string } };

@@ -126,6 +126,8 @@ export const partnerOrders = pgTable('partner_orders', {
   dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   deliverySignedBy: varchar('delivery_signed_by', { length: 255 }),
+  deliveryCondition: varchar('delivery_condition', { length: 20 }), // GOOD | DAMAGED | PARTIAL | MIXED
+  deliveryNotes: text('delivery_notes'), // partner's notes on delivery condition
   // Admin fields
   confirmedById: text('confirmed_by_id'),
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),

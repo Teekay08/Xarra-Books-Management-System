@@ -292,6 +292,16 @@ export function PartnerReturnDetail() {
           <p className="text-sm text-gray-700 whitespace-pre-wrap">{returnReq.notes}</p>
         </div>
       )}
+
+      {/* Bottom navigation */}
+      <div className="flex justify-end pt-2">
+        <Link
+          to="/partner/returns"
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary/90"
+        >
+          Done — Back to Returns
+        </Link>
+      </div>
     </div>
   );
 }

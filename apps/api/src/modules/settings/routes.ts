@@ -408,7 +408,7 @@ export async function settingsRoutes(app: FastifyInstance) {
         name: body.name,
         role: body.role,
         token,
-        invitedBy: request.user!.id,
+        invitedBy: request.session!.user.id,
         expiresAt,
       })
       .returning();

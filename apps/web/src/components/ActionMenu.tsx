@@ -16,7 +16,7 @@ interface ActionMenuProps {
 
 export function ActionMenu({ items }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState({ top: 0, right: 0, left: 0 });
+  const [coords, setCoords] = useState({ top: 0, right: 0, direction: 'down' as 'up' | 'down' });
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -37,14 +37,22 @@ export function ActionMenu({ items }: ActionMenuProps) {
   const visible = items.filter((i) => !i.hidden);
   if (visible.length === 0) return null;
 
+  // Estimate dropdown height: ~36px per item + 8px padding
+  const estimatedHeight = visible.length * 36 + 8;
+
   function handleToggle() {
     if (!open && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const spaceOnRight = window.innerWidth - rect.right;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      // Pop down if enough space below, otherwise pop up
+      const direction = spaceBelow >= estimatedHeight + 8 || spaceBelow >= spaceAbove ? 'down' : 'up';
+
       setCoords({
-        top: rect.bottom + 4,
-        right: spaceOnRight >= 192 ? window.innerWidth - rect.right : 0,
-        left: spaceOnRight < 192 ? rect.left : 0,
+        top: direction === 'down' ? rect.bottom + 4 : rect.top - 4,
+        right: Math.max(0, window.innerWidth - rect.right),
+        direction,
       });
     }
     setOpen((prev) => !prev);
@@ -69,10 +77,11 @@ export function ActionMenu({ items }: ActionMenuProps) {
           ref={dropdownRef}
           style={{
             position: 'fixed',
-            top: coords.top,
-            right: coords.right || undefined,
-            left: coords.right ? undefined : coords.left,
+            right: coords.right,
             zIndex: 9999,
+            ...(coords.direction === 'down'
+              ? { top: coords.top }
+              : { bottom: window.innerHeight - coords.top }),
           }}
           className="w-48 rounded-md bg-white shadow-lg border border-gray-200 py-1"
         >

@@ -131,11 +131,6 @@ export function renderSorProformaHtml(data: SorProformaData): string {
       ${logoHtml}
       <div class="company">${company.name}</div>
       ${company.tradingAs ? `<div class="company-sub">Trading as ${company.tradingAs}</div>` : ''}
-      ${companyAddressHtml ? `<div class="company-sub">${companyAddressHtml}</div>` : '<div class="company-sub">Midrand, Gauteng, South Africa</div>'}
-      ${company.vatNumber ? `<div class="company-sub">VAT: ${company.vatNumber}</div>` : ''}
-      ${company.registrationNumber ? `<div class="company-sub">Reg: ${company.registrationNumber}</div>` : ''}
-      ${company.phone ? `<div class="company-sub">Tel: ${company.phone}</div>` : ''}
-      ${company.email ? `<div class="company-sub">Email: ${company.email}</div>` : ''}
     </div>
     <div>
       <div class="doc-title">SOR PRO-FORMA<br>INVOICE</div>
@@ -167,6 +162,15 @@ export function renderSorProformaHtml(data: SorProformaData): string {
 
   <div class="parties">
     <div class="party">
+      <h3>From</h3>
+      <p><strong>${company.name}</strong></p>
+      ${companyAddressHtml ? companyAddressHtml : '<p>Midrand, Gauteng, South Africa</p>'}
+      ${company.vatNumber ? `<p>VAT: ${company.vatNumber}</p>` : ''}
+      ${company.registrationNumber ? `<p>Reg: ${company.registrationNumber}</p>` : ''}
+      ${company.phone ? `<p>Tel: ${company.phone}</p>` : ''}
+      ${company.email ? `<p>${company.email}</p>` : ''}
+    </div>
+    <div class="party">
       <h3>Deliver To</h3>
       <p><strong>${data.recipient.name}</strong></p>
       ${data.recipient.branchName ? `<p><em>Branch: ${data.recipient.branchName}</em></p>` : ''}
@@ -174,11 +178,7 @@ export function renderSorProformaHtml(data: SorProformaData): string {
       ${recipientAddressHtml}
       ${data.recipient.vatNumber ? `<p>VAT: ${data.recipient.vatNumber}</p>` : ''}
       ${data.recipient.contactEmail ? `<p>${data.recipient.contactEmail}</p>` : ''}
-    </div>
-    <div class="party" style="text-align:right">
-      <h3>Summary</h3>
-      <p>Total Titles: <strong>${data.lines.length}</strong></p>
-      <p>Total Copies: <strong>${totalQty}</strong></p>
+      <p style="margin-top:8px;font-size:11px;color:#666">Titles: <strong>${data.lines.length}</strong> · Copies: <strong>${totalQty}</strong></p>
     </div>
   </div>
 

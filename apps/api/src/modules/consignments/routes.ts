@@ -18,9 +18,15 @@ export async function consignmentRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search, sortOrder } = query;
+    const { partnerId } = request.query as { partnerId?: string };
     const offset = (page - 1) * limit;
 
+    const where = partnerId
+      ? eq(consignments.partnerId, partnerId)
+      : undefined;
+
     const items = await app.db.query.consignments.findMany({
+      where: where ? () => where : undefined,
       with: { partner: true, lines: { with: { title: true } } },
       orderBy: sortOrder === 'asc'
         ? (c, { asc }) => [asc(c.dispatchDate)]
@@ -31,7 +37,8 @@ export async function consignmentRoutes(app: FastifyInstance) {
 
     const countResult = await app.db
       .select({ count: sql<number>`count(*)` })
-      .from(consignments);
+      .from(consignments)
+      .where(where);
 
     return {
       data: items,
@@ -58,6 +65,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
     preHandler: requireRole('admin', 'operations'),
   }, async (request, reply) => {
     const body = createConsignmentSchema.parse(request.body);
+    const { partnerOrderId } = request.body as { partnerOrderId?: string };
 
     // Get partner for discount snapshot
     const partner = await app.db.query.channelPartners.findFirst({
@@ -83,7 +91,8 @@ export async function consignmentRoutes(app: FastifyInstance) {
     const proformaNumber = `SOR-${yearStr}-${String(nextNum).padStart(4, '0')}`;
 
     const userId = request.session?.user?.id;
-    const shouldAutoDispatch = !!body.dispatchDate;
+    // When created from a partner order, always start as DRAFT — dispatch happens via the order workflow
+    const shouldAutoDispatch = partnerOrderId ? false : !!body.dispatchDate;
     const dispatchDate = body.dispatchDate ? new Date(body.dispatchDate) : undefined;
 
     // Calculate SOR expiry if dispatching
@@ -132,6 +141,14 @@ export async function consignmentRoutes(app: FastifyInstance) {
 
       return { ...con, lines };
     });
+
+    // Auto-link back to partner order if created from one
+    if (partnerOrderId) {
+      await app.db.update(partnerOrders).set({
+        consignmentId: result.id,
+        updatedAt: new Date(),
+      }).where(eq(partnerOrders.id, partnerOrderId));
+    }
 
     // Notifications for auto-dispatched consignment
     if (shouldAutoDispatch) {

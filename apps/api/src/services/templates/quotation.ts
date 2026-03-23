@@ -120,10 +120,6 @@ export function renderQuotationHtml(data: QuotationData): string {
       ${logoHtml}
       <div class="company">${company.name}</div>
       ${company.tradingAs ? `<div class="company-sub">Trading as ${company.tradingAs}</div>` : ''}
-      ${companyAddressHtml ? `<div class="company-sub">${companyAddressHtml}</div>` : '<div class="company-sub">Midrand, Gauteng, South Africa</div>'}
-      ${company.vatNumber ? `<div class="company-sub">VAT: ${company.vatNumber}</div>` : ''}
-      ${company.phone ? `<div class="company-sub">Tel: ${company.phone}</div>` : ''}
-      ${company.email ? `<div class="company-sub">Email: ${company.email}</div>` : ''}
     </div>
     <div>
       <div class="doc-title">QUOTATION</div>
@@ -136,6 +132,15 @@ export function renderQuotationHtml(data: QuotationData): string {
   </div>
 
   <div class="parties">
+    <div class="party">
+      <h3>From</h3>
+      <p><strong>${company.name}</strong></p>
+      ${companyAddressHtml ? companyAddressHtml : '<p>Midrand, Gauteng, South Africa</p>'}
+      ${company.vatNumber ? `<p>VAT: ${company.vatNumber}</p>` : ''}
+      ${company.registrationNumber ? `<p>Reg: ${company.registrationNumber}</p>` : ''}
+      ${company.phone ? `<p>Tel: ${company.phone}</p>` : ''}
+      ${company.email ? `<p>${company.email}</p>` : ''}
+    </div>
     <div class="party">
       <h3>Prepared For</h3>
       <p><strong>${data.recipient.name}</strong></p>
