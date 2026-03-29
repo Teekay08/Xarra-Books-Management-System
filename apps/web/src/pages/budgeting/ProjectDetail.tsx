@@ -112,6 +112,21 @@ export function ProjectDetail() {
     enabled: activeTab === 'variance',
   });
 
+  const statusMutation = useMutation({
+    mutationFn: (action: string) => api(`/budgeting/projects/${id}/${action}`, { method: 'POST' }),
+    onSuccess: () => { setError(''); queryClient.invalidateQueries({ queryKey: ['budgeting-project', id] }); },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const emailMutation = useMutation({
+    mutationFn: () => api(`/budgeting/projects/${id}/email`, {
+      method: 'POST',
+      body: JSON.stringify({ recipientEmail: emailTo, message: emailMsg }),
+    }),
+    onSuccess: () => { setShowEmailModal(false); setEmailTo(''); setEmailMsg(''); },
+    onError: (err: Error) => setError(err.message),
+  });
+
   const project = data?.data;
   if (isLoading) return <div className="p-8 text-gray-400">Loading...</div>;
   if (!project) return <div className="p-8 text-gray-500">Project not found.</div>;
@@ -129,21 +144,6 @@ export function ProjectDetail() {
     { key: 'variance', label: 'Variance' },
     { key: 'estimate', label: 'AI Estimate' },
   ] as const;
-
-  const statusMutation = useMutation({
-    mutationFn: (action: string) => api(`/budgeting/projects/${id}/${action}`, { method: 'POST' }),
-    onSuccess: () => { setError(''); queryClient.invalidateQueries({ queryKey: ['budgeting-project', id] }); },
-    onError: (err: Error) => setError(err.message),
-  });
-
-  const emailMutation = useMutation({
-    mutationFn: () => api(`/budgeting/projects/${id}/email`, {
-      method: 'POST',
-      body: JSON.stringify({ recipientEmail: emailTo, message: emailMsg }),
-    }),
-    onSuccess: () => { setShowEmailModal(false); setEmailTo(''); setEmailMsg(''); },
-    onError: (err: Error) => setError(err.message),
-  });
 
   return (
     <div>
