@@ -73,9 +73,10 @@ function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
-function varianceColor(value: number): string {
-  if (value > 0) return '#166534';
-  if (value < 0) return '#991b1b';
+function varianceColor(value: number | string): string {
+  const n = Number(value);
+  if (n > 0) return '#166534';
+  if (n < 0) return '#991b1b';
   return '#1a1a1a';
 }
 
@@ -116,17 +117,17 @@ export function renderBudgetReportHtml(data: BudgetReportData): string {
       <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px">${li.category}</td>
       <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px">${li.classification}</td>
       <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px">${li.source}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right">${li.estimatedHours.toFixed(1)}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right">${formatCurrency(li.hourlyRate)}</td>
+      <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right">${li.estimatedHours ? Number(li.estimatedHours).toFixed(1) : '—'}</td>
+      <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right">${li.hourlyRate ? formatCurrency(li.hourlyRate) : '—'}</td>
       <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right">${formatCurrency(li.estimated)}</td>
       <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right">${formatCurrency(li.actual)}</td>
       <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right;color:${varianceColor(li.variance)}">${formatCurrency(li.variance)}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right;color:${varianceColor(li.variancePercent)}">${li.variancePercent.toFixed(1)}%</td>
+      <td style="padding:6px;border-bottom:1px solid #eee;font-size:11px;text-align:right;color:${varianceColor(li.variancePercent)}">${Number(li.variancePercent).toFixed(1)}%</td>
     </tr>
   `).join('');
 
-  const variancePct = data.summary.totalBudget !== 0
-    ? ((data.summary.variance / data.summary.totalBudget) * 100).toFixed(1)
+  const variancePct = Number(data.summary.totalBudget) !== 0
+    ? ((Number(data.summary.variance) / Number(data.summary.totalBudget)) * 100).toFixed(1)
     : '0.0';
 
   return `<!DOCTYPE html>

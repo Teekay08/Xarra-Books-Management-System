@@ -71,7 +71,7 @@ export function renderTimesheetHtml(data: TimesheetData): string {
       <td style="padding:8px;border-bottom:1px solid #eee">${formatShortDate(e.workDate)}</td>
       <td style="padding:8px;border-bottom:1px solid #eee">${e.milestoneName}</td>
       <td style="padding:8px;border-bottom:1px solid #eee">${e.description}</td>
-      <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${e.hours.toFixed(1)}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${Number(e.hours).toFixed(1)}</td>
     </tr>
   `).join('');
 
@@ -134,7 +134,7 @@ export function renderTimesheetHtml(data: TimesheetData): string {
 
   <div class="period-bar">
     <span><strong>Period:</strong> ${formatDate(data.periodFrom)} &mdash; ${formatDate(data.periodTo)}</span>
-    <span><strong>Total Hours:</strong> ${data.totalHours.toFixed(1)}</span>
+    <span><strong>Total Hours:</strong> ${Number(data.totalHours).toFixed(1)}</span>
   </div>
 
   <table>
@@ -150,7 +150,7 @@ export function renderTimesheetHtml(data: TimesheetData): string {
       ${entriesHtml}
       <tr class="total-row">
         <td colspan="3">Total Hours</td>
-        <td style="text-align:right">${data.totalHours.toFixed(1)}</td>
+        <td style="text-align:right">${Number(data.totalHours).toFixed(1)}</td>
       </tr>
     </tbody>
   </table>
