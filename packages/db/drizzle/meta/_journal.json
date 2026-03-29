@@ -22,6 +22,20 @@
       "when": 1774857600000,
       "tag": "0005_add_minimum_order_qty",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774778319266,
+      "tag": "0003_sticky_the_hunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774800278395,
+      "tag": "0004_gigantic_shockwave",
+      "breakpoints": true
     }
   ]
 }

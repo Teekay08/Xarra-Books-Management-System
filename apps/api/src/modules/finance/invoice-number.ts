@@ -145,6 +145,48 @@ export async function nextPartnerReturnRequestNumber(db: NodePgDatabase<Record<s
   return `PRR-${year}-${String(nextNum).padStart(4, '0')}`;
 }
 
+export async function nextProjectNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `PRJ-${year}-%`;
+
+  const result = await db.execute<{ maxNum: string | null }>(sql`
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
+    FROM projects
+    WHERE number LIKE ${pattern}
+  `);
+
+  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
+  return `PRJ-${year}-${String(nextNum).padStart(4, '0')}`;
+}
+
+export async function nextTimesheetNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `TS-${year}-%`;
+
+  const result = await db.execute<{ maxNum: string | null }>(sql`
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
+    FROM timesheets
+    WHERE number LIKE ${pattern}
+  `);
+
+  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
+  return `TS-${year}-${String(nextNum).padStart(4, '0')}`;
+}
+
+export async function nextSowNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `SOW-${year}-%`;
+
+  const result = await db.execute<{ maxNum: string | null }>(sql`
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
+    FROM sow_documents
+    WHERE number LIKE ${pattern}
+  `);
+
+  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
+  return `SOW-${year}-${String(nextNum).padStart(4, '0')}`;
+}
+
 export async function nextReturnNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
   const year = new Date().getFullYear();
   const pattern = `RA-${year}-%`;

@@ -12,6 +12,15 @@ import {
   USER_ROLES,
   DISCOUNT_TYPES,
   REMITTANCE_STATUSES,
+  PROJECT_STATUSES,
+  PROJECT_TYPES,
+  CONTRACT_TYPES,
+  MILESTONE_STATUSES,
+  SOURCE_TYPES,
+  COST_CLASSIFICATIONS,
+  RATE_CARD_TYPES,
+  TIMESHEET_STATUSES,
+  SOW_STATUSES,
 } from '../constants.js';
 
 // === Author Schemas ===
@@ -483,4 +492,198 @@ export const createCourierShipmentSchema = z.object({
   packageCount: z.number().int().positive().default(1),
   totalWeightKg: z.number().positive().optional(),
   estimatedDelivery: z.string().or(z.date()).optional(),
+});
+
+// === Budgeting Schemas ===
+
+export const createProjectSchema = z.object({
+  name: z.string().min(1, 'Project name is required'),
+  titleId: z.string().uuid().optional().nullable(),
+  authorId: z.string().uuid().optional().nullable(),
+  projectManager: z.string().optional().nullable(),
+  projectType: z.enum(PROJECT_TYPES).default('NEW_TITLE'),
+  contractType: z.enum(CONTRACT_TYPES).default('TRADITIONAL'),
+  authorContribution: z.number().min(0).default(0),
+  description: z.string().optional().nullable(),
+  startDate: z.string().or(z.date()).optional().nullable(),
+  targetCompletionDate: z.string().or(z.date()).optional().nullable(),
+  currency: z.string().max(3).default('ZAR'),
+  notes: z.string().optional().nullable(),
+});
+
+export const updateProjectSchema = createProjectSchema.partial().extend({
+  status: z.enum(PROJECT_STATUSES).optional(),
+});
+
+export const createMilestoneSchema = z.object({
+  code: z.string().min(1, 'Code is required'),
+  name: z.string().min(1, 'Name is required'),
+  sortOrder: z.number().int().min(0).default(0),
+  plannedStartDate: z.string().or(z.date()).optional().nullable(),
+  plannedEndDate: z.string().or(z.date()).optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+export const updateMilestoneSchema = createMilestoneSchema.partial().extend({
+  status: z.enum(MILESTONE_STATUSES).optional(),
+  actualStartDate: z.string().or(z.date()).optional().nullable(),
+  actualEndDate: z.string().or(z.date()).optional().nullable(),
+});
+
+export const createBudgetLineItemSchema = z.object({
+  milestoneId: z.string().uuid().optional().nullable(),
+  category: z.string().min(1, 'Category is required'),
+  costClassification: z.enum(COST_CLASSIFICATIONS).default('PUBLISHING'),
+  customCategory: z.string().optional().nullable(),
+  description: z.string().min(1, 'Description is required'),
+  sourceType: z.enum(SOURCE_TYPES).default('INTERNAL'),
+  estimatedHours: z.number().min(0).optional().nullable(),
+  hourlyRate: z.number().min(0).optional().nullable(),
+  estimatedAmount: z.number().positive('Amount must be positive'),
+  rateCardId: z.string().uuid().optional().nullable(),
+  staffUserId: z.string().optional().nullable(),
+  contractorId: z.string().uuid().optional().nullable(),
+  externalQuote: z.number().min(0).optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+export const updateBudgetLineItemSchema = createBudgetLineItemSchema.partial();
+
+export const createActualCostSchema = z.object({
+  milestoneId: z.string().uuid().optional().nullable(),
+  budgetLineItemId: z.string().uuid().optional().nullable(),
+  category: z.string().min(1, 'Category is required'),
+  costClassification: z.enum(COST_CLASSIFICATIONS).default('PUBLISHING'),
+  customCategory: z.string().optional().nullable(),
+  description: z.string().min(1, 'Description is required'),
+  sourceType: z.enum(SOURCE_TYPES).default('INTERNAL'),
+  amount: z.number().positive('Amount must be positive'),
+  vendor: z.string().optional().nullable(),
+  invoiceRef: z.string().optional().nullable(),
+  paidDate: z.string().or(z.date()).optional().nullable(),
+  receiptUrl: z.string().optional().nullable(),
+  staffUserId: z.string().optional().nullable(),
+  contractorId: z.string().uuid().optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+export const createRateCardSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  type: z.enum(RATE_CARD_TYPES),
+  role: z.string().min(1, 'Role is required'),
+  hourlyRateZar: z.number().positive('Hourly rate must be positive'),
+  dailyRateZar: z.number().positive().optional().nullable(),
+  staffUserId: z.string().optional().nullable(),
+  supplierId: z.string().uuid().optional().nullable(),
+  effectiveFrom: z.string().or(z.date()),
+  effectiveTo: z.string().or(z.date()).optional().nullable(),
+  currency: z.string().max(3).default('ZAR'),
+  notes: z.string().optional().nullable(),
+});
+
+export const updateRateCardSchema = createRateCardSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
+
+export const createTimesheetSchema = z.object({
+  projectId: z.string().uuid(),
+  userId: z.string(),
+  periodFrom: z.string().or(z.date()),
+  periodTo: z.string().or(z.date()),
+  entries: z.array(z.object({
+    milestoneId: z.string().uuid(),
+    budgetLineItemId: z.string().uuid().optional().nullable(),
+    workDate: z.string().or(z.date()),
+    hours: z.number().positive().max(24),
+    description: z.string().min(1),
+  })).optional(),
+  notes: z.string().optional().nullable(),
+});
+
+export const updateTimesheetSchema = z.object({
+  entries: z.array(z.object({
+    id: z.string().uuid().optional(), // existing entry to update
+    milestoneId: z.string().uuid(),
+    budgetLineItemId: z.string().uuid().optional().nullable(),
+    workDate: z.string().or(z.date()),
+    hours: z.number().positive().max(24),
+    description: z.string().min(1),
+  })),
+  notes: z.string().optional().nullable(),
+});
+
+export const createSowSchema = z.object({
+  projectId: z.string().uuid(),
+  contractorId: z.string().uuid().optional().nullable(),
+  staffUserId: z.string().optional().nullable(),
+  scope: z.string().min(1, 'Scope is required'),
+  deliverables: z.array(z.object({
+    description: z.string().min(1),
+    dueDate: z.string().or(z.date()),
+    acceptanceCriteria: z.string().min(1),
+  })).min(1, 'At least one deliverable is required'),
+  timeline: z.object({
+    startDate: z.string().or(z.date()),
+    endDate: z.string().or(z.date()),
+    milestones: z.array(z.object({
+      name: z.string(),
+      date: z.string().or(z.date()),
+    })).default([]),
+  }),
+  costBreakdown: z.array(z.object({
+    description: z.string().min(1),
+    hours: z.number().min(0),
+    rate: z.number().min(0),
+    total: z.number().positive(),
+  })).min(1, 'At least one cost line is required'),
+  totalAmount: z.number().positive(),
+  terms: z.string().optional().nullable(),
+  validUntil: z.string().or(z.date()).optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+export const updateSowSchema = createSowSchema.partial();
+
+// === AI Cost Estimation Schemas ===
+
+export const costEstimateRequestSchema = z.object({
+  pageCount: z.number().int().positive().max(10000).optional(),
+  wordCount: z.number().int().positive().optional(),
+  complexityScore: z.number().int().min(1).max(5).optional(),
+});
+
+export const applyEstimatesSchema = z.object({
+  estimates: z.array(z.object({
+    milestoneId: z.string().uuid(),
+    estimatedHours: z.number().min(0),
+    hourlyRate: z.number().min(0),
+    estimatedAmount: z.number().positive(),
+    sourceType: z.enum(SOURCE_TYPES),
+    rateCardId: z.string().uuid().optional().nullable(),
+    description: z.string().min(1),
+    category: z.string().min(1),
+  })).min(1, 'At least one estimate is required'),
+});
+
+// === SOW/Email Validation Schemas ===
+
+export const sendSowEmailSchema = z.object({
+  sentTo: z.string().min(1),
+});
+
+export const sendDocumentEmailSchema = z.object({
+  recipientEmail: z.string().email('Valid email is required'),
+  message: z.string().optional(),
+});
+
+export const rejectTimesheetSchema = z.object({
+  reason: z.string().min(1, 'Rejection reason is required'),
+});
+
+export const voidActualCostSchema = z.object({
+  reason: z.string().min(1, 'Void reason is required'),
+});
+
+export const applyMilestoneTemplateSchema = z.object({
+  templateType: z.enum(PROJECT_TYPES),
 });

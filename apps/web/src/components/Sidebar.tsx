@@ -66,6 +66,16 @@ const allSections: NavSection[] = [
     ],
   },
   {
+    label: 'Project Budgeting',
+    items: [
+      { name: 'Budget Dashboard', href: '/budgeting', module: 'budgeting' },
+      { name: 'Projects', href: '/budgeting/projects', module: 'budgeting' },
+      { name: 'Rate Cards', href: '/budgeting/rate-cards', module: 'budgeting' },
+      { name: 'Timesheets', href: '/budgeting/timesheets', module: 'budgeting' },
+      { name: 'SOW Documents', href: '/budgeting/sow', module: 'budgeting' },
+    ],
+  },
+  {
     label: 'Analytics',
     items: [{ name: 'Reports', href: '/reports', module: 'reports' }],
   },

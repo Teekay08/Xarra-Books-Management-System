@@ -128,6 +128,19 @@ import { CourierShipmentsAdmin } from './pages/partners/CourierShipmentsAdmin';
 import { NotificationList } from './pages/notifications/NotificationList';
 import { RoyaltiesAdmin } from './pages/royalties/RoyaltiesAdmin';
 import { DocumentsSearch } from './pages/documents/DocumentsSearch';
+// Budgeting
+import { BudgetDashboard } from './pages/budgeting/BudgetDashboard';
+import { ProjectList } from './pages/budgeting/ProjectList';
+import { ProjectForm } from './pages/budgeting/ProjectForm';
+import { ProjectDetail } from './pages/budgeting/ProjectDetail';
+import { RateCardList } from './pages/budgeting/RateCardList';
+import { RateCardForm } from './pages/budgeting/RateCardForm';
+import { TimesheetList } from './pages/budgeting/TimesheetList';
+import { SowList } from './pages/budgeting/SowList';
+import { SowCreate } from './pages/budgeting/SowCreate';
+import { SowDetail } from './pages/budgeting/SowDetail';
+import { TimesheetCreate } from './pages/budgeting/TimesheetCreate';
+import { TimesheetDetail } from './pages/budgeting/TimesheetDetail';
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
@@ -242,6 +255,22 @@ const router = createBrowserRouter([
       { path: 'returns', element: <ReturnsList /> },
       { path: 'returns/new', element: <ReturnsCreate /> },
       { path: 'returns/:id', element: <ReturnsDetail /> },
+
+      // Project Budgeting
+      { path: 'budgeting', element: <BudgetDashboard /> },
+      { path: 'budgeting/projects', element: <ProjectList /> },
+      { path: 'budgeting/projects/new', element: <ProjectForm /> },
+      { path: 'budgeting/projects/:id', element: <ProjectDetail /> },
+      { path: 'budgeting/projects/:id/edit', element: <ProjectForm /> },
+      { path: 'budgeting/rate-cards', element: <RateCardList /> },
+      { path: 'budgeting/rate-cards/new', element: <RateCardForm /> },
+      { path: 'budgeting/rate-cards/:id/edit', element: <RateCardForm /> },
+      { path: 'budgeting/timesheets', element: <TimesheetList /> },
+      { path: 'budgeting/timesheets/new', element: <TimesheetCreate /> },
+      { path: 'budgeting/timesheets/:id', element: <TimesheetDetail /> },
+      { path: 'budgeting/sow', element: <SowList /> },
+      { path: 'budgeting/sow/new', element: <SowCreate /> },
+      { path: 'budgeting/sow/:id', element: <SowDetail /> },
 
       // Notifications
       { path: 'notifications', element: <NotificationList /> },

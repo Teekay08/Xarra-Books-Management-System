@@ -77,6 +77,9 @@ export const DOCUMENT_PREFIXES = {
   PACKING_LIST: 'PKL',
   PARTNER_ORDER: 'POR',
   PARTNER_RETURN_REQUEST: 'PRR',
+  PROJECT: 'PRJ',
+  SOW: 'SOW',
+  TIMESHEET: 'TS',
 } as const;
 
 export const VAT_RATE = 0.15; // South Africa VAT rate
@@ -159,6 +162,9 @@ export const NOTIFICATION_TYPES = [
   'PURCHASE_ORDER_ISSUED', 'PURCHASE_ORDER_RECEIVED', 'PURCHASE_ORDER_CANCELLED',
   'REMITTANCE_MATCHED',
   'RETURN_PROCESSED',
+  'PROJECT_CREATED', 'PROJECT_BUDGET_APPROVED', 'PROJECT_OVER_BUDGET',
+  'TIMESHEET_SUBMITTED', 'TIMESHEET_APPROVED', 'TIMESHEET_REJECTED',
+  'SOW_SENT', 'SOW_ACCEPTED',
   'SYSTEM',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -196,6 +202,14 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   PURCHASE_ORDER_CANCELLED: 'Purchase Order Cancelled',
   REMITTANCE_MATCHED: 'Remittance Matched',
   RETURN_PROCESSED: 'Return Processed',
+  PROJECT_CREATED: 'Project Created',
+  PROJECT_BUDGET_APPROVED: 'Project Budget Approved',
+  PROJECT_OVER_BUDGET: 'Project Over Budget',
+  TIMESHEET_SUBMITTED: 'Timesheet Submitted',
+  TIMESHEET_APPROVED: 'Timesheet Approved',
+  TIMESHEET_REJECTED: 'Timesheet Rejected',
+  SOW_SENT: 'SOW Sent',
+  SOW_ACCEPTED: 'SOW Accepted',
   SYSTEM: 'System Notification',
 };
 
@@ -217,6 +231,96 @@ export const PARTNER_NOTIFICATION_TYPE_LABELS: Record<PartnerNotificationType, s
   CREDIT_NOTE_ISSUED: 'Credit Note Issued',
   SYSTEM: 'System Notification',
 };
+
+// === Budgeting Constants ===
+
+export const PROJECT_STATUSES = ['PLANNING', 'BUDGETED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+export const PROJECT_TYPES = ['NEW_TITLE', 'REPRINT', 'REVISED_EDITION', 'TRANSLATION', 'ANTHOLOGY', 'CUSTOM'] as const;
+export type ProjectType = (typeof PROJECT_TYPES)[number];
+
+export const CONTRACT_TYPES = ['TRADITIONAL', 'HYBRID'] as const;
+export type ContractType = (typeof CONTRACT_TYPES)[number];
+
+export const MILESTONE_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
+export type MilestoneStatus = (typeof MILESTONE_STATUSES)[number];
+
+export const SOURCE_TYPES = ['INTERNAL', 'EXTERNAL'] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
+
+export const COST_CLASSIFICATIONS = ['PUBLISHING', 'OPERATIONAL', 'LAUNCH', 'MARKETING'] as const;
+export type CostClassification = (typeof COST_CLASSIFICATIONS)[number];
+
+export const RATE_CARD_TYPES = ['INTERNAL', 'EXTERNAL'] as const;
+export type RateCardType = (typeof RATE_CARD_TYPES)[number];
+
+export const TIMESHEET_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'] as const;
+export type TimesheetStatus = (typeof TIMESHEET_STATUSES)[number];
+
+export const SOW_STATUSES = ['DRAFT', 'SENT', 'ACCEPTED', 'EXPIRED', 'CANCELLED'] as const;
+export type SowStatus = (typeof SOW_STATUSES)[number];
+
+export const BUDGET_CATEGORIES = [
+  'EDITORIAL', 'TYPESETTING', 'COVER_DESIGN', 'PROOFREADING',
+  'PRINTING', 'ISBN', 'LABOR', 'LICENSING', 'MISCELLANEOUS',
+] as const;
+export type BudgetCategory = (typeof BUDGET_CATEGORIES)[number];
+
+export const LAUNCH_SUB_CATEGORIES = [
+  'VENUE_CATERING', 'INVITATIONS_PRINTING', 'MEDIA_PR',
+  'PHOTOGRAPHY_VIDEO', 'AUTHOR_TRAVEL', 'COMPLIMENTARY_COPIES',
+  'DECOR_BRANDING', 'ENTERTAINMENT', 'OTHER',
+] as const;
+export type LaunchSubCategory = (typeof LAUNCH_SUB_CATEGORIES)[number];
+
+/** Default milestone templates by project type */
+export const MILESTONE_TEMPLATES = {
+  NEW_TITLE: [
+    { code: 'EDITING', name: 'Editing', sortOrder: 1 },
+    { code: 'TYPESETTING', name: 'Typesetting & Layout', sortOrder: 2 },
+    { code: 'COVER_DESIGN', name: 'Cover Design', sortOrder: 3 },
+    { code: 'PROOFREADING', name: 'Proofreading', sortOrder: 4 },
+    { code: 'ISBN_REGISTRATION', name: 'ISBN Registration', sortOrder: 5 },
+    { code: 'PRINTING', name: 'Printing', sortOrder: 6 },
+    { code: 'LAUNCH', name: 'Book Launch', sortOrder: 7 },
+    { code: 'MARKETING', name: 'Marketing & Distribution', sortOrder: 8 },
+  ],
+  REPRINT: [
+    { code: 'PRINTING', name: 'Printing', sortOrder: 1 },
+    { code: 'DISTRIBUTION', name: 'Distribution', sortOrder: 2 },
+  ],
+  REVISED_EDITION: [
+    { code: 'EDITING', name: 'Editing (Revisions)', sortOrder: 1 },
+    { code: 'TYPESETTING', name: 'Typesetting & Layout', sortOrder: 2 },
+    { code: 'COVER_DESIGN', name: 'Cover Design Update', sortOrder: 3 },
+    { code: 'PROOFREADING', name: 'Proofreading', sortOrder: 4 },
+    { code: 'PRINTING', name: 'Printing', sortOrder: 5 },
+    { code: 'LAUNCH', name: 'Book Launch', sortOrder: 6 },
+    { code: 'MARKETING', name: 'Marketing & Distribution', sortOrder: 7 },
+  ],
+  TRANSLATION: [
+    { code: 'TRANSLATION', name: 'Translation', sortOrder: 1 },
+    { code: 'EDITING', name: 'Editing', sortOrder: 2 },
+    { code: 'TYPESETTING', name: 'Typesetting & Layout', sortOrder: 3 },
+    { code: 'COVER_DESIGN', name: 'Cover Design', sortOrder: 4 },
+    { code: 'PROOFREADING', name: 'Proofreading', sortOrder: 5 },
+    { code: 'PRINTING', name: 'Printing', sortOrder: 6 },
+    { code: 'LAUNCH', name: 'Book Launch', sortOrder: 7 },
+    { code: 'MARKETING', name: 'Marketing & Distribution', sortOrder: 8 },
+  ],
+  ANTHOLOGY: [
+    { code: 'RIGHTS_CLEARANCE', name: 'Rights Clearance', sortOrder: 1 },
+    { code: 'EDITING', name: 'Editing & Compilation', sortOrder: 2 },
+    { code: 'TYPESETTING', name: 'Typesetting & Layout', sortOrder: 3 },
+    { code: 'COVER_DESIGN', name: 'Cover Design', sortOrder: 4 },
+    { code: 'PROOFREADING', name: 'Proofreading', sortOrder: 5 },
+    { code: 'PRINTING', name: 'Printing', sortOrder: 6 },
+    { code: 'LAUNCH', name: 'Book Launch', sortOrder: 7 },
+    { code: 'MARKETING', name: 'Marketing & Distribution', sortOrder: 8 },
+  ],
+  CUSTOM: [],
+} as const;
 
 export const DEFAULT_EXPENSE_CATEGORIES = [
   'Office Supplies', 'Printing & Production', 'Shipping & Courier',

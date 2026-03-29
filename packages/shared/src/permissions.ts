@@ -35,7 +35,8 @@ export type Module =
   | 'requisitions'
   | 'partnerPortal'
   | 'courierShipments'
-  | 'royalties';
+  | 'royalties'
+  | 'budgeting';
 
 export type Role = 'admin' | 'finance' | 'operations' | 'editorial' | 'author' | 'reportsOnly';
 
@@ -71,6 +72,7 @@ export const PERMISSIONS: PermissionMatrix = {
     partnerPortal: ['read', 'create', 'update', 'delete', 'approve'],
     courierShipments: ['read', 'create', 'update', 'delete'],
     royalties: ['read', 'create', 'update', 'approve', 'void'],
+    budgeting: ['read', 'create', 'update', 'delete', 'approve', 'void', 'export'],
   },
   finance: {
     dashboard: ['read'],
@@ -99,6 +101,7 @@ export const PERMISSIONS: PermissionMatrix = {
     partnerPortal: ['read', 'approve'],
     courierShipments: ['read'],
     royalties: ['read', 'create', 'update', 'approve', 'void'],
+    budgeting: ['read', 'create', 'update', 'approve', 'void', 'export'],
   },
   operations: {
     dashboard: ['read'],

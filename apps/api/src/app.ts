@@ -38,6 +38,7 @@ import { partnerPortalRoutes, partnerPortalAdminRoutes } from './modules/partner
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { supplierRoutes } from './modules/suppliers/routes.js';
 import { documentRoutes } from './modules/documents/routes.js';
+import { budgetingRoutes } from './modules/budgeting/routes.js';
 import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
@@ -133,54 +134,66 @@ export async function buildApp() {
   // Audit trail (auto-log all mutations)
   auditPlugin(app);
 
-  // Background jobs (non-blocking)
-  const sorQueue = createSorExpiryQueue(config.redis.url);
-  const sorWorker = createSorExpiryWorker(config.redis.url);
-  scheduleSorExpiryJob(sorQueue)
-    .then(() => app.log.info('SOR expiry alert job scheduled (daily 7:00 AM SAST)'))
-    .catch((err) => app.log.warn({ err }, 'Failed to schedule SOR expiry job — Redis may be unavailable'));
-
-  // Takealot API sync (only if API key is configured)
+  // Background jobs (non-blocking, graceful when Redis is unavailable)
+  let sorQueue: ReturnType<typeof createSorExpiryQueue> | null = null;
+  let sorWorker: ReturnType<typeof createSorExpiryWorker> | null = null;
+  let reminderQueue: ReturnType<typeof createInvoiceReminderQueue> | null = null;
+  let reminderWorker: ReturnType<typeof createInvoiceReminderWorker> | null = null;
+  let sorInvoiceQueue: ReturnType<typeof createSorInvoiceQueue> | null = null;
+  let sorInvoiceWorker: ReturnType<typeof createSorInvoiceWorker> | null = null;
+  let stmtQueue: ReturnType<typeof createMonthlyStatementQueue> | null = null;
+  let stmtWorker: ReturnType<typeof createMonthlyStatementWorker> | null = null;
   let takealotQueue: ReturnType<typeof createTakealotSyncQueue> | null = null;
   let takealotWorker: ReturnType<typeof createTakealotSyncWorker> | null = null;
-  if (config.takealot.apiKey) {
-    takealotQueue = createTakealotSyncQueue(config.redis.url);
-    takealotWorker = createTakealotSyncWorker(config.redis.url);
-    scheduleTakealotSyncJob(takealotQueue)
-      .then(() => app.log.info('Takealot sync job scheduled (daily 6:00 AM SAST)'))
-      .catch((err) => app.log.warn({ err }, 'Failed to schedule Takealot sync job'));
+
+  try {
+    // Test Redis connectivity before creating queues
+    await app.redis.ping();
+
+    sorQueue = createSorExpiryQueue(config.redis.url);
+    sorWorker = createSorExpiryWorker(config.redis.url);
+    scheduleSorExpiryJob(sorQueue)
+      .then(() => app.log.info('SOR expiry alert job scheduled (daily 7:00 AM SAST)'))
+      .catch((err) => app.log.warn({ err }, 'Failed to schedule SOR expiry job'));
+
+    if (config.takealot.apiKey) {
+      takealotQueue = createTakealotSyncQueue(config.redis.url);
+      takealotWorker = createTakealotSyncWorker(config.redis.url);
+      scheduleTakealotSyncJob(takealotQueue)
+        .then(() => app.log.info('Takealot sync job scheduled (daily 6:00 AM SAST)'))
+        .catch((err) => app.log.warn({ err }, 'Failed to schedule Takealot sync job'));
+    }
+
+    reminderQueue = createInvoiceReminderQueue(config.redis.url);
+    reminderWorker = createInvoiceReminderWorker(config.redis.url);
+    scheduleInvoiceReminderJob(reminderQueue)
+      .then(() => app.log.info('Invoice reminder job scheduled (daily 8:00 AM SAST)'))
+      .catch((err) => app.log.warn({ err }, 'Failed to schedule invoice reminder job'));
+
+    sorInvoiceQueue = createSorInvoiceQueue(config.redis.url);
+    sorInvoiceWorker = createSorInvoiceWorker(config.redis.url);
+    scheduleSorInvoiceJob(sorInvoiceQueue)
+      .then(() => app.log.info('SOR auto-invoice job scheduled (daily 8:00 AM SAST)'))
+      .catch((err) => app.log.warn({ err }, 'Failed to schedule SOR auto-invoice job'));
+
+    stmtQueue = createMonthlyStatementQueue(config.redis.url);
+    stmtWorker = createMonthlyStatementWorker(config.redis.url);
+    scheduleMonthlyStatementJob(stmtQueue)
+      .then(() => app.log.info('Monthly statement job scheduled (1st of month, 6:00 AM SAST)'))
+      .catch((err) => app.log.warn({ err }, 'Failed to schedule monthly statement job'));
+  } catch {
+    app.log.warn('Redis unavailable — background jobs disabled. API will still serve requests.');
   }
 
-  // Invoice payment reminders
-  const reminderQueue = createInvoiceReminderQueue(config.redis.url);
-  const reminderWorker = createInvoiceReminderWorker(config.redis.url);
-  scheduleInvoiceReminderJob(reminderQueue)
-    .then(() => app.log.info('Invoice reminder job scheduled (daily 8:00 AM SAST)'))
-    .catch((err) => app.log.warn({ err }, 'Failed to schedule invoice reminder job'));
-
-  // SOR auto-invoice: generate invoices for expired SOR consignments
-  const sorInvoiceQueue = createSorInvoiceQueue(config.redis.url);
-  const sorInvoiceWorker = createSorInvoiceWorker(config.redis.url);
-  scheduleSorInvoiceJob(sorInvoiceQueue)
-    .then(() => app.log.info('SOR auto-invoice job scheduled (daily 8:00 AM SAST)'))
-    .catch((err) => app.log.warn({ err }, 'Failed to schedule SOR auto-invoice job'));
-
-  // Monthly statement compilation: auto-compile statements on 1st of each month
-  const stmtQueue = createMonthlyStatementQueue(config.redis.url);
-  const stmtWorker = createMonthlyStatementWorker(config.redis.url);
-  scheduleMonthlyStatementJob(stmtQueue)
-    .then(() => app.log.info('Monthly statement job scheduled (1st of month, 6:00 AM SAST)'))
-    .catch((err) => app.log.warn({ err }, 'Failed to schedule monthly statement job'));
-
   app.addHook('onClose', async () => {
-    await sorWorker.close();
-    await sorQueue.close();
-    await reminderWorker.close();
-    await reminderQueue.close();
-    await sorInvoiceWorker.close();
-    await sorInvoiceQueue.close();
-    await stmtWorker.close();
-    await stmtQueue.close();
+    if (sorWorker) await sorWorker.close();
+    if (sorQueue) await sorQueue.close();
+    if (reminderWorker) await reminderWorker.close();
+    if (reminderQueue) await reminderQueue.close();
+    if (sorInvoiceWorker) await sorInvoiceWorker.close();
+    if (sorInvoiceQueue) await sorInvoiceQueue.close();
+    if (stmtWorker) await stmtWorker.close();
+    if (stmtQueue) await stmtQueue.close();
     if (takealotWorker) await takealotWorker.close();
     if (takealotQueue) await takealotQueue.close();
   });
@@ -236,6 +249,7 @@ export async function buildApp() {
     api.register(partnerPortalRoutes, { prefix: '/partner-portal' });
     api.register(partnerPortalAdminRoutes, { prefix: '/partner-admin' });
     api.register(documentRoutes, { prefix: '/documents' });
+    api.register(budgetingRoutes, { prefix: '/budgeting' });
   }, { prefix: '/api/v1' });
 
   return app;
