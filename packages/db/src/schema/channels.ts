@@ -25,6 +25,14 @@ export const channelPartners = pgTable('channel_partners', {
   vatNumber: varchar('vat_number', { length: 50 }),
   isActive: boolean('is_active').notNull().default(true),
   notes: text('notes'),
+  // Portal mode and delivery preferences
+  portalMode: varchar('portal_mode', { length: 20 }).notNull().default('SELF_SERVICE'),
+  statementDelivery: varchar('statement_delivery', { length: 20 }).notNull().default('PORTAL'),
+  invoiceDelivery: varchar('invoice_delivery', { length: 20 }).notNull().default('PORTAL'),
+  financeContactEmail: varchar('finance_contact_email', { length: 255 }),
+  orderContactEmail: varchar('order_contact_email', { length: 255 }),
+  autoSendInvoices: boolean('auto_send_invoices').notNull().default(false),
+  autoSendStatements: boolean('auto_send_statements').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -135,6 +143,15 @@ export const partnerOrders = pgTable('partner_orders', {
   cancelReason: text('cancel_reason'),
   notes: text('notes'),
   internalNotes: text('internal_notes'), // only visible to Xarra staff
+  // Order source and admin entry fields
+  source: varchar('source', { length: 20 }).notNull().default('PORTAL'),
+  enteredById: text('entered_by_id'),
+  originalPoDocUrl: varchar('original_po_doc_url', { length: 500 }),
+  magicLinkToken: varchar('magic_link_token', { length: 100 }).unique(),
+  // Pipeline tracking
+  pickingStartedAt: timestamp('picking_started_at', { withTimezone: true }),
+  packingStartedAt: timestamp('packing_started_at', { withTimezone: true }),
+  currentPipelineStep: integer('current_pipeline_step').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -268,6 +285,7 @@ export const partnerOrdersRelations = relations(partnerOrders, ({ one, many }) =
   branch: one(partnerBranches, { fields: [partnerOrders.branchId], references: [partnerBranches.id] }),
   placedBy: one(partnerUsers, { fields: [partnerOrders.placedById], references: [partnerUsers.id] }),
   confirmedBy: one(user, { fields: [partnerOrders.confirmedById], references: [user.id] }),
+  enteredBy: one(user, { fields: [partnerOrders.enteredById], references: [user.id], relationName: 'orderEnteredBy' }),
   lines: many(partnerOrderLines),
 }));
 

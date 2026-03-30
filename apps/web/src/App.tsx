@@ -128,6 +128,9 @@ import { CourierShipmentsAdmin } from './pages/partners/CourierShipmentsAdmin';
 import { NotificationList } from './pages/notifications/NotificationList';
 import { RoyaltiesAdmin } from './pages/royalties/RoyaltiesAdmin';
 import { DocumentsSearch } from './pages/documents/DocumentsSearch';
+// Order Tracking + Partner Management
+import { CreateOrderOnBehalf } from './pages/partners/CreateOrderOnBehalf';
+import { NotificationEmailSettings } from './pages/settings/NotificationEmailSettings';
 // Budgeting
 import { BudgetDashboard } from './pages/budgeting/BudgetDashboard';
 import { ProjectList } from './pages/budgeting/ProjectList';
@@ -310,10 +313,12 @@ const router = createBrowserRouter([
       { path: 'settings/email', element: <EmailSettings /> },
       { path: 'settings/document-series', element: <DocumentSeries /> },
       { path: 'settings/contract-templates', element: <ContractTemplates /> },
+      { path: 'settings/notification-emails', element: <NotificationEmailSettings /> },
 
       // Partner Portal Management (admin)
       { path: 'partners/portal-users', element: <PartnerPortalUsers /> },
       { path: 'partners/portal-orders', element: <PartnerOrdersAdmin /> },
+      { path: 'partners/create-order', element: <CreateOrderOnBehalf /> },
       { path: 'partners/return-requests', element: <PartnerReturnRequestsAdmin /> },
       { path: 'partners/courier-shipments', element: <CourierShipmentsAdmin /> },
 

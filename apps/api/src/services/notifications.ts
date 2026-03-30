@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { notifications } from '@xarra/db';
 import type { NotificationType, NotificationPriority } from '@xarra/shared';
+import { notifyByEmail } from './notification-email-bridge.js';
 
 interface CreateNotificationInput {
   type: NotificationType;
@@ -11,6 +12,7 @@ interface CreateNotificationInput {
   actionUrl?: string;
   referenceType?: string;
   referenceId?: string;
+  recipientEmail?: string; // optional: send email notification
 }
 
 export async function createNotification(
@@ -30,6 +32,9 @@ export async function createNotification(
       referenceId: input.referenceId,
     })
     .returning();
+
+  // Send email notification (fire-and-forget)
+  notifyByEmail(app, notification, input.recipientEmail).catch(() => {});
 
   return notification;
 }

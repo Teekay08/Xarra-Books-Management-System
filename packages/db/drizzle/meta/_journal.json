@@ -36,6 +36,13 @@
       "when": 1774800278395,
       "tag": "0004_gigantic_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774846812771,
+      "tag": "0005_awesome_hellcat",
+      "breakpoints": true
     }
   ]
 }

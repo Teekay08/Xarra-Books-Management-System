@@ -322,6 +322,53 @@ export const MILESTONE_TEMPLATES = {
   CUSTOM: [],
 } as const;
 
+// === Order Tracking Pipeline ===
+
+export const ORDER_PIPELINE_STEPS = [
+  'ORDER_RECEIVED', 'CONFIRMED', 'PICKING', 'PACKING', 'DISPATCHED',
+  'WITH_COURIER', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED',
+] as const;
+export type OrderPipelineStep = (typeof ORDER_PIPELINE_STEPS)[number];
+
+export const ORDER_PIPELINE_STEP_LABELS: Record<OrderPipelineStep, string> = {
+  ORDER_RECEIVED: 'Order Received',
+  CONFIRMED: 'Confirmed',
+  PICKING: 'Picking',
+  PACKING: 'Packing',
+  DISPATCHED: 'Dispatched',
+  WITH_COURIER: 'With Courier',
+  IN_TRANSIT: 'In Transit',
+  OUT_FOR_DELIVERY: 'Out for Delivery',
+  DELIVERED: 'Delivered',
+};
+
+// === Partner Management ===
+
+export const PARTNER_PORTAL_MODES = ['SELF_SERVICE', 'XARRA_MANAGED', 'HYBRID'] as const;
+export type PartnerPortalMode = (typeof PARTNER_PORTAL_MODES)[number];
+
+export const PARTNER_ORDER_SOURCES = ['PORTAL', 'ADMIN_ENTRY', 'EMAIL_PO', 'MAGIC_LINK'] as const;
+export type PartnerOrderSource = (typeof PARTNER_ORDER_SOURCES)[number];
+
+export const DOCUMENT_DELIVERY_METHODS = ['PORTAL', 'EMAIL', 'BOTH'] as const;
+export type DocumentDeliveryMethod = (typeof DOCUMENT_DELIVERY_METHODS)[number];
+
+export const MAGIC_LINK_PURPOSES = [
+  'ORDER_VIEW', 'ORDER_CONFIRM', 'TRACK_ORDER', 'STATEMENT_VIEW',
+  'INVOICE_VIEW', 'PORTAL_ONBOARD',
+] as const;
+export type MagicLinkPurpose = (typeof MAGIC_LINK_PURPOSES)[number];
+
+export const ONBOARDING_STAGES = [
+  'UNAWARE', 'EMAIL_ONLY', 'MAGIC_LINK_USED', 'ACCOUNT_CREATED', 'FIRST_LOGIN', 'ACTIVE_USER',
+] as const;
+export type OnboardingStage = (typeof ONBOARDING_STAGES)[number];
+
+// === Notification Email ===
+
+export const DIGEST_FREQUENCIES = ['IMMEDIATE', 'DAILY', 'WEEKLY', 'NONE'] as const;
+export type DigestFrequency = (typeof DIGEST_FREQUENCIES)[number];
+
 export const DEFAULT_EXPENSE_CATEGORIES = [
   'Office Supplies', 'Printing & Production', 'Shipping & Courier',
   'Marketing & Advertising', 'Software & Subscriptions', 'Travel',
