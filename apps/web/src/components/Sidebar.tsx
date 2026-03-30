@@ -78,7 +78,13 @@ const allSections: NavSection[] = [
   },
   {
     label: 'Analytics',
-    items: [{ name: 'Reports', href: '/reports', module: 'reports' }],
+    items: [
+      { name: 'Reports', href: '/reports', module: 'reports' },
+      { name: 'SOR Suspense', href: '/analytics/suspense', module: 'reports' },
+      { name: 'Cash Flow', href: '/analytics/cash-flow', module: 'reports' },
+      { name: 'Sell-Through Predictions', href: '/analytics/predictions', module: 'reports' },
+      { name: 'Trend Analysis', href: '/analytics/trends', module: 'reports' },
+    ],
   },
   {
     label: 'Admin',

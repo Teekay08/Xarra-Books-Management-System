@@ -729,3 +729,17 @@ export const notificationPreferencesSchema = z.object({
   dailyDigestHour: z.number().int().min(0).max(23).default(7),
   weeklyDigestDay: z.number().int().min(0).max(6).default(1),
 });
+
+// === SOR Suspense Schemas ===
+
+export const confirmSuspenseSchema = z.object({
+  notes: z.string().optional(),
+});
+
+export const writeOffSuspenseSchema = z.object({
+  reason: z.string().min(1, 'Write-off reason is required'),
+});
+
+export const recalculatePredictionsSchema = z.object({
+  consignmentId: z.string().uuid().optional(), // optional: recalculate for a specific consignment
+});

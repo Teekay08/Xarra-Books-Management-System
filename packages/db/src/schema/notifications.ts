@@ -40,6 +40,11 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'TIMESHEET_REJECTED',
   'SOW_SENT',
   'SOW_ACCEPTED',
+  'SUSPENSE_CONFIRMED',
+  'SUSPENSE_REFUND_DUE',
+  'SUSPENSE_DAILY_SUMMARY',
+  'PREDICTION_HIGH_RISK',
+  'CASHFLOW_RISK_CHANGE',
   'SYSTEM',
 ]);
 

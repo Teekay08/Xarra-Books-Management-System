@@ -165,6 +165,8 @@ export const NOTIFICATION_TYPES = [
   'PROJECT_CREATED', 'PROJECT_BUDGET_APPROVED', 'PROJECT_OVER_BUDGET',
   'TIMESHEET_SUBMITTED', 'TIMESHEET_APPROVED', 'TIMESHEET_REJECTED',
   'SOW_SENT', 'SOW_ACCEPTED',
+  'SUSPENSE_CONFIRMED', 'SUSPENSE_REFUND_DUE', 'SUSPENSE_DAILY_SUMMARY',
+  'PREDICTION_HIGH_RISK', 'CASHFLOW_RISK_CHANGE',
   'SYSTEM',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -210,6 +212,11 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   TIMESHEET_REJECTED: 'Timesheet Rejected',
   SOW_SENT: 'SOW Sent',
   SOW_ACCEPTED: 'SOW Accepted',
+  SUSPENSE_CONFIRMED: 'Suspense Revenue Confirmed',
+  SUSPENSE_REFUND_DUE: 'Suspense Refund Due',
+  SUSPENSE_DAILY_SUMMARY: 'Suspense Daily Summary',
+  PREDICTION_HIGH_RISK: 'High Return Risk Alert',
+  CASHFLOW_RISK_CHANGE: 'Cash Flow Risk Level Change',
   SYSTEM: 'System Notification',
 };
 
@@ -365,6 +372,20 @@ export const ONBOARDING_STAGES = [
 export type OnboardingStage = (typeof ONBOARDING_STAGES)[number];
 
 // === Notification Email ===
+
+// === SOR Suspense Accounting ===
+
+export const SUSPENSE_STATUSES = ['SUSPENSE', 'CONFIRMED', 'REFUND_DUE', 'REFUNDED', 'WRITTEN_OFF'] as const;
+export type SuspenseStatus = (typeof SUSPENSE_STATUSES)[number];
+
+export const SAFE_SPENDING_METHODS = ['CONSERVATIVE', 'MODERATE', 'AGGRESSIVE'] as const;
+export type SafeSpendingMethod = (typeof SAFE_SPENDING_METHODS)[number];
+
+export const PREDICTION_CONFIDENCE_LEVELS = ['HIGH', 'MEDIUM', 'LOW'] as const;
+export type PredictionConfidenceLevel = (typeof PREDICTION_CONFIDENCE_LEVELS)[number];
+
+export const PREDICTION_RISK_LEVELS = ['LOW', 'MEDIUM', 'HIGH'] as const;
+export type PredictionRiskLevel = (typeof PREDICTION_RISK_LEVELS)[number];
 
 export const DIGEST_FREQUENCIES = ['IMMEDIATE', 'DAILY', 'WEEKLY', 'NONE'] as const;
 export type DigestFrequency = (typeof DIGEST_FREQUENCIES)[number];

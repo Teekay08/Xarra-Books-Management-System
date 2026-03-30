@@ -40,6 +40,7 @@ import { supplierRoutes } from './modules/suppliers/routes.js';
 import { documentRoutes } from './modules/documents/routes.js';
 import { budgetingRoutes } from './modules/budgeting/routes.js';
 import { orderTrackingRoutes } from './modules/order-tracking/routes.js';
+import { suspenseRoutes } from './modules/suspense/routes.js';
 import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
@@ -252,6 +253,7 @@ export async function buildApp() {
     api.register(documentRoutes, { prefix: '/documents' });
     api.register(budgetingRoutes, { prefix: '/budgeting' });
     api.register(orderTrackingRoutes, { prefix: '/order-tracking' });
+    api.register(suspenseRoutes, { prefix: '/suspense' });
   }, { prefix: '/api/v1' });
 
   return app;

@@ -131,6 +131,11 @@ import { DocumentsSearch } from './pages/documents/DocumentsSearch';
 // Order Tracking + Partner Management
 import { CreateOrderOnBehalf } from './pages/partners/CreateOrderOnBehalf';
 import { NotificationEmailSettings } from './pages/settings/NotificationEmailSettings';
+// Suspense + Analytics
+import { SuspenseDashboard } from './pages/finance/SuspenseDashboard';
+import { CashFlowDashboard } from './pages/finance/CashFlowDashboard';
+import { SellThroughPredictions } from './pages/analytics/SellThroughPredictions';
+import { TrendAnalysis } from './pages/analytics/TrendAnalysis';
 // Budgeting
 import { BudgetDashboard } from './pages/budgeting/BudgetDashboard';
 import { ProjectList } from './pages/budgeting/ProjectList';
@@ -298,6 +303,12 @@ const router = createBrowserRouter([
       { path: 'reports/print-runs', element: <PrintRunsReport /> },
       { path: 'reports/sor-reconciliation', element: <SorReconciliation /> },
       { path: 'reports/royalty-due', element: <RoyaltyDueReport /> },
+
+      // Analytics
+      { path: 'analytics/suspense', element: <SuspenseDashboard /> },
+      { path: 'analytics/cash-flow', element: <CashFlowDashboard /> },
+      { path: 'analytics/predictions', element: <SellThroughPredictions /> },
+      { path: 'analytics/trends', element: <TrendAnalysis /> },
 
       // Sync
       { path: 'sync', element: <SyncDashboard /> },
