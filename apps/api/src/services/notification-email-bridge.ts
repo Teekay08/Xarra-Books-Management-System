@@ -156,18 +156,43 @@ function calculateDigestTime(frequency: string): Date {
   return now;
 }
 
+/** Escape HTML special characters to prevent XSS */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Sanitize URL — only allow http/https protocols */
+function sanitizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url, 'https://placeholder.com');
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return url;
+    return '#';
+  } catch {
+    return '#';
+  }
+}
+
 function renderNotificationEmail(notification: { title: string; message: string; actionUrl?: string | null }): string {
+  const title = escapeHtml(notification.title);
+  const message = escapeHtml(notification.message);
+  const actionUrl = notification.actionUrl ? sanitizeUrl(notification.actionUrl) : null;
+
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333">
   <div style="border-bottom:3px solid #166534;padding-bottom:15px;margin-bottom:20px">
     <h1 style="color:#166534;font-size:20px;margin:0">Xarra Books</h1>
   </div>
-  <h2 style="color:#1a1a1a;font-size:18px;margin-bottom:10px">${notification.title}</h2>
-  <p style="color:#555;font-size:14px;line-height:1.6">${notification.message}</p>
-  ${notification.actionUrl ? `
+  <h2 style="color:#1a1a1a;font-size:18px;margin-bottom:10px">${title}</h2>
+  <p style="color:#555;font-size:14px;line-height:1.6">${message}</p>
+  ${actionUrl ? `
     <div style="margin:25px 0">
-      <a href="${notification.actionUrl}" style="background:#166534;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600">View Details</a>
+      <a href="${actionUrl}" style="background:#166534;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600">View Details</a>
     </div>
   ` : ''}
   <div style="margin-top:30px;padding-top:15px;border-top:1px solid #eee;font-size:12px;color:#999">
@@ -177,6 +202,9 @@ function renderNotificationEmail(notification: { title: string; message: string;
 }
 
 function renderPartnerNotificationEmail(notification: { title: string; message: string }): string {
+  const title = escapeHtml(notification.title);
+  const message = escapeHtml(notification.message);
+
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333">
@@ -184,8 +212,8 @@ function renderPartnerNotificationEmail(notification: { title: string; message: 
     <h1 style="color:#166534;font-size:20px;margin:0">Xarra Books</h1>
     <p style="color:#888;font-size:12px;margin:4px 0 0">Partner Portal</p>
   </div>
-  <h2 style="color:#1a1a1a;font-size:18px;margin-bottom:10px">${notification.title}</h2>
-  <p style="color:#555;font-size:14px;line-height:1.6">${notification.message}</p>
+  <h2 style="color:#1a1a1a;font-size:18px;margin-bottom:10px">${title}</h2>
+  <p style="color:#555;font-size:14px;line-height:1.6">${message}</p>
   <div style="margin-top:30px;padding-top:15px;border-top:1px solid #eee;font-size:12px;color:#999">
     <p>This notification was sent from Xarra Books. To manage your notification preferences, contact your account manager.</p>
   </div>

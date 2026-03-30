@@ -6,7 +6,11 @@ import {
   partnerDocumentDeliveries, partnerUploadedDocuments, partnerOnboardingFunnel,
   notificationEmailPreferences,
 } from '@xarra/db';
-import { ORDER_PIPELINE_STEPS, paginationSchema } from '@xarra/shared';
+import {
+  ORDER_PIPELINE_STEPS, paginationSchema,
+  pipelineStepSchema, createOrderOnBehalfSchema, generateMagicLinkSchema,
+  sendPartnerDocumentSchema, notificationPreferencesSchema,
+} from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { nextPartnerOrderNumber } from '../finance/invoice-number.js';
 import crypto from 'node:crypto';
@@ -24,45 +28,6 @@ const STEP_TO_STATUS: Record<string, string> = {
   OUT_FOR_DELIVERY: 'DISPATCHED',
   DELIVERED: 'DELIVERED',
 };
-
-const pipelineStepSchema = z.object({
-  step: z.enum(ORDER_PIPELINE_STEPS as unknown as [string, ...string[]]),
-  notes: z.string().optional(),
-});
-
-const createOnBehalfSchema = z.object({
-  partnerId: z.string().uuid(),
-  branchId: z.string().uuid().optional().nullable(),
-  customerPoNumber: z.string().optional().nullable(),
-  deliveryAddress: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
-  lines: z.array(z.object({
-    titleId: z.string().uuid(),
-    quantity: z.number().int().positive(),
-  })).min(1, 'At least one line item is required'),
-});
-
-const generateMagicLinkSchema = z.object({
-  partnerId: z.string().uuid(),
-  purpose: z.string().min(1),
-  referenceType: z.string().optional(),
-  referenceId: z.string().uuid().optional(),
-  expiresInHours: z.number().positive().default(72),
-});
-
-const sendDocumentSchema = z.object({
-  documentType: z.string().min(1),
-  documentId: z.string().uuid(),
-  recipientEmail: z.string().email().optional(),
-});
-
-const notificationPrefsSchema = z.object({
-  emailEnabled: z.boolean(),
-  preferences: z.record(z.any()).default({}),
-  digestFrequency: z.string().default('IMMEDIATE'),
-  dailyDigestHour: z.number().int().min(0).max(23).default(7),
-  weeklyDigestDay: z.number().int().min(0).max(6).default(1),
-});
 
 export async function orderTrackingRoutes(app: FastifyInstance) {
 
@@ -142,8 +107,31 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/orders/:id/picking', {
     preHandler: requireRole('admin', 'operations'),
   }, async (request, reply) => {
-    (request.body as any) = { step: 'PICKING' };
-    return (app as any).inject({ method: 'POST', url: `/orders/${request.params.id}/pipeline-step`, payload: { step: 'PICKING' }, headers: request.headers });
+    const userId = request.session?.user?.id;
+    const order = await app.db.query.partnerOrders.findFirst({
+      where: eq(partnerOrders.id, request.params.id),
+    });
+    if (!order) return reply.notFound('Order not found');
+
+    const lastHistory = await app.db.query.orderStatusHistory.findFirst({
+      where: eq(orderStatusHistory.orderId, request.params.id),
+      orderBy: (h, { desc }) => [desc(h.changedAt)],
+    });
+
+    await app.db.insert(orderStatusHistory).values({
+      orderId: request.params.id,
+      fromStatus: lastHistory?.toStatus || order.status,
+      toStatus: 'PICKING',
+      changedBy: userId,
+      source: 'MANUAL',
+    });
+
+    const [updated] = await app.db.update(partnerOrders)
+      .set({ currentPipelineStep: 2, pickingStartedAt: new Date(), status: 'PROCESSING', updatedAt: new Date() })
+      .where(eq(partnerOrders.id, request.params.id))
+      .returning();
+
+    return { data: updated };
   });
 
   // Shorthand: mark as packing
@@ -185,7 +173,7 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
   app.post('/orders/create-on-behalf', {
     preHandler: requireRole('admin', 'operations', 'finance'),
   }, async (request, reply) => {
-    const body = createOnBehalfSchema.parse(request.body);
+    const body = createOrderOnBehalfSchema.parse(request.body);
     const userId = request.session?.user?.id;
 
     // Get partner info
@@ -314,6 +302,7 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
     });
 
     if (!link) return reply.notFound('Invalid link');
+    if (link.usedAt) return reply.badRequest('Link has already been used');
     if (new Date() > new Date(link.expiresAt)) return reply.badRequest('Link has expired');
 
     return { data: link };
@@ -326,6 +315,7 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
     });
 
     if (!link) return reply.notFound('Invalid link');
+    if (link.usedAt) return reply.badRequest('Link has already been used');
     if (new Date() > new Date(link.expiresAt)) return reply.badRequest('Link has expired');
 
     // Mark as used
@@ -370,7 +360,7 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
   app.post<{ Params: { partnerId: string } }>('/partners/:partnerId/send-document', {
     preHandler: requireRole('admin', 'finance'),
   }, async (request, reply) => {
-    const body = sendDocumentSchema.parse(request.body);
+    const body = sendPartnerDocumentSchema.parse(request.body);
     const userId = request.session?.user?.id;
 
     const partner = await app.db.query.channelPartners.findFirst({
@@ -441,9 +431,13 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
     const buffer = await file.toBuffer();
     await fs.writeFile(filePath, buffer);
 
+    const validDocTypes = ['REMITTANCE_PDF', 'PURCHASE_ORDER_PDF', 'OTHER'];
+    const docType = validDocTypes.includes((request.query as any).documentType)
+      ? (request.query as any).documentType : 'OTHER';
+
     const [doc] = await app.db.insert(partnerUploadedDocuments).values({
       partnerId: request.params.partnerId,
-      documentType: (request.query as any).documentType || 'OTHER',
+      documentType: docType,
       fileName: file.filename,
       fileUrl: `/uploads/partner-docs/${fileName}`,
       fileSizeBytes: buffer.length,
@@ -467,7 +461,11 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string } }>('/uploaded-documents/:id/link', {
     preHandler: requireRole('admin', 'finance'),
   }, async (request, reply) => {
-    const { linkedEntityType, linkedEntityId } = request.body as { linkedEntityType: string; linkedEntityId: string };
+    const linkDocSchema = z.object({
+      linkedEntityType: z.enum(['REMITTANCE', 'PARTNER_ORDER']),
+      linkedEntityId: z.string().uuid(),
+    });
+    const { linkedEntityType, linkedEntityId } = linkDocSchema.parse(request.body);
     const [updated] = await app.db.update(partnerUploadedDocuments)
       .set({ linkedEntityType, linkedEntityId })
       .where(eq(partnerUploadedDocuments.id, request.params.id))
@@ -549,7 +547,7 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
   app.put('/notification-preferences', {
     preHandler: requireAuth,
   }, async (request) => {
-    const body = notificationPrefsSchema.parse(request.body);
+    const body = notificationPreferencesSchema.parse(request.body);
     const userId = request.session?.user?.id!;
 
     const existing = await app.db.query.notificationEmailPreferences.findFirst({

@@ -322,9 +322,6 @@ const router = createBrowserRouter([
       { path: 'partners/return-requests', element: <PartnerReturnRequestsAdmin /> },
       { path: 'partners/courier-shipments', element: <CourierShipmentsAdmin /> },
 
-      // Notifications
-      { path: 'notifications', element: <NotificationList /> },
-
       // Admin — Audit & Deletion
       { path: 'admin/audit-log', element: <AuditLog /> },
       { path: 'admin/deletion-requests', element: <DeletionRequests /> },

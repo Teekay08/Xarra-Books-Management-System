@@ -21,6 +21,7 @@ import {
   RATE_CARD_TYPES,
   TIMESHEET_STATUSES,
   SOW_STATUSES,
+  ORDER_PIPELINE_STEPS,
 } from '../constants.js';
 
 // === Author Schemas ===
@@ -686,4 +687,45 @@ export const voidActualCostSchema = z.object({
 
 export const applyMilestoneTemplateSchema = z.object({
   templateType: z.enum(PROJECT_TYPES),
+});
+
+// === Order Tracking Schemas ===
+
+export const pipelineStepSchema = z.object({
+  step: z.enum(ORDER_PIPELINE_STEPS as unknown as [string, ...string[]]),
+  notes: z.string().optional(),
+});
+
+export const createOrderOnBehalfSchema = z.object({
+  partnerId: z.string().uuid(),
+  branchId: z.string().uuid().optional().nullable(),
+  customerPoNumber: z.string().optional().nullable(),
+  deliveryAddress: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  lines: z.array(z.object({
+    titleId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+  })).min(1, 'At least one line item is required'),
+});
+
+export const generateMagicLinkSchema = z.object({
+  partnerId: z.string().uuid(),
+  purpose: z.string().min(1),
+  referenceType: z.string().optional(),
+  referenceId: z.string().uuid().optional(),
+  expiresInHours: z.number().positive().default(72),
+});
+
+export const sendPartnerDocumentSchema = z.object({
+  documentType: z.string().min(1),
+  documentId: z.string().uuid(),
+  recipientEmail: z.string().email().optional(),
+});
+
+export const notificationPreferencesSchema = z.object({
+  emailEnabled: z.boolean(),
+  preferences: z.record(z.any()).default({}),
+  digestFrequency: z.string().default('IMMEDIATE'),
+  dailyDigestHour: z.number().int().min(0).max(23).default(7),
+  weeklyDigestDay: z.number().int().min(0).max(6).default(1),
 });
