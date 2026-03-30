@@ -53,7 +53,7 @@ export type InventoryLocation = (typeof INVENTORY_LOCATIONS)[number];
 export const MOVEMENT_TYPES = ['IN', 'CONSIGN', 'SELL', 'RETURN', 'ADJUST', 'WRITEOFF'] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
-export const USER_ROLES = ['ADMIN', 'FINANCE', 'OPERATIONS', 'EDITORIAL', 'AUTHOR', 'REPORTS_ONLY'] as const;
+export const USER_ROLES = ['ADMIN', 'FINANCE', 'OPERATIONS', 'EDITORIAL', 'AUTHOR', 'REPORTS_ONLY', 'PROJECT_MANAGER', 'EMPLOYEE'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const DOCUMENT_PREFIXES = {
@@ -385,6 +385,26 @@ export const PREDICTION_CONFIDENCE_LEVELS = ['HIGH', 'MEDIUM', 'LOW'] as const;
 export type PredictionConfidenceLevel = (typeof PREDICTION_CONFIDENCE_LEVELS)[number];
 
 export const PREDICTION_RISK_LEVELS = ['LOW', 'MEDIUM', 'HIGH'] as const;
+
+// === Project Management ===
+
+export const TASK_ASSIGNMENT_STATUSES = ['DRAFT', 'ASSIGNED', 'IN_PROGRESS', 'REVIEW', 'COMPLETED', 'CANCELLED'] as const;
+export type TaskAssignmentStatus = (typeof TASK_ASSIGNMENT_STATUSES)[number];
+
+export const TIME_EXTENSION_STATUSES = ['PENDING', 'APPROVED', 'DECLINED'] as const;
+export type TimeExtensionStatus = (typeof TIME_EXTENSION_STATUSES)[number];
+
+export const STAFF_AVAILABILITY_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT'] as const;
+export type StaffAvailabilityType = (typeof STAFF_AVAILABILITY_TYPES)[number];
+
+export const STAFF_SKILLS = [
+  'EDITING', 'TYPESETTING', 'COVER_DESIGN', 'PROOFREADING', 'TRANSLATION',
+  'MARKETING', 'PHOTOGRAPHY', 'ILLUSTRATION', 'PROJECT_MANAGEMENT', 'ADMINISTRATION',
+] as const;
+export type StaffSkill = (typeof STAFF_SKILLS)[number];
+
+export const STAFF_PAYMENT_STATUSES = ['PENDING', 'APPROVED', 'PAID'] as const;
+export type StaffPaymentStatus = (typeof STAFF_PAYMENT_STATUSES)[number];
 export type PredictionRiskLevel = (typeof PREDICTION_RISK_LEVELS)[number];
 
 export const DIGEST_FREQUENCIES = ['IMMEDIATE', 'DAILY', 'WEEKLY', 'NONE'] as const;

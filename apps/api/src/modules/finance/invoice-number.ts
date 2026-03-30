@@ -173,6 +173,20 @@ export async function nextTimesheetNumber(db: NodePgDatabase<Record<string, unkn
   return `TS-${year}-${String(nextNum).padStart(4, '0')}`;
 }
 
+export async function nextTaskAssignmentNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `TA-${year}-%`;
+
+  const result = await db.execute<{ maxNum: string | null }>(sql`
+    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
+    FROM task_assignments
+    WHERE number LIKE ${pattern}
+  `);
+
+  const nextNum = (Number(result[0]?.maxNum) || 0) + 1;
+  return `TA-${year}-${String(nextNum).padStart(4, '0')}`;
+}
+
 export async function nextSowNumber(db: NodePgDatabase<Record<string, unknown>>): Promise<string> {
   const year = new Date().getFullYear();
   const pattern = `SOW-${year}-%`;

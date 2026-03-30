@@ -36,9 +36,11 @@ export type Module =
   | 'partnerPortal'
   | 'courierShipments'
   | 'royalties'
-  | 'budgeting';
+  | 'budgeting'
+  | 'projectManagement'
+  | 'employeePortal';
 
-export type Role = 'admin' | 'finance' | 'operations' | 'editorial' | 'author' | 'reportsOnly';
+export type Role = 'admin' | 'finance' | 'operations' | 'editorial' | 'author' | 'reportsOnly' | 'projectManager' | 'employee';
 
 type PermissionMatrix = Record<Role, Partial<Record<Module, Permission[]>>>;
 
@@ -73,6 +75,8 @@ export const PERMISSIONS: PermissionMatrix = {
     courierShipments: ['read', 'create', 'update', 'delete'],
     royalties: ['read', 'create', 'update', 'approve', 'void'],
     budgeting: ['read', 'create', 'update', 'delete', 'approve', 'void', 'export'],
+    projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
+    employeePortal: ['read'],
   },
   finance: {
     dashboard: ['read'],
@@ -178,6 +182,24 @@ export const PERMISSIONS: PermissionMatrix = {
     royalties: ['read'],
     settings: ['read'],
   },
+  projectManager: {
+    dashboard: ['read'],
+    authors: ['read'],
+    titles: ['read'],
+    partners: ['read'],
+    inventory: ['read'],
+    consignments: ['read'],
+    reports: ['read', 'export'],
+    budgeting: ['read'],
+    projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
+    employeePortal: ['read'],
+    settings: ['read'],
+  },
+  employee: {
+    dashboard: ['read'],
+    employeePortal: ['read', 'create', 'update'],
+    settings: ['read'],
+  },
 };
 
 /**
@@ -193,6 +215,10 @@ function normalizeRole(role: string): Role {
     reports_only: 'reportsOnly',
     reportsonly: 'reportsOnly',
     reportsOnly: 'reportsOnly',
+    project_manager: 'projectManager',
+    projectmanager: 'projectManager',
+    projectManager: 'projectManager',
+    employee: 'employee',
   };
   return map[role.toLowerCase()] ?? map[role] ?? ('admin' as Role);
 }

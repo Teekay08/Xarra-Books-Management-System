@@ -131,6 +131,15 @@ import { DocumentsSearch } from './pages/documents/DocumentsSearch';
 // Order Tracking + Partner Management
 import { CreateOrderOnBehalf } from './pages/partners/CreateOrderOnBehalf';
 import { NotificationEmailSettings } from './pages/settings/NotificationEmailSettings';
+// Project Management + Employee Portal
+import { StaffList } from './pages/project-management/StaffList';
+import { StaffForm } from './pages/project-management/StaffForm';
+import { ProjectTeam } from './pages/project-management/ProjectTeam';
+import { TaskList } from './pages/project-management/TaskList';
+import { TaskForm } from './pages/project-management/TaskForm';
+import { TaskDetail } from './pages/project-management/TaskDetail';
+import { ResourcePlanning } from './pages/project-management/ResourcePlanning';
+import { EmployeeDashboard } from './pages/employee/EmployeeDashboard';
 // Suspense + Analytics
 import { SuspenseDashboard } from './pages/finance/SuspenseDashboard';
 import { CashFlowDashboard } from './pages/finance/CashFlowDashboard';
@@ -263,6 +272,19 @@ const router = createBrowserRouter([
       { path: 'returns', element: <ReturnsList /> },
       { path: 'returns/new', element: <ReturnsCreate /> },
       { path: 'returns/:id', element: <ReturnsDetail /> },
+
+      // Project Management
+      { path: 'pm/staff', element: <StaffList /> },
+      { path: 'pm/staff/new', element: <StaffForm /> },
+      { path: 'pm/staff/:id/edit', element: <StaffForm /> },
+      { path: 'pm/projects/:projectId/team', element: <ProjectTeam /> },
+      { path: 'pm/projects/:projectId/tasks', element: <TaskList /> },
+      { path: 'pm/projects/:projectId/tasks/new', element: <TaskForm /> },
+      { path: 'pm/tasks/:id', element: <TaskDetail /> },
+      { path: 'pm/capacity', element: <ResourcePlanning /> },
+
+      // Employee Portal
+      { path: 'employee', element: <EmployeeDashboard /> },
 
       // Project Budgeting
       { path: 'budgeting', element: <BudgetDashboard /> },
