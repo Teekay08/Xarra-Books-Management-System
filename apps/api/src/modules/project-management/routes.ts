@@ -24,7 +24,7 @@ const createStaffMemberSchema = z.object({
   hourlyRate: z.coerce.number().positive(),
   currency: z.string().length(3).default('ZAR'),
   isInternal: z.boolean().default(true),
-  notes: z.string().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 const updateStaffMemberSchema = createStaffMemberSchema.partial().extend({
@@ -34,10 +34,10 @@ const updateStaffMemberSchema = createStaffMemberSchema.partial().extend({
 const assignStaffToProjectSchema = z.object({
   staffMemberId: z.string().uuid(),
   role: z.string().min(1),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
   totalAllocatedHours: z.coerce.number().min(0).default(0),
-  notes: z.string().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 const updateAssignmentSchema = z.object({
@@ -51,15 +51,15 @@ const updateAssignmentSchema = z.object({
 
 const createTaskAssignmentSchema = z.object({
   staffMemberId: z.string().uuid(),
-  milestoneId: z.string().uuid().optional(),
+  milestoneId: z.string().uuid().nullable().optional(),
   title: z.string().min(1),
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
   allocatedHours: z.coerce.number().positive(),
   hourlyRate: z.coerce.number().positive(),
-  startDate: z.string().optional(),
-  dueDate: z.string().optional(),
-  deliverables: z.array(z.object({ description: z.string(), completed: z.boolean() })).optional(),
+  startDate: z.string().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
+  deliverables: z.array(z.object({ description: z.string(), completed: z.boolean() })).nullable().optional(),
 });
 
 const updateTaskAssignmentSchema = z.object({
@@ -86,12 +86,12 @@ const requestExtensionSchema = z.object({
 
 const createPaymentSchema = z.object({
   staffMemberId: z.string().uuid(),
-  projectId: z.string().uuid().optional(),
+  projectId: z.string().uuid().nullable().optional(),
   periodFrom: z.string(),
   periodTo: z.string(),
   totalHours: z.coerce.number().positive(),
   hourlyRate: z.coerce.number().positive(),
-  notes: z.string().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 const markPaidSchema = z.object({
