@@ -21,7 +21,7 @@ const createStaffMemberSchema = z.object({
   skills: z.array(z.string()).default([]),
   availabilityType: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT']).default('FULL_TIME'),
   maxHoursPerWeek: z.coerce.number().int().positive().default(40),
-  hourlyRate: z.coerce.number().positive(),
+  hourlyRate: z.preprocess((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)), z.number().min(0)),
   currency: z.string().length(3).default('ZAR'),
   isInternal: z.boolean().default(true),
   notes: z.string().nullable().optional(),
