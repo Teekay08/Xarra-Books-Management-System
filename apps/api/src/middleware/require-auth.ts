@@ -22,7 +22,8 @@ export function requireRole(...roles: string[]) {
     }
 
     const userRole = request.session.user.role;
-    if (!userRole || !roles.includes(userRole)) {
+    const normalizedUserRole = userRole?.toLowerCase().replace(/_/g, '');
+    if (!userRole || !roles.some((r) => r.toLowerCase().replace(/_/g, '') === normalizedUserRole)) {
       return reply.status(403).send({
         error: 'Insufficient permissions',
         required: roles,

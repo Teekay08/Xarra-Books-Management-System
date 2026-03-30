@@ -29,7 +29,7 @@ function utilizationBg(pct: number): string {
 export function ResourcePlanning() {
   const { data, isLoading } = useQuery({
     queryKey: ['pm-resource-planning'],
-    queryFn: () => api<{ data: ResourceRow[] }>('/project-management/resources/planning'),
+    queryFn: () => api<{ data: ResourceRow[] }>('/project-management/capacity'),
   });
 
   return (

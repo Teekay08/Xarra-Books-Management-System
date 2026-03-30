@@ -16,7 +16,7 @@ interface StaffMember {
   maxHoursPerWeek: number;
   hourlyRate: string;
   isInternal: boolean;
-  status: string;
+  isActive: boolean;
   userId: string | null;
   notes: string | null;
 }
@@ -51,7 +51,7 @@ export function StaffList() {
         title="Staff Members"
         subtitle="Manage team members and freelancers"
         action={
-          <Link to="/project-management/staff/new" className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800">
+          <Link to="/pm/staff/new" className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800">
             Add Staff
           </Link>
         }
@@ -86,7 +86,7 @@ export function StaffList() {
               <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {data?.data?.map((s) => (
-              <tr key={s.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/project-management/staff/${s.id}/edit`)}>
+              <tr key={s.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/pm/staff/${s.id}/edit`)}>
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">
                   {s.name}
                   {s.isInternal && <span className="ml-1 text-xs text-blue-600">(Internal)</span>}
@@ -108,14 +108,14 @@ export function StaffList() {
                 <td className="px-4 py-3 text-sm text-gray-600">{availabilityLabels[s.availabilityType] || s.availabilityType}</td>
                 <td className="px-4 py-3 text-sm text-right font-medium">R {Number(s.hourlyRate).toFixed(2)}/hr</td>
                 <td className="px-4 py-3 text-sm">
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[s.status] || 'bg-gray-100 text-gray-600'}`}>
-                    {s.status}
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${s.isActive ? statusColors['ACTIVE'] : statusColors['INACTIVE']}`}>
+                    {s.isActive ? 'ACTIVE' : 'INACTIVE'}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
                   <ActionMenu items={[
-                    { label: 'Edit', onClick: () => navigate(`/project-management/staff/${s.id}/edit`) },
-                    { label: 'Deactivate', onClick: () => navigate(`/project-management/staff/${s.id}/edit`), variant: 'danger', hidden: s.status === 'INACTIVE' },
+                    { label: 'Edit', onClick: () => navigate(`/pm/staff/${s.id}/edit`) },
+                    { label: 'Deactivate', onClick: () => navigate(`/pm/staff/${s.id}/edit`), variant: 'danger', hidden: !s.isActive },
                   ]} />
                 </td>
               </tr>

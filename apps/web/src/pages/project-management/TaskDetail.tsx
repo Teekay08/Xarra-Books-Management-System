@@ -35,7 +35,7 @@ interface Task {
   timeExhausted: boolean;
   startDate: string | null;
   dueDate: string | null;
-  deliverables: string[];
+  deliverables: Array<{ description: string; completed: boolean }>;
   assignedTo: { id: string; name: string } | null;
   project: { id: string; name: string; number: string } | null;
   milestone: { id: string; name: string } | null;
@@ -60,7 +60,7 @@ const statusColors: Record<string, string> = {
 };
 
 const timeLogStatusColors: Record<string, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-700',
+  LOGGED: 'bg-yellow-100 text-yellow-700',
   APPROVED: 'bg-green-100 text-green-700',
   REJECTED: 'bg-red-100 text-red-700',
 };
@@ -72,45 +72,50 @@ const extensionStatusColors: Record<string, string> = {
 };
 
 export function TaskDetail() {
-  const { projectId, taskId } = useParams();
+  const { id } = useParams();
   const queryClient = useQueryClient();
 
   const [logForm, setLogForm] = useState({ date: '', hours: '', description: '' });
   const [logError, setLogError] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pm-task', projectId, taskId],
-    queryFn: () => api<{ data: Task }>(`/project-management/projects/${projectId}/tasks/${taskId}`),
-    enabled: !!projectId && !!taskId,
+    queryKey: ['pm-task', id],
+    queryFn: () => api<{ data: Task }>(`/project-management/tasks/${id}`),
+    enabled: !!id,
   });
 
   const task = data?.data;
 
+  // Map status to the correct backend endpoint
+  const STATUS_ENDPOINTS: Record<string, string> = {
+    IN_PROGRESS: 'start',
+    REVIEW: 'submit-review',
+    COMPLETED: 'complete',
+  };
+
   const transitionMutation = useMutation({
-    mutationFn: (newStatus: string) =>
-      api(`/project-management/projects/${projectId}/tasks/${taskId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: newStatus }),
-      }),
+    mutationFn: (newStatus: string) => {
+      const endpoint = STATUS_ENDPOINTS[newStatus];
+      return api(`/project-management/tasks/${id}/${endpoint}`, { method: 'POST' });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pm-task', projectId, taskId] });
+      queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
     },
     onError: (err: Error) => alert(err.message),
   });
 
   const logTimeMutation = useMutation({
     mutationFn: () =>
-      api(`/project-management/projects/${projectId}/tasks/${taskId}/time-logs`, {
+      api(`/project-management/tasks/${id}/log-time`, {
         method: 'POST',
         body: JSON.stringify({
-          date: logForm.date,
+          workDate: logForm.date,
           hours: Number(logForm.hours),
           description: logForm.description,
         }),
-        headers: { 'X-Idempotency-Key': crypto.randomUUID() },
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pm-task', projectId, taskId] });
+      queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
       setLogForm({ date: '', hours: '', description: '' });
       setLogError('');
     },
@@ -119,22 +124,18 @@ export function TaskDetail() {
 
   const approveLogMutation = useMutation({
     mutationFn: ({ logId, action }: { logId: string; action: 'approve' | 'reject' }) =>
-      api(`/project-management/projects/${projectId}/tasks/${taskId}/time-logs/${logId}/${action}`, {
-        method: 'PATCH',
-      }),
+      api(`/project-management/time-logs/${logId}/${action}`, { method: 'POST' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pm-task', projectId, taskId] });
+      queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
     },
     onError: (err: Error) => alert(err.message),
   });
 
   const extensionMutation = useMutation({
     mutationFn: ({ extId, action }: { extId: string; action: 'approve' | 'decline' }) =>
-      api(`/project-management/projects/${projectId}/tasks/${taskId}/extensions/${extId}/${action}`, {
-        method: 'PATCH',
-      }),
+      api(`/project-management/extensions/${extId}/${action}`, { method: 'POST' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pm-task', projectId, taskId] });
+      queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
     },
     onError: (err: Error) => alert(err.message),
   });
@@ -151,7 +152,7 @@ export function TaskDetail() {
     <div>
       <PageHeader
         title={`${task.taskNumber}: ${task.title}`}
-        backTo={{ label: 'Tasks', href: `/project-management/projects/${projectId}/tasks` }}
+        backTo={{ label: 'Tasks', href: task.project?.id ? `/pm/projects/${task.project.id}/tasks` : '/pm/staff' }}
       />
 
       {/* Status badge next to header */}
@@ -250,8 +251,8 @@ export function TaskDetail() {
           <ul className="space-y-2">
             {task.deliverables.map((d, i) => (
               <li key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" className="rounded border-gray-300 text-green-700" disabled />
-                {d}
+                <input type="checkbox" checked={d.completed} className="rounded border-gray-300 text-green-700" readOnly />
+                {d.description}
               </li>
             ))}
           </ul>
@@ -285,7 +286,7 @@ export function TaskDetail() {
                     </span>
                   </td>
                   <td className="px-4 py-2 text-sm text-right">
-                    {log.status === 'PENDING' && (
+                    {log.status === 'LOGGED' && (
                       <ActionMenu items={[
                         { label: 'Approve', onClick: () => approveLogMutation.mutate({ logId: log.id, action: 'approve' }) },
                         { label: 'Reject', variant: 'danger', onClick: () => approveLogMutation.mutate({ logId: log.id, action: 'reject' }) },

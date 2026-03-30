@@ -76,7 +76,7 @@ export function TaskList() {
         backTo={{ label: 'Project', href: `/budgeting/projects/${projectId}` }}
         action={
           <Link
-            to={`/project-management/projects/${projectId}/tasks/new`}
+            to={`/pm/projects/${projectId}/tasks/new`}
             className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
           >
             Create Task
@@ -119,7 +119,7 @@ export function TaskList() {
               <tr
                 key={t.id}
                 className="cursor-pointer hover:bg-gray-50"
-                onClick={() => navigate(`/project-management/projects/${projectId}/tasks/${t.id}`)}
+                onClick={() => navigate(`/pm/tasks/${t.id}`)}
               >
                 <td className="px-4 py-3 text-sm font-mono text-gray-500">{t.taskNumber}</td>
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.title}</td>
@@ -145,7 +145,7 @@ export function TaskList() {
                 </td>
                 <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
                   <ActionMenu items={[
-                    { label: 'View', onClick: () => navigate(`/project-management/projects/${projectId}/tasks/${t.id}`) },
+                    { label: 'View', onClick: () => navigate(`/pm/tasks/${t.id}`) },
                   ]} />
                 </td>
               </tr>

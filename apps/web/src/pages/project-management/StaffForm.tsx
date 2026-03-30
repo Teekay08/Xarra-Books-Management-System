@@ -46,7 +46,7 @@ export function StaffForm() {
     availabilityType: 'FULL_TIME',
     maxHoursPerWeek: 40,
     hourlyRate: 0,
-    isInternal: false,
+    isInternal: true,
     userId: '',
     notes: '',
   });
@@ -115,7 +115,7 @@ export function StaffForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pm-staff'] });
-      navigate('/project-management/staff');
+      navigate('/pm/staff');
     },
     onError: (err: Error) => setError(err.message),
   });
@@ -134,7 +134,7 @@ export function StaffForm() {
     <div>
       <PageHeader
         title={isEdit ? 'Edit Staff Member' : 'Add Staff Member'}
-        backTo={{ label: 'Staff Members', href: '/project-management/staff' }}
+        backTo={{ label: 'Staff Members', href: '/pm/staff' }}
       />
 
       {error && (
@@ -267,7 +267,7 @@ export function StaffForm() {
             className="rounded-md bg-green-700 px-6 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
             {mutation.isPending ? 'Saving...' : isEdit ? 'Update Staff' : 'Add Staff'}
           </button>
-          <button type="button" onClick={() => navigate('/project-management/staff')}
+          <button type="button" onClick={() => navigate('/pm/staff')}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
             Cancel
           </button>

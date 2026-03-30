@@ -7,7 +7,7 @@ import { ActionMenu } from '../../components/ActionMenu';
 
 interface TeamMember {
   id: string;
-  staffId: string;
+  staffMemberId: string;
   staffName: string;
   staffEmail: string;
   role: string;
@@ -39,7 +39,7 @@ export function ProjectTeam() {
   const { projectId } = useParams();
   const queryClient = useQueryClient();
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [assignForm, setAssignForm] = useState({ staffId: '', role: '', allocatedHours: 0 });
+  const [assignForm, setAssignForm] = useState({ staffMemberId: '', role: '', allocatedHours: 0 });
   const [assignError, setAssignError] = useState('');
 
   const { data: projectData } = useQuery({
@@ -69,7 +69,7 @@ export function ProjectTeam() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pm-project-team', projectId] });
       setShowAssignModal(false);
-      setAssignForm({ staffId: '', role: '', allocatedHours: 0 });
+      setAssignForm({ staffMemberId: '', role: '', allocatedHours: 0 });
       setAssignError('');
     },
     onError: (err: Error) => setAssignError(err.message),
@@ -77,7 +77,7 @@ export function ProjectTeam() {
 
   const removeMutation = useMutation({
     mutationFn: (memberId: string) =>
-      api(`/project-management/projects/${projectId}/team/${memberId}`, {
+      api(`/project-management/assignments/${memberId}`, {
         method: 'DELETE',
       }),
     onSuccess: () => {
@@ -177,8 +177,8 @@ export function ProjectTeam() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Staff Member *</label>
-                <select value={assignForm.staffId}
-                  onChange={(e) => setAssignForm({ ...assignForm, staffId: e.target.value })}
+                <select value={assignForm.staffMemberId}
+                  onChange={(e) => setAssignForm({ ...assignForm, staffMemberId: e.target.value })}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                   <option value="">-- Select staff member --</option>
                   {staffData?.data?.map((s) => (
@@ -210,7 +210,7 @@ export function ProjectTeam() {
               </button>
               <button
                 onClick={() => {
-                  if (!assignForm.staffId || !assignForm.role) {
+                  if (!assignForm.staffMemberId || !assignForm.role) {
                     setAssignError('Staff member and role are required.');
                     return;
                   }

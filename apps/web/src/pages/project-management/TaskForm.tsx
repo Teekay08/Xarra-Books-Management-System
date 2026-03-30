@@ -6,7 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 
 interface TeamMember {
   id: string;
-  staffId: string;
+  staffMemberId: string;
   staffName: string;
   role: string;
   hourlyRate?: number;
@@ -31,7 +31,7 @@ export function TaskForm() {
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
-    staffId: '',
+    staffMemberId: '',
     milestoneId: '',
     title: '',
     description: '',
@@ -58,13 +58,13 @@ export function TaskForm() {
 
   // Auto-fill hourly rate when staff member is selected
   useEffect(() => {
-    if (form.staffId && teamData?.data) {
-      const member = teamData.data.find((m) => m.staffId === form.staffId);
+    if (form.staffMemberId && teamData?.data) {
+      const member = teamData.data.find((m) => m.staffMemberId === form.staffMemberId);
       if (member?.hourlyRate) {
         setForm((f) => ({ ...f, hourlyRate: member.hourlyRate! }));
       }
     }
-  }, [form.staffId, teamData]);
+  }, [form.staffMemberId, teamData]);
 
   const totalCost = form.allocatedHours * form.hourlyRate;
 
@@ -90,7 +90,7 @@ export function TaskForm() {
   const mutation = useMutation({
     mutationFn: () => {
       const payload = {
-        staffId: form.staffId || null,
+        staffMemberId: form.staffMemberId || null,
         milestoneId: form.milestoneId || null,
         title: form.title,
         description: form.description || null,
@@ -99,7 +99,7 @@ export function TaskForm() {
         hourlyRate: form.hourlyRate,
         startDate: form.startDate || null,
         dueDate: form.dueDate || null,
-        deliverables: form.deliverables.filter((d) => d.trim()),
+        deliverables: form.deliverables.filter((d) => d.trim()).map((d) => ({ description: d, completed: false })),
       };
       return api(`/project-management/projects/${projectId}/tasks`, {
         method: 'POST',
@@ -143,12 +143,12 @@ export function TaskForm() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Staff Member</label>
-              <select value={form.staffId}
-                onChange={(e) => setForm({ ...form, staffId: e.target.value })}
+              <select value={form.staffMemberId}
+                onChange={(e) => setForm({ ...form, staffMemberId: e.target.value })}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                 <option value="">-- Select team member --</option>
                 {teamData?.data?.map((m) => (
-                  <option key={m.staffId} value={m.staffId}>{m.staffName} ({m.role})</option>
+                  <option key={m.staffMemberId} value={m.staffMemberId}>{m.staffName} ({m.role})</option>
                 ))}
               </select>
             </div>
