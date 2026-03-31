@@ -56,30 +56,40 @@ export function ResourcePlanning() {
             {isLoading && (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
-            {data?.data?.map((r) => (
-              <tr key={r.staffId} className={`hover:bg-gray-50 ${utilizationBg(r.utilizationPercent)}`}>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{r.staffName}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{r.role}</td>
-                <td className="px-4 py-3 text-sm text-right font-mono">{r.maxHoursPerWeek}h</td>
-                <td className="px-4 py-3 text-sm text-right font-mono">{r.allocatedThisWeek}h</td>
-                <td className="px-4 py-3 text-sm text-right font-mono">
-                  {r.availableThisWeek > 0 ? `${r.availableThisWeek}h` : '0h'}
-                </td>
-                <td className={`px-4 py-3 text-sm text-right ${utilizationColor(r.utilizationPercent)}`}>
-                  {r.utilizationPercent.toFixed(0)}%
-                  {r.utilizationPercent > 100 && (
-                    <span className="ml-1 text-xs">(overallocated)</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-sm">
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                    r.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {r.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {data?.data?.map((r: any) => {
+              const maxHours = Number(r.maxHoursPerWeek ?? r.max_hours_per_week ?? 40);
+              const allocated = Number(r.allocatedThisWeek ?? r.allocated_this_week ?? 0);
+              const available = maxHours - allocated;
+              const utilPct = maxHours > 0 ? (allocated / maxHours) * 100 : 0;
+              const name = r.staffName ?? r.staff_name ?? r.name ?? '—';
+              const role = r.role ?? '—';
+              const status = r.isActive === false ? 'INACTIVE' : 'ACTIVE';
+
+              return (
+                <tr key={r.staffId ?? r.id} className={`hover:bg-gray-50 ${utilizationBg(utilPct)}`}>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{name}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{role}</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono">{maxHours}h</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono">{allocated}h</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono">
+                    {available > 0 ? `${available}h` : '0h'}
+                  </td>
+                  <td className={`px-4 py-3 text-sm text-right ${utilizationColor(utilPct)}`}>
+                    {utilPct.toFixed(0)}%
+                    {utilPct > 100 && (
+                      <span className="ml-1 text-xs">(overallocated)</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {status}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
             {!isLoading && data?.data?.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No staff members found. Add staff to see capacity planning.</td></tr>
             )}
