@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router';
+import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
@@ -8,12 +8,11 @@ import { ActionMenu } from '../../components/ActionMenu';
 interface TeamMember {
   id: string;
   staffMemberId: string;
-  staffName: string;
-  staffEmail: string;
   role: string;
-  allocatedHours: number;
-  loggedHours: number;
-  status: string;
+  totalAllocatedHours: string;
+  totalLoggedHours: string;
+  isActive: boolean;
+  staffMember?: { id: string; name: string; email: string; role: string; hourlyRate: string } | null;
 }
 
 interface StaffOption {
@@ -37,6 +36,7 @@ const statusColors: Record<string, string> = {
 
 export function ProjectTeam() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignForm, setAssignForm] = useState({ staffMemberId: '', role: '', allocatedHours: 0 });
@@ -122,32 +122,41 @@ export function ProjectTeam() {
               <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {teamData?.data?.map((m) => {
-              const utilization = m.allocatedHours > 0 ? (m.loggedHours / m.allocatedHours) * 100 : 0;
+              const staffName = m.staffMember?.name || '—';
+              const staffEmail = m.staffMember?.email || '';
+              const allocated = Number(m.totalAllocatedHours || 0);
+              const logged = Number(m.totalLoggedHours || 0);
+              const utilization = allocated > 0 ? (logged / allocated) * 100 : 0;
               const utilizationColor = utilization > 100 ? 'text-red-600' : utilization >= 80 ? 'text-yellow-600' : 'text-green-700';
+              const status = m.isActive ? 'ACTIVE' : 'INACTIVE';
               return (
                 <tr key={m.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm">
-                    <div className="font-medium text-gray-900">{m.staffName}</div>
-                    <div className="text-xs text-gray-400">{m.staffEmail}</div>
+                    <div className="font-medium text-gray-900">{staffName}</div>
+                    <div className="text-xs text-gray-400">{staffEmail}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{m.role}</td>
-                  <td className="px-4 py-3 text-sm text-right font-mono">{m.allocatedHours}h</td>
-                  <td className="px-4 py-3 text-sm text-right font-mono">{m.loggedHours}h</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono">{allocated}h</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono">{logged}h</td>
                   <td className={`px-4 py-3 text-sm text-right font-medium ${utilizationColor}`}>
                     {utilization.toFixed(0)}%
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[m.status] || 'bg-gray-100 text-gray-600'}`}>
-                      {m.status}
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-right">
                     <ActionMenu items={[
                       {
+                        label: 'View Tasks',
+                        onClick: () => navigate(`/pm/projects/${projectId}/tasks`),
+                      },
+                      {
                         label: 'Remove',
                         variant: 'danger',
                         onClick: () => {
-                          if (confirm(`Remove ${m.staffName} from the project team?`)) {
+                          if (confirm(`Remove ${staffName} from the project team?`)) {
                             removeMutation.mutate(m.id);
                           }
                         },
