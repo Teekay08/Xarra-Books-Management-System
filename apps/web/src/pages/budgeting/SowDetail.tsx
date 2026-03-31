@@ -200,8 +200,8 @@ export function SowDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {deliverables.map((d) => (
-                  <tr key={d.id}>
+                {deliverables.map((d: any, i: number) => (
+                  <tr key={i}>
                     <td className="px-4 py-3 text-sm text-gray-900">{d.description}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {d.dueDate ? new Date(d.dueDate).toLocaleDateString('en-ZA') : '—'}
@@ -262,8 +262,8 @@ export function SowDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {costBreakdown.map((c) => (
-                  <tr key={c.id}>
+                {costBreakdown.map((c: any, i: number) => (
+                  <tr key={i}>
                     <td className="px-4 py-3 text-sm text-gray-900">{c.description}</td>
                     <td className="px-4 py-3 text-sm text-right text-gray-500">{Number(c.hours).toFixed(1)}</td>
                     <td className="px-4 py-3 text-sm text-right text-gray-500">R {Number(c.rate).toFixed(2)}</td>
