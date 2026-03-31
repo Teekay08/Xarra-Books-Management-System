@@ -66,7 +66,13 @@ const extensionStatusColors: Record<string, string> = {
 };
 
 export function EmployeeDashboard() {
-  const { data: tasksData, isLoading: tasksLoading } = useQuery({
+  // Get current user info
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ user: { id: string; name: string; email: string; role: string } }>('/me'),
+  });
+
+  const { data: tasksData, isLoading: tasksLoading, error: tasksError } = useQuery({
     queryKey: ['my-tasks'],
     queryFn: () => api<{ data: MyTask[] }>('/project-management/my/tasks'),
   });
@@ -84,10 +90,54 @@ export function EmployeeDashboard() {
   const tasks = tasksData?.data ?? [];
   const logs = logsData?.data ?? [];
   const extensions = extensionsData?.data ?? [];
+  const userName = meData?.user?.name || 'there';
+  const noStaffProfile = tasksError && (tasksError as any)?.status === 400;
+
+  // Compute summary
+  const activeTasks = tasks.filter((t: any) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED');
+  const totalAllocated = tasks.reduce((s: number, t: any) => s + Number(t.allocatedHours || 0), 0);
+  const totalLogged = tasks.reduce((s: number, t: any) => s + Number(t.loggedHours || 0), 0);
+  const overdueTasks = tasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'COMPLETED');
+  const exhaustedTasks = tasks.filter((t: any) => t.timeExhausted);
 
   return (
     <div>
-      <PageHeader title="My Workspace" subtitle="Your tasks, time logs, and pending requests" />
+      <PageHeader title={`Welcome back, ${userName}`} subtitle="Your personal workspace — tasks, time logs, and deadlines" />
+
+      {/* No Staff Profile Warning */}
+      {noStaffProfile && (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-5 mb-6 text-center">
+          <p className="text-sm font-medium text-yellow-800">Your account isn't linked to a staff profile yet.</p>
+          <p className="text-xs text-yellow-600 mt-1">Ask your Project Manager to create a staff profile and link it to your account. Once linked, your assigned tasks will appear here.</p>
+        </div>
+      )}
+
+      {/* Summary Cards */}
+      {!noStaffProfile && (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500 uppercase">Active Tasks</p>
+            <p className="mt-1 text-2xl font-bold text-blue-700">{activeTasks.length}</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500 uppercase">Hours Logged</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{totalLogged.toFixed(1)}h</p>
+            <p className="text-xs text-gray-400">of {totalAllocated.toFixed(1)}h allocated</p>
+          </div>
+          <div className={`rounded-lg border p-4 ${overdueTasks.length > 0 ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'}`}>
+            <p className={`text-xs uppercase ${overdueTasks.length > 0 ? 'text-red-600' : 'text-gray-500'}`}>Overdue</p>
+            <p className={`mt-1 text-2xl font-bold ${overdueTasks.length > 0 ? 'text-red-700' : 'text-gray-900'}`}>{overdueTasks.length}</p>
+          </div>
+          <div className={`rounded-lg border p-4 ${exhaustedTasks.length > 0 ? 'border-orange-200 bg-orange-50' : 'border-gray-200 bg-white'}`}>
+            <p className={`text-xs uppercase ${exhaustedTasks.length > 0 ? 'text-orange-600' : 'text-gray-500'}`}>Time Exhausted</p>
+            <p className={`mt-1 text-2xl font-bold ${exhaustedTasks.length > 0 ? 'text-orange-700' : 'text-gray-900'}`}>{exhaustedTasks.length}</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500 uppercase">Pending Extensions</p>
+            <p className="mt-1 text-2xl font-bold text-yellow-600">{extensions.length}</p>
+          </div>
+        </div>
+      )}
 
       {/* My Tasks */}
       <div className="mb-8">
@@ -95,9 +145,9 @@ export function EmployeeDashboard() {
 
         {tasksLoading && <p className="text-sm text-gray-400">Loading tasks...</p>}
 
-        {!tasksLoading && tasks.length === 0 && (
+        {!tasksLoading && tasks.length === 0 && !noStaffProfile && (
           <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
-            No tasks assigned to you.
+            No tasks assigned to you yet. Your Project Manager will assign tasks when ready.
           </div>
         )}
 
