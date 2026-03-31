@@ -125,7 +125,7 @@ export function TaskForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pm-tasks', projectId] });
-      navigate(`/project-management/projects/${projectId}/tasks`);
+      navigate(`/pm/projects/${projectId}/tasks`);
     },
     onError: (err: Error) => setError(err.message),
   });
@@ -144,7 +144,7 @@ export function TaskForm() {
     <div>
       <PageHeader
         title="Create Task"
-        backTo={{ label: 'Tasks', href: `/project-management/projects/${projectId}/tasks` }}
+        backTo={{ label: 'Tasks', href: `/pm/projects/${projectId}/tasks` }}
       />
 
       {error && (
@@ -334,7 +334,7 @@ export function TaskForm() {
             className="rounded-md bg-green-700 px-6 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
             {mutation.isPending ? 'Creating...' : 'Create Task'}
           </button>
-          <button type="button" onClick={() => navigate(`/project-management/projects/${projectId}/tasks`)}
+          <button type="button" onClick={() => navigate(`/pm/projects/${projectId}/tasks`)}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
             Cancel
           </button>
