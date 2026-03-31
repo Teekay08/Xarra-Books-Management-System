@@ -54,7 +54,7 @@ const priorityColors: Record<string, string> = {
 };
 
 const timeLogStatusColors: Record<string, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-700',
+  LOGGED: 'bg-yellow-100 text-yellow-700',
   APPROVED: 'bg-green-100 text-green-700',
   REJECTED: 'bg-red-100 text-red-700',
 };
@@ -103,42 +103,61 @@ export function EmployeeDashboard() {
 
         {!tasksLoading && tasks.length > 0 && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {tasks.map((t) => {
-              const pct = t.allocatedHours > 0 ? Math.min((t.loggedHours / t.allocatedHours) * 100, 100) : 0;
-              const overBudget = t.loggedHours > t.allocatedHours;
+            {tasks.map((t: any) => {
+              const allocated = Number(t.allocatedHours || 0);
+              const logged = Number(t.loggedHours || 0);
+              const remaining = Number(t.remainingHours || Math.max(0, allocated - logged));
+              const pct = allocated > 0 ? Math.min((logged / allocated) * 100, 100) : 0;
+              const overBudget = logged > allocated;
+              const isExhausted = t.timeExhausted || remaining <= 0;
+              const projName = t.project?.name || t.projectName || '';
+              const projNumber = t.project?.number || t.projectNumber || '';
+              const taskNum = t.number || t.taskNumber || '';
+              const daysUntilDue = t.dueDate ? Math.ceil((new Date(t.dueDate).getTime() - Date.now()) / 86400000) : null;
+
               return (
                 <Link
                   key={t.id}
                   to={`/pm/tasks/${t.id}`}
-                  className="block rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow"
+                  className={`block rounded-lg border bg-white p-4 hover:shadow-md transition-shadow ${isExhausted ? 'border-red-300' : 'border-gray-200'}`}
                 >
+                  {isExhausted && (
+                    <div className="mb-2 rounded bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700">
+                      TIME EXHAUSTED — Request extension
+                    </div>
+                  )}
                   <div className="flex items-start justify-between mb-2">
-                    <span className="text-xs font-mono text-gray-400">{t.taskNumber}</span>
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[t.status] || ''}`}>
-                      {t.status.replace(/_/g, ' ')}
-                    </span>
+                    <span className="text-xs font-mono text-gray-400">{taskNum}</span>
+                    <div className="flex gap-1">
+                      <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${priorityColors[t.priority] || ''}`}>
+                        {t.priority}
+                      </span>
+                      <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusColors[t.status] || ''}`}>
+                        {t.status?.replace(/_/g, ' ')}
+                      </span>
+                    </div>
                   </div>
                   <p className="text-sm font-medium text-gray-900 mb-1">{t.title}</p>
-                  <p className="text-xs text-gray-500 mb-3">{t.projectNumber} — {t.projectName}</p>
+                  <p className="text-xs text-gray-500 mb-3">{projNumber} — {projName}</p>
 
                   <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span>Hours: {t.loggedHours}/{t.allocatedHours}h</span>
-                    <span className={`inline-flex rounded-full px-1.5 py-0.5 text-xs font-medium ${priorityColors[t.priority] || ''}`}>
-                      {t.priority}
-                    </span>
+                    <span>{logged.toFixed(1)}h / {allocated.toFixed(1)}h logged</span>
+                    <span className={remaining > 0 ? 'text-green-700' : 'text-red-600'}>{remaining.toFixed(1)}h left</span>
                   </div>
 
                   {/* Progress bar */}
-                  <div className="w-full rounded-full bg-gray-200 h-1.5">
+                  <div className="w-full rounded-full bg-gray-200 h-2">
                     <div
-                      className={`h-1.5 rounded-full ${overBudget ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                      className={`h-2 rounded-full ${overBudget ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
                       style={{ width: `${Math.min(pct, 100)}%` }}
                     />
                   </div>
 
                   {t.dueDate && (
-                    <p className="text-xs text-gray-400 mt-2">
-                      Due: {new Date(t.dueDate).toLocaleDateString()}
+                    <p className={`text-xs mt-2 ${daysUntilDue !== null && daysUntilDue < 3 ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                      Due: {new Date(t.dueDate).toLocaleDateString('en-ZA')}
+                      {daysUntilDue !== null && daysUntilDue >= 0 && ` (${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''} left)`}
+                      {daysUntilDue !== null && daysUntilDue < 0 && ` (${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? 's' : ''} overdue)`}
                     </p>
                   )}
                 </Link>

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ActionMenu } from '../../components/ActionMenu';
 
 const statusColors: Record<string, string> = {
   PLANNING: 'bg-gray-100 text-gray-700',
@@ -49,7 +50,8 @@ export function PMProjectList() {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Author</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Quick Actions</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -83,10 +85,18 @@ export function PMProjectList() {
                     </Link>
                   </div>
                 </td>
+                <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                  <ActionMenu items={[
+                    { label: 'View Project', onClick: () => navigate(`/budgeting/projects/${p.id}`) },
+                    { label: 'Edit Project', onClick: () => navigate(`/budgeting/projects/${p.id}/edit`) },
+                    { label: 'Manage Team', onClick: () => navigate(`/pm/projects/${p.id}/team`) },
+                    { label: 'Manage Tasks', onClick: () => navigate(`/pm/projects/${p.id}/tasks`) },
+                  ]} />
+                </td>
               </tr>
             ))}
             {!isLoading && (!data?.data || data.data.length === 0) && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">No projects yet.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">No projects yet.</td></tr>
             )}
           </tbody>
         </table>

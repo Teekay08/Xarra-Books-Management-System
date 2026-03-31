@@ -190,10 +190,33 @@ export function ProjectTeam() {
                   onChange={(e) => setAssignForm({ ...assignForm, staffMemberId: e.target.value })}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                   <option value="">-- Select staff member --</option>
-                  {staffData?.data?.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                  {staffData?.data?.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {s.role} ({s.availabilityType?.replace(/_/g, ' ')}, {s.maxHoursPerWeek}h/wk, R{Number(s.hourlyRate || 0).toFixed(0)}/hr)
+                    </option>
                   ))}
                 </select>
+                {/* Show selected staff availability */}
+                {assignForm.staffMemberId && (() => {
+                  const selected = staffData?.data?.find((s: any) => s.id === assignForm.staffMemberId) as any;
+                  if (!selected) return null;
+                  const skills = Array.isArray(selected.skills) ? selected.skills : [];
+                  return (
+                    <div className="mt-2 rounded-md bg-blue-50 border border-blue-200 p-3 text-xs">
+                      <p className="font-medium text-blue-800 mb-1">{selected.name}</p>
+                      <p className="text-blue-700">
+                        {selected.availabilityType?.replace(/_/g, ' ')} &middot; {selected.maxHoursPerWeek}h/week &middot; R{Number(selected.hourlyRate || 0).toFixed(2)}/hr
+                      </p>
+                      {skills.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {skills.map((sk: string) => (
+                            <span key={sk} className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700">{sk.replace(/_/g, ' ')}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>

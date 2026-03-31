@@ -86,7 +86,7 @@ export function StaffList() {
               <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {data?.data?.map((s) => (
-              <tr key={s.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/pm/staff/${s.id}/edit`)}>
+              <tr key={s.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/pm/staff/${s.id}`)}>
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">
                   {s.name}
                   {s.isInternal && <span className="ml-1 text-xs text-blue-600">(Internal)</span>}
@@ -114,6 +114,7 @@ export function StaffList() {
                 </td>
                 <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
                   <ActionMenu items={[
+                    { label: 'View Profile', onClick: () => navigate(`/pm/staff/${s.id}`) },
                     { label: 'Edit', onClick: () => navigate(`/pm/staff/${s.id}/edit`) },
                     { label: 'Deactivate', onClick: () => navigate(`/pm/staff/${s.id}/edit`), variant: 'danger', hidden: !s.isActive },
                   ]} />

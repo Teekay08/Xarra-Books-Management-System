@@ -52,6 +52,7 @@ interface SowDocument {
   deliverables: SowDeliverable[];
   milestones: SowMilestone[];
   costBreakdown: SowCostLine[];
+  timeline?: { startDate?: string; endDate?: string; milestones?: Array<{ name: string; date: string }> } | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -235,7 +236,7 @@ export function SowDetail() {
             <div>
               <p className="text-xs text-gray-500 uppercase mb-2">Milestones</p>
               <div className="space-y-2">
-                {timeline.milestones.map((m: any, i: number) => (
+                {(timeline.milestones || []).map((m: any, i: number) => (
                   <div key={i} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                     <span className="text-sm text-gray-900">{m.name}</span>
                     <span className="text-sm text-gray-500">{m.date ? new Date(m.date).toLocaleDateString('en-ZA') : '—'}</span>
