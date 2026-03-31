@@ -149,8 +149,16 @@ export function ProjectTeam() {
                   <td className="px-4 py-3 text-sm text-right">
                     <ActionMenu items={[
                       {
+                        label: 'View Profile',
+                        onClick: () => navigate(`/pm/staff/${m.staffMemberId}`),
+                      },
+                      {
                         label: 'View Tasks',
                         onClick: () => navigate(`/pm/projects/${projectId}/tasks`),
+                      },
+                      {
+                        label: 'Create SOW',
+                        onClick: () => navigate(`/pm/staff/${m.staffMemberId}/sow?projectId=${projectId}`),
                       },
                       {
                         label: 'Remove',

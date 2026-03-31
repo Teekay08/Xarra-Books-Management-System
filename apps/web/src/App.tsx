@@ -136,6 +136,7 @@ import { PMDashboard } from './pages/project-management/PMDashboard';
 import { PMProjectList } from './pages/project-management/PMProjectList';
 import { StaffList } from './pages/project-management/StaffList';
 import { StaffDetail } from './pages/project-management/StaffDetail';
+import { CreateStaffSow } from './pages/project-management/CreateStaffSow';
 import { StaffForm } from './pages/project-management/StaffForm';
 import { ProjectTeam } from './pages/project-management/ProjectTeam';
 import { TaskList } from './pages/project-management/TaskList';
@@ -283,6 +284,7 @@ const router = createBrowserRouter([
       { path: 'pm/staff/new', element: <StaffForm /> },
       { path: 'pm/staff/:id', element: <StaffDetail /> },
       { path: 'pm/staff/:id/edit', element: <StaffForm /> },
+      { path: 'pm/staff/:staffId/sow', element: <CreateStaffSow /> },
       { path: 'pm/projects/:projectId/team', element: <ProjectTeam /> },
       { path: 'pm/projects/:projectId/tasks', element: <TaskList /> },
       { path: 'pm/projects/:projectId/tasks/new', element: <TaskForm /> },

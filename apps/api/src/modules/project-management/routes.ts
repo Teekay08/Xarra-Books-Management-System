@@ -1133,4 +1133,110 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     if (!updated) return reply.notFound('Payment not found or not in APPROVED status');
     return { data: updated };
   });
+
+  // ==========================================
+  // SOW GENERATION FROM TASK ASSIGNMENTS
+  // ==========================================
+
+  // Generate SOW data pre-filled from a staff member's task assignments on a project
+  app.get<{ Params: { projectId: string; staffMemberId: string } }>('/projects/:projectId/staff/:staffMemberId/sow-data', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const { projectId, staffMemberId } = request.params;
+
+    // Get staff member
+    const staff = await app.db.query.staffMembers.findFirst({
+      where: eq(staffMembers.id, staffMemberId),
+    });
+    if (!staff) return reply.notFound('Staff member not found');
+
+    // Get project
+    const project = await app.db.query.projects.findFirst({
+      where: eq(projects.id, projectId),
+      with: { title: true, author: true },
+    });
+    if (!project) return reply.notFound('Project not found');
+
+    // Get assignment
+    const assignment = await app.db.query.staffProjectAssignments.findFirst({
+      where: and(
+        eq(staffProjectAssignments.projectId, projectId),
+        eq(staffProjectAssignments.staffMemberId, staffMemberId),
+      ),
+    });
+
+    // Get tasks for this staff on this project
+    const tasks = await app.db.query.taskAssignments.findMany({
+      where: and(
+        eq(taskAssignments.projectId, projectId),
+        eq(taskAssignments.staffMemberId, staffMemberId),
+      ),
+      with: { milestone: true },
+      orderBy: (t, { asc }) => [asc(t.createdAt)],
+    });
+
+    // Build scope from tasks
+    const scope = [
+      `Statement of Work for ${staff.name} on project ${project.name} (${project.number}).`,
+      '',
+      `Role: ${assignment?.role || staff.role}`,
+      '',
+      'Tasks:',
+      ...tasks.map((t, i) => `${i + 1}. ${t.title}${t.description ? ` — ${t.description}` : ''}`),
+    ].join('\n');
+
+    // Build deliverables from tasks
+    const deliverables = tasks.map((t) => ({
+      description: t.title + (t.milestone ? ` (${t.milestone.name})` : ''),
+      dueDate: t.dueDate ? new Date(t.dueDate).toISOString() : new Date().toISOString(),
+      acceptanceCriteria: (t.deliverables as any[])?.map((d: any) => d.description).join('; ') || 'Completed to satisfaction',
+    }));
+
+    // Build cost breakdown from tasks
+    const costBreakdown = tasks.map((t) => ({
+      description: t.title,
+      hours: Number(t.allocatedHours),
+      rate: Number(t.hourlyRate),
+      total: Number(t.totalCost),
+    }));
+
+    const totalAmount = costBreakdown.reduce((s, c) => s + c.total, 0);
+    const totalHours = costBreakdown.reduce((s, c) => s + c.hours, 0);
+
+    // Build timeline
+    const taskDates = tasks.filter((t) => t.startDate || t.dueDate);
+    const startDate = taskDates.length > 0
+      ? new Date(Math.min(...taskDates.map((t) => new Date(t.startDate || t.dueDate!).getTime()))).toISOString()
+      : new Date().toISOString();
+    const endDate = taskDates.length > 0
+      ? new Date(Math.max(...taskDates.map((t) => new Date(t.dueDate || t.startDate!).getTime()))).toISOString()
+      : new Date(Date.now() + 30 * 86400000).toISOString();
+
+    return {
+      data: {
+        projectId,
+        staffMemberId,
+        staffName: staff.name,
+        staffEmail: staff.email,
+        isInternal: staff.isInternal,
+        supplierId: null, // will be set if external
+        projectName: project.name,
+        projectNumber: project.number,
+        scope,
+        deliverables,
+        timeline: {
+          startDate,
+          endDate,
+          milestones: tasks.filter((t) => t.dueDate).map((t) => ({
+            name: t.title,
+            date: new Date(t.dueDate!).toISOString(),
+          })),
+        },
+        costBreakdown,
+        totalAmount,
+        totalHours,
+        terms: `Payment terms: ${staff.isInternal ? 'Monthly payroll' : 'Net 30 days from invoice date'}.\nRate: R${Number(staff.hourlyRate).toFixed(2)}/hour.\nTotal estimated hours: ${totalHours}.`,
+      },
+    };
+  });
 }

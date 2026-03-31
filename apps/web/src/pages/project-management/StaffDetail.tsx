@@ -76,10 +76,12 @@ export function StaffDetail() {
         subtitle={`${staff.role} — ${staff.availabilityType?.replace(/_/g, ' ') || 'Full Time'}`}
         backTo={{ label: 'Staff Members', href: '/pm/staff' }}
         action={
-          <Link to={`/pm/staff/${id}/edit`}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-            Edit Profile
-          </Link>
+          <div className="flex gap-2">
+            <Link to={`/pm/staff/${id}/edit`}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              Edit Profile
+            </Link>
+          </div>
         }
       />
 
@@ -178,7 +180,13 @@ export function StaffDetail() {
                 <p className="text-sm font-semibold text-gray-900">{proj.name}</p>
                 <p className="text-xs text-gray-500">{proj.number}</p>
               </div>
-              <Link to={`/pm/projects/${projId}/tasks`} className="text-xs text-green-700 hover:underline">View All Tasks</Link>
+              <div className="flex gap-2">
+                <Link to={`/pm/staff/${id}/sow?projectId=${projId}`}
+                  className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100">
+                  Create SOW
+                </Link>
+                <Link to={`/pm/projects/${projId}/tasks`} className="text-xs text-green-700 hover:underline leading-6">View All Tasks</Link>
+              </div>
             </div>
             <div className="space-y-2">
               {proj.tasks.map((t: any) => {
