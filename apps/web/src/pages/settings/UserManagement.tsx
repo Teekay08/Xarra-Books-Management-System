@@ -23,7 +23,7 @@ interface Invitation {
   createdAt: string;
 }
 
-const ROLES = ['admin', 'finance', 'operations', 'editorial', 'reports_only'];
+const ROLES = ['admin', 'finance', 'project_manager', 'author', 'staff'];
 
 export function UserManagement() {
   const queryClient = useQueryClient();

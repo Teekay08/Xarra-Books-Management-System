@@ -1,8 +1,15 @@
 /**
  * Role-Based Access Control (RBAC) Permissions Matrix
  *
- * Defines what each role can do across every module.
- * Used by both API middleware and frontend route/UI guards.
+ * 5 system roles:
+ *   ADMIN           — Full access to everything
+ *   FINANCE         — Finance, budgeting, reports, payments
+ *   PROJECT_MANAGER — Projects, staff, tasks, timesheets, SOWs
+ *   AUTHOR          — Author portal (own profile, titles, royalties)
+ *   STAFF           — My Workspace (own tasks, timesheets, time logging)
+ *
+ * Staff members' actual job function (Editor, Typesetter, Cover Designer)
+ * is stored in their staff_members profile, not the system role.
  */
 
 export type Permission = 'read' | 'create' | 'update' | 'delete' | 'void' | 'approve' | 'export';
@@ -40,7 +47,7 @@ export type Module =
   | 'projectManagement'
   | 'employeePortal';
 
-export type Role = 'admin' | 'finance' | 'operations' | 'editorial' | 'author' | 'reportsOnly' | 'projectManager' | 'employee';
+export type Role = 'admin' | 'finance' | 'projectManager' | 'author' | 'staff';
 
 type PermissionMatrix = Record<Role, Partial<Record<Module, Permission[]>>>;
 
@@ -76,7 +83,7 @@ export const PERMISSIONS: PermissionMatrix = {
     royalties: ['read', 'create', 'update', 'approve', 'void'],
     budgeting: ['read', 'create', 'update', 'delete', 'approve', 'void', 'export'],
     projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
-    employeePortal: ['read'],
+    employeePortal: ['read', 'create', 'update'],
   },
   finance: {
     dashboard: ['read'],
@@ -106,12 +113,13 @@ export const PERMISSIONS: PermissionMatrix = {
     courierShipments: ['read'],
     royalties: ['read', 'create', 'update', 'approve', 'void'],
     budgeting: ['read', 'create', 'update', 'approve', 'void', 'export'],
+    employeePortal: ['read', 'create', 'update'],
   },
-  operations: {
+  projectManager: {
     dashboard: ['read'],
     authors: ['read'],
-    titles: ['read'],
-    partners: ['read', 'create', 'update'],
+    titles: ['read', 'create', 'update'],
+    partners: ['read'],
     inventory: ['read', 'create', 'update'],
     consignments: ['read', 'create', 'update'],
     returns: ['read', 'create', 'update'],
@@ -123,7 +131,7 @@ export const PERMISSIONS: PermissionMatrix = {
     remittances: ['read'],
     expenses: ['read'],
     statements: ['read'],
-    reports: ['read'],
+    reports: ['read', 'export'],
     settings: ['read'],
     sync: ['read', 'create'],
     purchaseOrders: ['read', 'create', 'update', 'export'],
@@ -132,23 +140,9 @@ export const PERMISSIONS: PermissionMatrix = {
     partnerPortal: ['read', 'create', 'update', 'approve'],
     courierShipments: ['read', 'create', 'update'],
     royalties: ['read'],
-  },
-  editorial: {
-    dashboard: ['read'],
-    authors: ['read', 'create', 'update'],
-    titles: ['read', 'create', 'update'],
-    partners: ['read'],
-    inventory: ['read'],
-    consignments: ['read'],
-    returns: ['read'],
-    invoices: ['read'],
-    quotations: ['read'],
-    creditNotes: ['read'],
-    debitNotes: ['read'],
-    expenses: ['read'],
-    statements: ['read'],
-    reports: ['read'],
-    settings: ['read'],
+    budgeting: ['read', 'create', 'update', 'approve', 'export'],
+    projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
+    employeePortal: ['read', 'create', 'update'],
   },
   author: {
     dashboard: ['read'],
@@ -158,44 +152,7 @@ export const PERMISSIONS: PermissionMatrix = {
     reports: ['read'], // own royalty reports only
     settings: ['read'],
   },
-  reportsOnly: {
-    dashboard: ['read'],
-    authors: ['read'],
-    titles: ['read'],
-    partners: ['read'],
-    inventory: ['read'],
-    consignments: ['read'],
-    returns: ['read'],
-    invoices: ['read'],
-    quotations: ['read'],
-    creditNotes: ['read'],
-    debitNotes: ['read'],
-    payments: ['read'],
-    remittances: ['read'],
-    expenses: ['read'],
-    statements: ['read'],
-    reports: ['read', 'export'],
-    purchaseOrders: ['read'],
-    cashSales: ['read'],
-    expenseClaims: ['read'],
-    requisitions: ['read'],
-    royalties: ['read'],
-    settings: ['read'],
-  },
-  projectManager: {
-    dashboard: ['read'],
-    authors: ['read'],
-    titles: ['read'],
-    partners: ['read'],
-    inventory: ['read'],
-    consignments: ['read'],
-    reports: ['read', 'export'],
-    budgeting: ['read'],
-    projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
-    employeePortal: ['read'],
-    settings: ['read'],
-  },
-  employee: {
+  staff: {
     dashboard: ['read'],
     employeePortal: ['read', 'create', 'update'],
     settings: ['read'],
@@ -203,24 +160,28 @@ export const PERMISSIONS: PermissionMatrix = {
 };
 
 /**
- * Normalize role string from DB (e.g. 'REPORTS_ONLY', 'admin', 'FINANCE') to Role key.
+ * Normalize role string from DB to Role key.
+ * Handles legacy roles by mapping them to the closest new role.
  */
 function normalizeRole(role: string): Role {
   const map: Record<string, Role> = {
+    // Current roles
     admin: 'admin',
     finance: 'finance',
-    operations: 'operations',
-    editorial: 'editorial',
-    author: 'author',
-    reports_only: 'reportsOnly',
-    reportsonly: 'reportsOnly',
-    reportsOnly: 'reportsOnly',
     project_manager: 'projectManager',
     projectmanager: 'projectManager',
     projectManager: 'projectManager',
-    employee: 'employee',
+    author: 'author',
+    staff: 'staff',
+    // Legacy roles → mapped to closest new role
+    operations: 'projectManager',  // operations staff → PM (similar access needs)
+    editorial: 'staff',            // editorial → staff (work on projects)
+    reports_only: 'staff',         // reports only → staff (minimal access)
+    reportsonly: 'staff',
+    reportsOnly: 'staff',
+    employee: 'staff',             // old employee role → staff
   };
-  return map[role.toLowerCase()] ?? map[role] ?? ('admin' as Role);
+  return map[role.toLowerCase()] ?? map[role] ?? ('staff' as Role);
 }
 
 /**

@@ -53,7 +53,7 @@ export type InventoryLocation = (typeof INVENTORY_LOCATIONS)[number];
 export const MOVEMENT_TYPES = ['IN', 'CONSIGN', 'SELL', 'RETURN', 'ADJUST', 'WRITEOFF'] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
-export const USER_ROLES = ['ADMIN', 'FINANCE', 'OPERATIONS', 'EDITORIAL', 'AUTHOR', 'REPORTS_ONLY', 'PROJECT_MANAGER', 'EMPLOYEE'] as const;
+export const USER_ROLES = ['ADMIN', 'FINANCE', 'PROJECT_MANAGER', 'AUTHOR', 'STAFF'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const DOCUMENT_PREFIXES = {
