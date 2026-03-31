@@ -93,7 +93,7 @@ export function ProjectTeam() {
       <PageHeader
         title={`Team: ${projectName}`}
         subtitle="Manage team assignments for this project"
-        backTo={{ label: 'Project', href: `/budgeting/projects/${projectId}` }}
+        backTo={{ label: 'Projects', href: '/pm/projects' }}
         action={
           <button
             onClick={() => setShowAssignModal(true)}

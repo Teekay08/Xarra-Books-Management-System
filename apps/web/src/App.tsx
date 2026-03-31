@@ -132,6 +132,8 @@ import { DocumentsSearch } from './pages/documents/DocumentsSearch';
 import { CreateOrderOnBehalf } from './pages/partners/CreateOrderOnBehalf';
 import { NotificationEmailSettings } from './pages/settings/NotificationEmailSettings';
 // Project Management + Employee Portal
+import { PMDashboard } from './pages/project-management/PMDashboard';
+import { PMProjectList } from './pages/project-management/PMProjectList';
 import { StaffList } from './pages/project-management/StaffList';
 import { StaffForm } from './pages/project-management/StaffForm';
 import { ProjectTeam } from './pages/project-management/ProjectTeam';
@@ -274,6 +276,8 @@ const router = createBrowserRouter([
       { path: 'returns/:id', element: <ReturnsDetail /> },
 
       // Project Management
+      { path: 'pm', element: <PMDashboard /> },
+      { path: 'pm/projects', element: <PMProjectList /> },
       { path: 'pm/staff', element: <StaffList /> },
       { path: 'pm/staff/new', element: <StaffForm /> },
       { path: 'pm/staff/:id/edit', element: <StaffForm /> },

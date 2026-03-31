@@ -73,7 +73,7 @@ export function TaskList() {
     <div>
       <PageHeader
         title={`Tasks: ${projectName}`}
-        backTo={{ label: 'Project', href: `/budgeting/projects/${projectId}` }}
+        backTo={{ label: 'Projects', href: '/pm/projects' }}
         action={
           <Link
             to={`/pm/projects/${projectId}/tasks/new`}

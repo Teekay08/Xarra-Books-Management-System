@@ -109,7 +109,7 @@ export function EmployeeDashboard() {
               return (
                 <Link
                   key={t.id}
-                  to={`/project-management/projects/${t.projectId}/tasks/${t.id}`}
+                  to={`/pm/tasks/${t.id}`}
                   className="block rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-start justify-between mb-2">

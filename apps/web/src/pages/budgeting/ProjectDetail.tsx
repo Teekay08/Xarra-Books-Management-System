@@ -171,6 +171,14 @@ export function ProjectDetail() {
                 Complete Project
               </button>
             )}
+            <Link to={`/pm/projects/${id}/team`}
+              className="rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">
+              Team
+            </Link>
+            <Link to={`/pm/projects/${id}/tasks`}
+              className="rounded-md border border-purple-300 bg-purple-50 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100">
+              Tasks
+            </Link>
             <a href={`/api/v1/budgeting/projects/${id}/pdf`} target="_blank" rel="noopener noreferrer"
               className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
               Download PDF

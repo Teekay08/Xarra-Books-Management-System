@@ -69,6 +69,8 @@ const allSections: NavSection[] = [
   {
     label: 'Project Management',
     items: [
+      { name: 'PM Dashboard', href: '/pm', module: 'projectManagement' },
+      { name: 'Projects', href: '/pm/projects', module: 'projectManagement' },
       { name: 'Staff Members', href: '/pm/staff', module: 'projectManagement' },
       { name: 'Resource Planning', href: '/pm/capacity', module: 'projectManagement' },
     ],
