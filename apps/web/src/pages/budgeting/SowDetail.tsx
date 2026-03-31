@@ -221,24 +221,24 @@ export function SowDetail() {
             <div>
               <span className="text-gray-500">Start Date</span>
               <p className="font-medium">
-                {sow.startDate ? new Date(sow.startDate).toLocaleDateString('en-ZA') : '—'}
+                {timeline.startDate ? new Date(timeline.startDate).toLocaleDateString('en-ZA') : '—'}
               </p>
             </div>
             <div>
               <span className="text-gray-500">End Date</span>
               <p className="font-medium">
-                {sow.endDate ? new Date(sow.endDate).toLocaleDateString('en-ZA') : '—'}
+                {timeline.endDate ? new Date(timeline.endDate).toLocaleDateString('en-ZA') : '—'}
               </p>
             </div>
           </div>
-          {sow.milestones.length > 0 && (
+          {(timeline.milestones?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs text-gray-500 uppercase mb-2">Milestones</p>
               <div className="space-y-2">
-                {sow.milestones.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                {timeline.milestones.map((m: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                     <span className="text-sm text-gray-900">{m.name}</span>
-                    <span className="text-sm text-gray-500">{new Date(m.date).toLocaleDateString('en-ZA')}</span>
+                    <span className="text-sm text-gray-500">{m.date ? new Date(m.date).toLocaleDateString('en-ZA') : '—'}</span>
                   </div>
                 ))}
               </div>
