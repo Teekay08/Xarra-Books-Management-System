@@ -106,7 +106,10 @@ export function SowDetail() {
   const sow = data.data;
   const contractorName = sow.contractor?.name || sow.staffUser?.name || '—';
   const versions = versionsData?.data ?? [];
-  const costGrandTotal = sow.costBreakdown.reduce((s, c) => s + Number(c.total), 0);
+  const costBreakdown = costBreakdown || [];
+  const deliverables = deliverables || [];
+  const timeline = sow.timeline || { startDate: null, endDate: null, milestones: [] };
+  const costGrandTotal = costBreakdown.reduce((s: number, c: any) => s + Number(c.total || 0), 0);
 
   return (
     <div>
@@ -183,7 +186,7 @@ export function SowDetail() {
         </div>
 
         {/* Deliverables */}
-        {sow.deliverables.length > 0 && (
+        {deliverables.length > 0 && (
           <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
             <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold text-gray-900">Deliverables</h3>
@@ -197,7 +200,7 @@ export function SowDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {sow.deliverables.map((d) => (
+                {deliverables.map((d) => (
                   <tr key={d.id}>
                     <td className="px-4 py-3 text-sm text-gray-900">{d.description}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">
@@ -244,7 +247,7 @@ export function SowDetail() {
         </div>
 
         {/* Cost Breakdown */}
-        {sow.costBreakdown.length > 0 && (
+        {costBreakdown.length > 0 && (
           <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
             <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold text-gray-900">Cost Breakdown</h3>
@@ -259,7 +262,7 @@ export function SowDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {sow.costBreakdown.map((c) => (
+                {costBreakdown.map((c) => (
                   <tr key={c.id}>
                     <td className="px-4 py-3 text-sm text-gray-900">{c.description}</td>
                     <td className="px-4 py-3 text-sm text-right text-gray-500">{Number(c.hours).toFixed(1)}</td>
