@@ -177,12 +177,14 @@ export function SowCreate() {
           dueDate: d.dueDate || undefined,
           acceptanceCriteria: d.acceptanceCriteria || undefined,
         })),
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        milestones: validMilestones.map((m) => ({
-          name: m.name,
-          date: m.date,
-        })),
+        timeline: {
+          startDate: startDate || new Date().toISOString(),
+          endDate: endDate || new Date().toISOString(),
+          milestones: validMilestones.map((m) => ({
+            name: m.name,
+            date: m.date,
+          })),
+        },
         costBreakdown: validCostLines.map((c) => ({
           description: c.description,
           hours: Number(c.hours),
