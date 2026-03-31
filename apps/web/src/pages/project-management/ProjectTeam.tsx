@@ -41,6 +41,8 @@ export function ProjectTeam() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignForm, setAssignForm] = useState({ staffMemberId: '', role: '', allocatedHours: 0 });
   const [assignError, setAssignError] = useState('');
+  const [sendLinkModal, setSendLinkModal] = useState<{ staffMemberId: string; staffName: string } | null>(null);
+  const [sendLinkResult, setSendLinkResult] = useState<string | null>(null);
 
   const { data: projectData } = useQuery({
     queryKey: ['budgeting-project', projectId],
@@ -89,8 +91,16 @@ export function ProjectTeam() {
   const sendAccessLinkMutation = useMutation({
     mutationFn: (staffMemberId: string) =>
       api(`/project-management/projects/${projectId}/staff/${staffMemberId}/send-access-link`, { method: 'POST' }),
-    onSuccess: (data: any) => alert(`Access link sent to ${data?.data?.email || 'contractor'}`),
-    onError: (err: Error) => alert(`Failed: ${err.message}`),
+    onSuccess: (data: any) => {
+      setSendLinkModal(null);
+      setSendLinkResult(`Access link sent to ${data?.data?.email || 'contractor'}`);
+      setTimeout(() => setSendLinkResult(null), 5000);
+    },
+    onError: (err: Error) => {
+      setSendLinkModal(null);
+      setSendLinkResult(`Failed: ${err.message}`);
+      setTimeout(() => setSendLinkResult(null), 5000);
+    },
   });
 
   const projectName = projectData?.data ? `${projectData.data.number} — ${projectData.data.name}` : 'Project';
@@ -169,20 +179,12 @@ export function ProjectTeam() {
                       },
                       {
                         label: 'Send Access Link',
-                        onClick: () => {
-                          if (confirm(`Send portal access link to ${staffName}? They will receive an email with a link to view tasks and log hours.`)) {
-                            sendAccessLinkMutation.mutate(m.staffMemberId);
-                          }
-                        },
+                        onClick: () => setSendLinkModal({ staffMemberId: m.staffMemberId, staffName }),
                       },
                       {
                         label: 'Remove',
                         variant: 'danger',
-                        onClick: () => {
-                          if (confirm(`Remove ${staffName} from the project team?`)) {
-                            removeMutation.mutate(m.id);
-                          }
-                        },
+                        onClick: () => removeMutation.mutate(m.id),
                       },
                     ]} />
                   </td>
@@ -195,6 +197,36 @@ export function ProjectTeam() {
           </tbody>
         </table>
       </div>
+
+      {/* Success/Error Banner */}
+      {sendLinkResult && (
+        <div className={`fixed top-4 right-4 z-50 rounded-lg shadow-lg px-5 py-3 text-sm font-medium ${sendLinkResult.startsWith('Failed') ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
+          {sendLinkResult}
+        </div>
+      )}
+
+      {/* Send Access Link Modal */}
+      {sendLinkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Send Portal Access Link</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Send a portal access link to <strong>{sendLinkModal.staffName}</strong>? They will receive an email with a link to view their tasks and log working hours.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setSendLinkModal(null)}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={() => sendAccessLinkMutation.mutate(sendLinkModal.staffMemberId)}
+                disabled={sendAccessLinkMutation.isPending}
+                className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                {sendAccessLinkMutation.isPending ? 'Sending...' : 'Send Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Assign Staff Modal */}
       {showAssignModal && (

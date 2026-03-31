@@ -75,23 +75,30 @@ export function EmployeeDashboard() {
   const { data: tasksData, isLoading: tasksLoading, error: tasksError } = useQuery({
     queryKey: ['my-tasks'],
     queryFn: () => api<{ data: MyTask[] }>('/project-management/my/tasks'),
+    retry: false, // Don't retry 400s (no staff profile)
   });
+
+  const noStaffProfileDetected = !!tasksError;
 
   const { data: logsData, isLoading: logsLoading } = useQuery({
     queryKey: ['my-time-logs'],
     queryFn: () => api<{ data: TimeLogEntry[] }>('/project-management/my/time-logs?limit=10'),
+    enabled: !noStaffProfileDetected, // Don't fetch if no staff profile
+    retry: false,
   });
 
   const { data: extensionsData, isLoading: extensionsLoading } = useQuery({
     queryKey: ['my-extensions'],
     queryFn: () => api<{ data: ExtensionEntry[] }>('/project-management/my/extensions?status=PENDING'),
+    enabled: !noStaffProfileDetected,
+    retry: false,
   });
 
   const tasks = tasksData?.data ?? [];
   const logs = logsData?.data ?? [];
   const extensions = extensionsData?.data ?? [];
   const userName = meData?.user?.name || 'there';
-  const noStaffProfile = tasksError && (tasksError as any)?.status === 400;
+  const noStaffProfile = noStaffProfileDetected;
 
   // Compute summary
   const activeTasks = tasks.filter((t: any) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED');
