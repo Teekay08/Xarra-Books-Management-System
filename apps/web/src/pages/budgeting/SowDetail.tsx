@@ -106,8 +106,8 @@ export function SowDetail() {
   const sow = data.data;
   const contractorName = sow.contractor?.name || sow.staffUser?.name || '—';
   const versions = versionsData?.data ?? [];
-  const costBreakdown = costBreakdown || [];
-  const deliverables = deliverables || [];
+  const costBreakdown = sow.costBreakdown || [];
+  const deliverables = sow.deliverables || [];
   const timeline = sow.timeline || { startDate: null, endDate: null, milestones: [] };
   const costGrandTotal = costBreakdown.reduce((s: number, c: any) => s + Number(c.total || 0), 0);
 
