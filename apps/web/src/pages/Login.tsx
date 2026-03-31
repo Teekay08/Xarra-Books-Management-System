@@ -5,10 +5,9 @@ import { signIn, signOut } from '../lib/auth-client';
 const roles = [
   { value: 'admin', label: 'Admin' },
   { value: 'finance', label: 'Finance' },
-  { value: 'operations', label: 'Operations' },
-  { value: 'editorial', label: 'Editorial' },
+  { value: 'project_manager', label: 'Project Manager' },
   { value: 'author', label: 'Author' },
-  { value: 'reportsOnly', label: 'Reports Only' },
+  { value: 'staff', label: 'Staff' },
 ];
 
 export function Login() {
