@@ -7,9 +7,8 @@ import { PageHeader } from '../../components/PageHeader';
 interface TeamMember {
   id: string;
   staffMemberId: string;
-  staffName: string;
   role: string;
-  hourlyRate?: number;
+  staffMember?: { id: string; name: string; email: string; role: string; hourlyRate: string } | null;
 }
 
 interface Milestone {
@@ -43,6 +42,22 @@ export function TaskForm() {
     deliverables: [''],
   });
   const [error, setError] = useState('');
+  const [showNewMilestone, setShowNewMilestone] = useState(false);
+  const [newMilestone, setNewMilestone] = useState({ code: '', name: '' });
+
+  const createMilestoneMutation = useMutation({
+    mutationFn: () => api(`/budgeting/projects/${projectId}/milestones`, {
+      method: 'POST',
+      body: JSON.stringify({ code: newMilestone.code, name: newMilestone.name, sortOrder: 99 }),
+    }),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['budgeting-project-milestones', projectId] });
+      setForm((f) => ({ ...f, milestoneId: data?.data?.id || '' }));
+      setShowNewMilestone(false);
+      setNewMilestone({ code: '', name: '' });
+    },
+    onError: (err: Error) => alert(`Failed to create milestone: ${err.message}`),
+  });
 
   const { data: teamData } = useQuery({
     queryKey: ['pm-project-team', projectId],
@@ -60,8 +75,9 @@ export function TaskForm() {
   useEffect(() => {
     if (form.staffMemberId && teamData?.data) {
       const member = teamData.data.find((m) => m.staffMemberId === form.staffMemberId);
-      if (member?.hourlyRate) {
-        setForm((f) => ({ ...f, hourlyRate: member.hourlyRate! }));
+      const rate = Number(member?.staffMember?.hourlyRate || 0);
+      if (rate > 0) {
+        setForm((f) => ({ ...f, hourlyRate: rate }));
       }
     }
   }, [form.staffMemberId, teamData]);
@@ -148,22 +164,67 @@ export function TaskForm() {
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                 <option value="">-- Select team member --</option>
                 {teamData?.data?.map((m) => (
-                  <option key={m.staffMemberId} value={m.staffMemberId}>{m.staffName} ({m.role})</option>
+                  <option key={m.staffMemberId} value={m.staffMemberId}>
+                    {m.staffMember?.name || '—'} ({m.role})
+                  </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Milestone</label>
-              <select value={form.milestoneId}
-                onChange={(e) => setForm({ ...form, milestoneId: e.target.value })}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
-                <option value="">-- Select milestone --</option>
-                {milestonesData?.data?.map((m) => (
-                  <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <select value={form.milestoneId}
+                  onChange={(e) => {
+                    if (e.target.value === '__CREATE_NEW__') {
+                      setShowNewMilestone(true);
+                    } else {
+                      setForm({ ...form, milestoneId: e.target.value });
+                    }
+                  }}
+                  className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">-- No milestone --</option>
+                  {milestonesData?.data?.map((m) => (
+                    <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
+                  ))}
+                  <option value="__CREATE_NEW__">+ Create New Milestone</option>
+                </select>
+              </div>
             </div>
           </div>
+
+          {/* Inline New Milestone Form */}
+          {showNewMilestone && (
+            <div className="rounded-md border border-green-200 bg-green-50 p-4 space-y-3">
+              <h4 className="text-sm font-semibold text-green-800">New Milestone</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Code *</label>
+                  <input type="text" value={newMilestone.code}
+                    onChange={(e) => setNewMilestone({ ...newMilestone, code: e.target.value.toUpperCase().replace(/\s+/g, '_') })}
+                    placeholder="e.g. EDITING, COVER_DESIGN"
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+                  <input type="text" value={newMilestone.name}
+                    onChange={(e) => setNewMilestone({ ...newMilestone, name: e.target.value })}
+                    placeholder="e.g. Editing, Cover Design"
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => createMilestoneMutation.mutate()}
+                  disabled={!newMilestone.code || !newMilestone.name || createMilestoneMutation.isPending}
+                  className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                  {createMilestoneMutation.isPending ? 'Creating...' : 'Create Milestone'}
+                </button>
+                <button type="button" onClick={() => setShowNewMilestone(false)}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Task Details */}
