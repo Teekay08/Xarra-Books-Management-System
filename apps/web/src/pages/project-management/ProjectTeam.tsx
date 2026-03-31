@@ -86,6 +86,13 @@ export function ProjectTeam() {
     onError: (err: Error) => alert(err.message),
   });
 
+  const sendAccessLinkMutation = useMutation({
+    mutationFn: (staffMemberId: string) =>
+      api(`/project-management/projects/${projectId}/staff/${staffMemberId}/send-access-link`, { method: 'POST' }),
+    onSuccess: (data: any) => alert(`Access link sent to ${data?.data?.email || 'contractor'}`),
+    onError: (err: Error) => alert(`Failed: ${err.message}`),
+  });
+
   const projectName = projectData?.data ? `${projectData.data.number} — ${projectData.data.name}` : 'Project';
 
   return (
@@ -159,6 +166,14 @@ export function ProjectTeam() {
                       {
                         label: 'Create SOW',
                         onClick: () => navigate(`/pm/staff/${m.staffMemberId}/sow?projectId=${projectId}`),
+                      },
+                      {
+                        label: 'Send Access Link',
+                        onClick: () => {
+                          if (confirm(`Send portal access link to ${staffName}? They will receive an email with a link to view tasks and log hours.`)) {
+                            sendAccessLinkMutation.mutate(m.staffMemberId);
+                          }
+                        },
                       },
                       {
                         label: 'Remove',

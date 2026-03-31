@@ -4,6 +4,7 @@ import { eq, sql, and, desc, asc, ilike, or } from 'drizzle-orm';
 import {
   staffMembers, staffProjectAssignments, taskAssignments, taskTimeLogs,
   timeExtensionRequests, staffPayments, projects, projectMilestones,
+  contractorAccessTokens,
 } from '@xarra/db';
 import { paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
@@ -1238,5 +1239,203 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         terms: `Payment terms: ${staff.isInternal ? 'Monthly payroll' : 'Net 30 days from invoice date'}.\nRate: R${Number(staff.hourlyRate).toFixed(2)}/hour.\nTotal estimated hours: ${totalHours}.`,
       },
     };
+  });
+
+  // ==========================================
+  // CONTRACTOR MAGIC LINK PORTAL
+  // ==========================================
+
+  // Generate contractor access link for a staff member's tasks on a project
+  app.post<{ Params: { projectId: string; staffMemberId: string } }>('/projects/:projectId/staff/:staffMemberId/send-access-link', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const { projectId, staffMemberId } = request.params;
+    const staff = await app.db.query.staffMembers.findFirst({ where: eq(staffMembers.id, staffMemberId) });
+    if (!staff) return reply.notFound('Staff member not found');
+    if (!staff.email) return reply.badRequest('Staff member has no email address');
+
+    const project = await app.db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+    if (!project) return reply.notFound('Project not found');
+
+    // Generate magic link token
+    const crypto = await import('node:crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+    await app.db.insert(contractorAccessTokens).values({
+      token,
+      staffMemberId,
+      projectId,
+      expiresAt,
+      createdBy: request.session?.user?.id,
+    });
+
+    // Send email with link
+    const { sendEmail, isEmailConfigured } = await import('../../services/email.js');
+    if (isEmailConfigured()) {
+      const link = `${(request.headers.origin || request.headers.referer || 'https://app.xarrabooks.com').replace(/\/$/, '')}/contractor/${token}`;
+      await sendEmail({
+        to: staff.email,
+        subject: `Xarra Books — Your Tasks on ${project.name}`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+            <div style="border-bottom:3px solid #166534;padding-bottom:15px;margin-bottom:20px">
+              <h1 style="color:#166534;font-size:20px;margin:0">Xarra Books</h1>
+            </div>
+            <p>Hi ${staff.name},</p>
+            <p>You have been assigned tasks on the project <strong>${project.name}</strong> (${project.number}).</p>
+            <p>Use the link below to view your Statement of Work, tasks, and log your working hours:</p>
+            <div style="margin:25px 0">
+              <a href="${link}" style="background:#166534;color:#fff;padding:14px 28px;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600">
+                View My Tasks & Log Hours
+              </a>
+            </div>
+            <p style="color:#666;font-size:13px">This link expires on ${expiresAt.toLocaleDateString('en-ZA')}.</p>
+            <p style="color:#999;font-size:12px;margin-top:30px">Xarra Books Management System</p>
+          </div>
+        `,
+      });
+    }
+
+    return { data: { token, email: staff.email, expiresAt } };
+  });
+
+  // Contractor portal: get tasks and SOW via magic link (NO AUTH REQUIRED)
+  app.get<{ Params: { token: string } }>('/contractor-portal/:token', async (request, reply) => {
+    const tokenRecord = await app.db.query.contractorAccessTokens.findFirst({
+      where: eq(contractorAccessTokens.token, request.params.token),
+    });
+    if (!tokenRecord) return reply.notFound('Invalid access link');
+    if (new Date() > new Date(tokenRecord.expiresAt)) return reply.badRequest('This link has expired. Please contact your project manager for a new one.');
+
+    const staff = await app.db.query.staffMembers.findFirst({ where: eq(staffMembers.id, tokenRecord.staffMemberId) });
+    const project = await app.db.query.projects.findFirst({
+      where: eq(projects.id, tokenRecord.projectId),
+      with: { title: true, author: true },
+    });
+
+    // Get tasks
+    const tasks = await app.db.query.taskAssignments.findMany({
+      where: and(
+        eq(taskAssignments.projectId, tokenRecord.projectId),
+        eq(taskAssignments.staffMemberId, tokenRecord.staffMemberId),
+      ),
+      with: { milestone: true, timeLogs: true },
+      orderBy: (t, { asc }) => [asc(t.createdAt)],
+    });
+
+    return {
+      data: {
+        staff: { name: staff?.name, email: staff?.email, role: staff?.role },
+        project: { name: project?.name, number: project?.number, titleName: project?.title?.title },
+        tasks: tasks.map((t) => ({
+          id: t.id,
+          number: t.number,
+          title: t.title,
+          description: t.description,
+          status: t.status,
+          priority: t.priority,
+          allocatedHours: t.allocatedHours,
+          loggedHours: t.loggedHours,
+          remainingHours: t.remainingHours,
+          timeExhausted: t.timeExhausted,
+          hourlyRate: t.hourlyRate,
+          startDate: t.startDate,
+          dueDate: t.dueDate,
+          deliverables: t.deliverables,
+          milestone: t.milestone?.name || null,
+          timeLogs: (t.timeLogs || []).map((l) => ({
+            id: l.id,
+            workDate: l.workDate,
+            hours: l.hours,
+            description: l.description,
+            status: l.status,
+          })),
+        })),
+      },
+    };
+  });
+
+  // Contractor portal: log time via magic link (NO AUTH REQUIRED)
+  app.post<{ Params: { token: string; taskId: string } }>('/contractor-portal/:token/tasks/:taskId/log-time', async (request, reply) => {
+    const tokenRecord = await app.db.query.contractorAccessTokens.findFirst({
+      where: eq(contractorAccessTokens.token, request.params.token),
+    });
+    if (!tokenRecord) return reply.notFound('Invalid access link');
+    if (new Date() > new Date(tokenRecord.expiresAt)) return reply.badRequest('Link expired');
+
+    const body = logTimeSchema.parse(request.body);
+
+    const task = await app.db.query.taskAssignments.findFirst({
+      where: and(
+        eq(taskAssignments.id, request.params.taskId),
+        eq(taskAssignments.staffMemberId, tokenRecord.staffMemberId),
+      ),
+    });
+    if (!task) return reply.notFound('Task not found');
+
+    const newLogged = Number(task.loggedHours) + body.hours;
+    const newRemaining = Math.max(0, Number(task.allocatedHours) - newLogged);
+    const timeExhausted = newLogged >= Number(task.allocatedHours);
+
+    // Create time log
+    const [log] = await app.db.insert(taskTimeLogs).values({
+      taskAssignmentId: task.id,
+      staffMemberId: tokenRecord.staffMemberId,
+      workDate: new Date(body.workDate),
+      hours: String(body.hours),
+      description: body.description,
+    }).returning();
+
+    // Update task hours
+    await app.db.update(taskAssignments).set({
+      loggedHours: String(newLogged),
+      remainingHours: String(newRemaining),
+      timeExhausted,
+      updatedAt: new Date(),
+    }).where(eq(taskAssignments.id, task.id));
+
+    return reply.status(201).send({ data: log });
+  });
+
+  // PM logs time ON BEHALF of a staff member
+  app.post<{ Params: { taskId: string } }>('/tasks/:taskId/log-time-on-behalf', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({
+      staffMemberId: z.string().uuid(),
+      workDate: z.string(),
+      hours: z.coerce.number().positive(),
+      description: z.string().min(1),
+    }).parse(request.body);
+
+    const task = await app.db.query.taskAssignments.findFirst({
+      where: eq(taskAssignments.id, request.params.taskId),
+    });
+    if (!task) return reply.notFound('Task not found');
+
+    const newLogged = Number(task.loggedHours) + body.hours;
+    const newRemaining = Math.max(0, Number(task.allocatedHours) - newLogged);
+    const timeExhausted = newLogged >= Number(task.allocatedHours);
+
+    const [log] = await app.db.insert(taskTimeLogs).values({
+      taskAssignmentId: task.id,
+      staffMemberId: body.staffMemberId,
+      workDate: new Date(body.workDate),
+      hours: String(body.hours),
+      description: body.description,
+      status: 'APPROVED', // PM-entered time is auto-approved
+      approvedBy: request.session?.user?.id,
+      approvedAt: new Date(),
+    }).returning();
+
+    await app.db.update(taskAssignments).set({
+      loggedHours: String(newLogged),
+      remainingHours: String(newRemaining),
+      timeExhausted,
+      updatedAt: new Date(),
+    }).where(eq(taskAssignments.id, task.id));
+
+    return reply.status(201).send({ data: log });
   });
 }

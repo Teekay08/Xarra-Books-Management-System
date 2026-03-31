@@ -192,6 +192,25 @@ export const staffPayments = pgTable('staff_payments', {
 ]);
 
 // ==========================================
+// CONTRACTOR ACCESS TOKENS (magic links for external workers)
+// ==========================================
+
+export const contractorAccessTokens = pgTable('contractor_access_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  token: varchar('token', { length: 100 }).notNull().unique(),
+  staffMemberId: uuid('staff_member_id').notNull().references(() => staffMembers.id),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  lastAccessedAt: timestamp('last_accessed_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_contractor_tokens_token').on(t.token),
+  index('idx_contractor_tokens_staff').on(t.staffMemberId),
+  index('idx_contractor_tokens_expires').on(t.expiresAt),
+]);
+
+// ==========================================
 // RELATIONS
 // ==========================================
 
@@ -225,6 +244,11 @@ export const taskTimeLogsRelations = relations(taskTimeLogs, ({ one }) => ({
 export const timeExtensionRequestsRelations = relations(timeExtensionRequests, ({ one }) => ({
   taskAssignment: one(taskAssignments, { fields: [timeExtensionRequests.taskAssignmentId], references: [taskAssignments.id] }),
   staffMember: one(staffMembers, { fields: [timeExtensionRequests.staffMemberId], references: [staffMembers.id] }),
+}));
+
+export const contractorAccessTokensRelations = relations(contractorAccessTokens, ({ one }) => ({
+  staffMember: one(staffMembers, { fields: [contractorAccessTokens.staffMemberId], references: [staffMembers.id] }),
+  project: one(projects, { fields: [contractorAccessTokens.projectId], references: [projects.id] }),
 }));
 
 export const staffPaymentsRelations = relations(staffPayments, ({ one }) => ({

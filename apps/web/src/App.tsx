@@ -137,6 +137,7 @@ import { PMProjectList } from './pages/project-management/PMProjectList';
 import { StaffList } from './pages/project-management/StaffList';
 import { StaffDetail } from './pages/project-management/StaffDetail';
 import { CreateStaffSow } from './pages/project-management/CreateStaffSow';
+import { ContractorPortal } from './pages/contractor/ContractorPortal';
 import { StaffForm } from './pages/project-management/StaffForm';
 import { ProjectTeam } from './pages/project-management/ProjectTeam';
 import { TaskList } from './pages/project-management/TaskList';
@@ -371,6 +372,9 @@ const router = createBrowserRouter([
       { path: '*', element: <NotFound /> },
     ],
   },
+
+  // Contractor Portal (magic link access, no login)
+  { path: 'contractor/:token', element: <ContractorPortal /> },
 
   // Partner Portal (channel partners login separately)
   { path: 'partner/login', element: <PartnerLogin /> },
