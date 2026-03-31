@@ -22,8 +22,8 @@ const allSections: NavSection[] = [
     items: [
       { name: 'Channel Partners', href: '/partners', module: 'partners' },
       { name: 'Inventory', href: '/inventory', module: 'inventory' },
-      { name: 'Consignments', href: '/consignments', module: 'consignments' },
-      { name: 'SOR Pro-formas', href: '/consignments/proformas', module: 'consignments' },
+      { name: 'SOR Consignments', href: '/consignments', module: 'consignments' },
+      { name: 'SOR Agreements', href: '/consignments/proformas', module: 'consignments' },
       { name: 'Returns', href: '/returns', module: 'returns' },
       { name: 'Sync', href: '/sync', module: 'sync' },
     ],
