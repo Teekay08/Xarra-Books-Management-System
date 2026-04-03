@@ -52,9 +52,16 @@ export function TrendAnalysis() {
     <div>
       <PageHeader title="Trend Analysis" subtitle="Historical sell-through patterns and performance trends" />
 
+      {/* How it works */}
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 mb-6 text-sm text-blue-800">
+        <p className="font-medium mb-1">How Trend Analysis Works</p>
+        <p className="text-blue-700">This page shows historical sell-through data from completed SOR consignments. As more consignments are closed and reconciled, the system builds a richer picture of seasonal patterns, partner performance, and title lifecycle trends. This data feeds into the AI prediction engine for more accurate forecasting.</p>
+      </div>
+
       {/* Seasonal Patterns */}
       <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Seasonal Sell-Through Patterns</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">Seasonal Sell-Through Patterns</h3>
+        <p className="text-xs text-gray-500 mb-3">Average sell-through percentage by month across all consignments. Helps identify peak selling seasons.</p>
         {seasonalData?.data && seasonalData.data.length > 0 ? (
           <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
             {Array.from({ length: 12 }, (_, i) => {
@@ -86,7 +93,8 @@ export function TrendAnalysis() {
 
       {/* Partner Performance */}
       <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Partner Performance</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">Partner Performance</h3>
+        <p className="text-xs text-gray-500 mb-3">Track how each channel partner performs over time. Compare sell-through rates across partners to identify your best-performing retailers.</p>
         <select value={selectedPartnerId} onChange={(e) => setSelectedPartnerId(e.target.value)}
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm mb-4">
           <option value="">— Select a partner —</option>
@@ -130,7 +138,8 @@ export function TrendAnalysis() {
 
       {/* Title Lifecycle */}
       <div className="rounded-lg border border-gray-200 bg-white p-5">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Title Lifecycle</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">Title Lifecycle</h3>
+        <p className="text-xs text-gray-500 mb-3">Analyse how a specific title performs across different partners and over time. Useful for reprint decisions and marketing focus.</p>
         <div className="relative mb-4">
           <input type="text" value={titleSearch} onChange={(e) => { setTitleSearch(e.target.value); setSelectedTitleId(''); }}
             placeholder="Search for a title..."
