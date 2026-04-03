@@ -7,8 +7,8 @@ import { ActionMenu } from '../../components/ActionMenu';
 
 interface TimeLog {
   id: string;
-  date: string;
-  hours: number;
+  workDate: string;
+  hours: string;
   description: string;
   status: string;
 }
@@ -23,20 +23,20 @@ interface ExtensionRequest {
 
 interface Task {
   id: string;
-  taskNumber: string;
+  number: string;  // TA-YYYY-NNNN
   title: string;
   description: string | null;
   priority: string;
   status: string;
-  allocatedHours: number;
-  loggedHours: number;
-  remainingHours: number;
-  hourlyRate: number;
+  allocatedHours: string;
+  loggedHours: string;
+  remainingHours: string;
+  hourlyRate: string;
   timeExhausted: boolean;
   startDate: string | null;
   dueDate: string | null;
-  deliverables: Array<{ description: string; completed: boolean }>;
-  assignedTo: { id: string; name: string } | null;
+  deliverables: Array<{ description: string; completed: boolean }> | null;
+  staffMember: { id: string; name: string; email: string } | null;
   project: { id: string; name: string; number: string } | null;
   milestone: { id: string; name: string } | null;
   timeLogs: TimeLog[];
@@ -172,7 +172,7 @@ export function TaskDetail() {
   return (
     <div>
       <PageHeader
-        title={`${task.taskNumber}: ${task.title}`}
+        title={`${task.number}: ${task.title}`}
         backTo={{ label: 'Tasks', href: task.project?.id ? `/pm/projects/${task.project.id}/tasks` : '/pm/staff' }}
       />
 
@@ -238,7 +238,7 @@ export function TaskDetail() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-xs text-gray-500 uppercase">Assigned To</p>
-          <p className="text-sm font-medium text-gray-900 mt-1">{task.assignedTo?.name || '—'}</p>
+          <p className="text-sm font-medium text-gray-900 mt-1">{task.staffMember?.name || '—'}</p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-xs text-gray-500 uppercase">Project</p>
@@ -256,21 +256,21 @@ export function TaskDetail() {
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-xs text-gray-500 uppercase">Allocated Hours</p>
-          <p className="text-sm font-medium text-gray-900 mt-1 font-mono">{task.allocatedHours}h</p>
+          <p className="text-sm font-medium text-gray-900 mt-1 font-mono">{Number(task.allocatedHours).toFixed(1)}h</p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-xs text-gray-500 uppercase">Logged Hours</p>
-          <p className="text-sm font-medium text-gray-900 mt-1 font-mono">{task.loggedHours}h</p>
+          <p className="text-sm font-medium text-gray-900 mt-1 font-mono">{Number(task.loggedHours).toFixed(1)}h</p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-xs text-gray-500 uppercase">Remaining</p>
-          <p className={`text-sm font-medium mt-1 font-mono ${task.remainingHours < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-            {task.remainingHours}h
+          <p className={`text-sm font-medium mt-1 font-mono ${Number(task.remainingHours) <= 0 ? 'text-red-600' : 'text-gray-900'}`}>
+            {Number(task.remainingHours).toFixed(1)}h
           </p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-xs text-gray-500 uppercase">Total Cost</p>
-          <p className="text-sm font-medium text-gray-900 mt-1">R {(task.loggedHours * task.hourlyRate).toFixed(2)}</p>
+          <p className="text-sm font-medium text-gray-900 mt-1">R {(Number(task.loggedHours) * Number(task.hourlyRate)).toFixed(2)}</p>
         </div>
       </div>
 
@@ -308,11 +308,11 @@ export function TaskDetail() {
       )}
 
       {/* Deliverables Checklist */}
-      {task.deliverables?.length > 0 && (
+      {(task.deliverables ?? []).length > 0 && (
         <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Deliverables</h3>
           <ul className="space-y-2">
-            {task.deliverables.map((d, i) => (
+            {(task.deliverables ?? []).map((d, i) => (
               <li key={i} className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={d.completed} className="rounded border-gray-300 text-green-700" readOnly />
                 {d.description}
@@ -340,8 +340,8 @@ export function TaskDetail() {
             <tbody className="divide-y divide-gray-200">
               {task.timeLogs?.map((log) => (
                 <tr key={log.id}>
-                  <td className="px-4 py-2 text-sm text-gray-700">{new Date(log.date).toLocaleDateString()}</td>
-                  <td className="px-4 py-2 text-sm text-right font-mono">{log.hours}h</td>
+                  <td className="px-4 py-2 text-sm text-gray-700">{new Date(log.workDate).toLocaleDateString('en-ZA')}</td>
+                  <td className="px-4 py-2 text-sm text-right font-mono">{Number(log.hours).toFixed(1)}h</td>
                   <td className="px-4 py-2 text-sm text-gray-700">{log.description}</td>
                   <td className="px-4 py-2 text-sm">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${timeLogStatusColors[log.status] || ''}`}>
