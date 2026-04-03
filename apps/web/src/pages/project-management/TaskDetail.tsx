@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { ActionMenu } from '../../components/ActionMenu';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface TimeLog {
   id: string;
@@ -74,6 +75,14 @@ const extensionStatusColors: Record<string, string> = {
 export function TaskDetail() {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const { isAdmin, isProjectManager } = usePermissions();
+  const isPM = isAdmin || isProjectManager;
+
+  // Get current user to check if they're the assigned staff
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ user: { id: string } }>('/me'),
+  });
 
   const [logForm, setLogForm] = useState({ date: '', hours: '', description: '' });
   const [logError, setLogError] = useState('');
@@ -169,6 +178,13 @@ export function TaskDetail() {
     return <div className="py-12 text-center text-gray-500">Task not found.</div>;
   }
 
+  // Check if current user is the assigned staff member
+  const currentUserId = meData?.user?.id;
+  const isAssignedStaff = !!(task.staffMember as any)?.userId && (task.staffMember as any)?.userId === currentUserId;
+  const canRequestExtension = isAssignedStaff && !isPM; // staff requests, PM approves
+  const canApproveExtension = isPM;
+  const canLogTime = isAssignedStaff || isPM; // both can log (PM logs on behalf)
+
   return (
     <div>
       <PageHeader
@@ -188,9 +204,13 @@ export function TaskDetail() {
         <div className="mb-6 rounded-md bg-red-50 border border-red-200 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-red-800">
-              Allocated time exhausted. Request an extension to log additional hours.
+              {canRequestExtension
+                ? 'Your allocated time is exhausted. Request an extension from your Project Manager to log additional hours.'
+                : isPM
+                  ? 'Allocated time exhausted. Waiting for staff to request an extension, or you can grant additional hours below.'
+                  : 'Allocated time exhausted.'}
             </p>
-            {!showExtensionForm && (
+            {canRequestExtension && !showExtensionForm && (
               <button onClick={() => setShowExtensionForm(true)}
                 className="rounded-md bg-red-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-red-800">
                 Request Extension
@@ -198,7 +218,7 @@ export function TaskDetail() {
             )}
           </div>
 
-          {showExtensionForm && (
+          {showExtensionForm && canRequestExtension && (
             <div className="mt-4 rounded-md bg-white border border-red-200 p-4 space-y-3">
               <h4 className="text-sm font-semibold text-gray-900">Request Time Extension</h4>
               {extensionError && <p className="text-xs text-red-600">{extensionError}</p>}
@@ -274,23 +294,26 @@ export function TaskDetail() {
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons — role-based */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {task.status === 'ASSIGNED' && (
+        {/* Staff or PM can start a task */}
+        {task.status === 'ASSIGNED' && (isAssignedStaff || isPM) && (
           <button onClick={() => transitionMutation.mutate('IN_PROGRESS')}
             disabled={transitionMutation.isPending}
             className="rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50">
             Start Task
           </button>
         )}
-        {task.status === 'IN_PROGRESS' && (
+        {/* Staff submits for review */}
+        {task.status === 'IN_PROGRESS' && (isAssignedStaff || isPM) && (
           <button onClick={() => transitionMutation.mutate('REVIEW')}
             disabled={transitionMutation.isPending}
             className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50">
             Submit for Review
           </button>
         )}
-        {task.status === 'REVIEW' && (
+        {/* Only PM can complete/approve */}
+        {task.status === 'REVIEW' && isPM && (
           <button onClick={() => transitionMutation.mutate('COMPLETED')}
             disabled={transitionMutation.isPending}
             className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
@@ -349,7 +372,7 @@ export function TaskDetail() {
                     </span>
                   </td>
                   <td className="px-4 py-2 text-sm text-right">
-                    {log.status === 'LOGGED' && (
+                    {log.status === 'LOGGED' && isPM && (
                       <ActionMenu items={[
                         { label: 'Approve', onClick: () => approveLogMutation.mutate({ logId: log.id, action: 'approve' }) },
                         { label: 'Reject', variant: 'danger', onClick: () => approveLogMutation.mutate({ logId: log.id, action: 'reject' }) },
@@ -428,7 +451,7 @@ export function TaskDetail() {
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${extensionStatusColors[ext.status] || ''}`}>
                     {ext.status}
                   </span>
-                  {ext.status === 'PENDING' && (
+                  {ext.status === 'PENDING' && canApproveExtension && (
                     <div className="flex gap-1 ml-2">
                       <button
                         onClick={() => extensionMutation.mutate({ extId: ext.id, action: 'approve' })}
