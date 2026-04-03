@@ -1,7 +1,9 @@
 import { pgTable, uuid, varchar, boolean, timestamp, pgEnum, index, jsonb } from 'drizzle-orm/pg-core';
 
 export const userRoleEnum = pgEnum('user_role', [
-  'ADMIN', 'FINANCE', 'OPERATIONS', 'EDITORIAL', 'AUTHOR', 'REPORTS_ONLY',
+  'ADMIN', 'FINANCE', 'PROJECT_MANAGER', 'AUTHOR', 'STAFF',
+  // Legacy values kept for backward compatibility with existing DB rows
+  'OPERATIONS', 'EDITORIAL', 'REPORTS_ONLY',
 ]);
 
 export const users = pgTable('users', {
@@ -9,7 +11,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-  role: userRoleEnum('role').notNull().default('OPERATIONS'),
+  role: userRoleEnum('role').notNull().default('STAFF'),
   isActive: boolean('is_active').notNull().default(true),
   avatarUrl: varchar('avatar_url', { length: 500 }),
   preferences: jsonb('preferences').$type<{

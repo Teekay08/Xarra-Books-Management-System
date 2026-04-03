@@ -10,7 +10,7 @@ export const user = pgTable('user', {
   image: text('image'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-  role: text('role').default('operations'),
+  role: text('role').default('staff'),
   banned: boolean('banned').default(false),
   banReason: text('banReason'),
   banExpires: integer('banExpires'),
