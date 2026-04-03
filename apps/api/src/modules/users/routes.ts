@@ -5,23 +5,39 @@ import { paginationSchema } from '@xarra/shared';
 import { requireRole } from '../../middleware/require-auth.js';
 import { z } from 'zod';
 
-const uiToAuthRole = {
+const uiToAuthRole: Record<string, string> = {
   ADMIN: 'admin',
   FINANCE: 'finance',
-  OPERATIONS: 'operations',
-  EDITORIAL: 'editorial',
+  PROJECT_MANAGER: 'PROJECT_MANAGER',
   AUTHOR: 'author',
-  REPORTS_ONLY: 'reportsOnly',
-} as const;
+  STAFF: 'STAFF',
+  // Legacy
+  OPERATIONS: 'PROJECT_MANAGER',
+  EDITORIAL: 'STAFF',
+  REPORTS_ONLY: 'STAFF',
+};
 
-const authToUiRole = {
+const authToUiRole: Record<string, string> = {
   admin: 'ADMIN',
+  ADMIN: 'ADMIN',
   finance: 'FINANCE',
-  operations: 'OPERATIONS',
-  editorial: 'EDITORIAL',
+  FINANCE: 'FINANCE',
+  PROJECT_MANAGER: 'PROJECT_MANAGER',
+  project_manager: 'PROJECT_MANAGER',
+  AUTHOR: 'AUTHOR',
   author: 'AUTHOR',
-  reportsOnly: 'REPORTS_ONLY',
-} as const;
+  STAFF: 'STAFF',
+  staff: 'STAFF',
+  // Legacy
+  operations: 'PROJECT_MANAGER',
+  OPERATIONS: 'PROJECT_MANAGER',
+  editorial: 'STAFF',
+  EDITORIAL: 'STAFF',
+  reportsOnly: 'STAFF',
+  REPORTS_ONLY: 'STAFF',
+  employee: 'STAFF',
+  EMPLOYEE: 'STAFF',
+};
 
 const createUserSchema = z.object({
   name: z.string().min(1),
@@ -60,7 +76,7 @@ export async function userRoutes(app: FastifyInstance) {
     return {
       data: items.map((item) => ({
         ...item,
-        role: authToUiRole[(item.role as keyof typeof authToUiRole) ?? 'operations'] ?? 'OPERATIONS',
+        role: authToUiRole[item.role ?? 'staff'] ?? 'STAFF',
         isActive: item.isActive ?? true,
       })),
       pagination: {
@@ -109,7 +125,7 @@ export async function userRoutes(app: FastifyInstance) {
       data: createdUser
         ? {
           ...createdUser,
-          role: authToUiRole[(createdUser.role as keyof typeof authToUiRole) ?? 'operations'] ?? 'OPERATIONS',
+          role: authToUiRole[createdUser.role ?? 'staff'] ?? 'STAFF',
           isActive: createdUser.isActive ?? true,
         }
         : null,
@@ -142,7 +158,7 @@ export async function userRoutes(app: FastifyInstance) {
     return {
       data: {
         ...updated,
-        role: authToUiRole[(updated.role as keyof typeof authToUiRole) ?? 'operations'] ?? 'OPERATIONS',
+        role: authToUiRole[updated.role ?? 'staff'] ?? 'STAFF',
         isActive: updated.isActive ?? true,
       },
     };
