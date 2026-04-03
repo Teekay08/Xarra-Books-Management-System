@@ -1398,6 +1398,38 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     return reply.status(201).send({ data: log });
   });
 
+  // Contractor portal: request extension via magic link (NO AUTH REQUIRED)
+  app.post<{ Params: { token: string; taskId: string } }>('/contractor-portal/:token/tasks/:taskId/request-extension', async (request, reply) => {
+    const tokenRecord = await app.db.query.contractorAccessTokens.findFirst({
+      where: eq(contractorAccessTokens.token, request.params.token),
+    });
+    if (!tokenRecord) return reply.notFound('Invalid access link');
+    if (new Date() > new Date(tokenRecord.expiresAt)) return reply.badRequest('Link expired');
+
+    const body = z.object({
+      requestedHours: z.coerce.number().positive(),
+      reason: z.string().min(1),
+    }).parse(request.body);
+
+    const task = await app.db.query.taskAssignments.findFirst({
+      where: and(
+        eq(taskAssignments.id, request.params.taskId),
+        eq(taskAssignments.staffMemberId, tokenRecord.staffMemberId),
+      ),
+    });
+    if (!task) return reply.notFound('Task not found');
+    if (!task.timeExhausted) return reply.badRequest('Time is not exhausted for this task');
+
+    const [ext] = await app.db.insert(timeExtensionRequests).values({
+      taskAssignmentId: task.id,
+      staffMemberId: tokenRecord.staffMemberId,
+      requestedHours: String(body.requestedHours),
+      reason: body.reason,
+    }).returning();
+
+    return reply.status(201).send({ data: ext });
+  });
+
   // PM logs time ON BEHALF of a staff member
   app.post<{ Params: { taskId: string } }>('/tasks/:taskId/log-time-on-behalf', {
     preHandler: requireRole('admin', 'project_manager'),

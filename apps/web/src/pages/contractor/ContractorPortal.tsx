@@ -21,6 +21,9 @@ export function ContractorPortal() {
   const { token } = useParams();
   const queryClient = useQueryClient();
   const [activeTask, setActiveTask] = useState<string | null>(null);
+  const [extensionTask, setExtensionTask] = useState<string | null>(null);
+  const [extensionForm, setExtensionForm] = useState({ requestedHours: '', reason: '' });
+  const [extensionError, setExtensionError] = useState('');
   const [logForm, setLogForm] = useState({ workDate: '', hours: '', description: '' });
   const [logError, setLogError] = useState('');
 
@@ -152,8 +155,61 @@ export function ContractorPortal() {
                   </div>
 
                   {task.timeExhausted && (
-                    <div className="mt-2 rounded bg-red-50 px-3 py-1.5 text-xs text-red-700 font-medium">
-                      Time exhausted. Contact your project manager for an extension.
+                    <div className="mt-2 rounded bg-red-50 px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-red-700 font-medium">
+                          Allocated time exhausted.
+                        </p>
+                        {extensionTask !== task.id && (
+                          <button onClick={() => { setExtensionTask(task.id); setExtensionError(''); }}
+                            className="rounded-md bg-red-700 px-3 py-1 text-xs font-medium text-white hover:bg-red-800">
+                            Request Extension
+                          </button>
+                        )}
+                      </div>
+                      {extensionTask === task.id && (
+                        <div className="mt-3 space-y-2">
+                          {extensionError && <p className="text-xs text-red-600">{extensionError}</p>}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs text-gray-700 mb-1">Additional Hours *</label>
+                              <input type="number" min={0.5} step={0.5} value={extensionForm.requestedHours}
+                                onChange={(e) => setExtensionForm({ ...extensionForm, requestedHours: e.target.value })}
+                                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+                            </div>
+                            <div className="flex items-end gap-1">
+                              <button onClick={() => {
+                                  if (!extensionForm.requestedHours || !extensionForm.reason) {
+                                    setExtensionError('Both fields are required');
+                                    return;
+                                  }
+                                  api(`/project-management/contractor-portal/${token}/tasks/${task.id}/request-extension`, {
+                                    method: 'POST',
+                                    body: JSON.stringify({ requestedHours: Number(extensionForm.requestedHours), reason: extensionForm.reason }),
+                                  }).then(() => {
+                                    queryClient.invalidateQueries({ queryKey: ['contractor-portal', token] });
+                                    setExtensionTask(null);
+                                    setExtensionForm({ requestedHours: '', reason: '' });
+                                  }).catch((err: any) => setExtensionError(err.message));
+                                }}
+                                className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">
+                                Submit
+                              </button>
+                              <button onClick={() => { setExtensionTask(null); setExtensionError(''); }}
+                                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-700 mb-1">Reason *</label>
+                            <textarea rows={2} value={extensionForm.reason}
+                              onChange={(e) => setExtensionForm({ ...extensionForm, reason: e.target.value })}
+                              placeholder="Why do you need more time?"
+                              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
