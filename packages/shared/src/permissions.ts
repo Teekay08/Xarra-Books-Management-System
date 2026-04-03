@@ -117,32 +117,13 @@ export const PERMISSIONS: PermissionMatrix = {
   },
   projectManager: {
     dashboard: ['read'],
-    authors: ['read'],
-    titles: ['read', 'create', 'update'],
-    partners: ['read'],
-    inventory: ['read', 'create', 'update'],
-    consignments: ['read', 'create', 'update'],
-    returns: ['read', 'create', 'update'],
-    invoices: ['read'],
-    quotations: ['read'],
-    creditNotes: ['read'],
-    debitNotes: ['read'],
-    payments: ['read'],
-    remittances: ['read'],
-    expenses: ['read'],
-    statements: ['read'],
-    reports: ['read', 'export'],
-    settings: ['read'],
-    sync: ['read', 'create'],
-    purchaseOrders: ['read', 'create', 'update', 'export'],
-    cashSales: ['read', 'create'],
-    requisitions: ['read', 'create', 'update'],
-    partnerPortal: ['read', 'create', 'update', 'approve'],
-    courierShipments: ['read', 'create', 'update'],
-    royalties: ['read'],
-    budgeting: ['read', 'create', 'update', 'approve', 'export'],
-    projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
-    employeePortal: ['read', 'create', 'update'],
+    titles: ['read'],              // view titles (for project context)
+    authors: ['read'],             // view authors (for project context)
+    reports: ['read'],             // view reports relevant to projects
+    settings: ['read'],            // view own settings
+    budgeting: ['read', 'create', 'update', 'approve', 'export'], // manage project budgets
+    projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'], // full PM access
+    employeePortal: ['read', 'create', 'update'], // see own workspace too
   },
   author: {
     dashboard: ['read'],
