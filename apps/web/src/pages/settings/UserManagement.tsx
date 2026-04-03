@@ -23,7 +23,7 @@ interface Invitation {
   createdAt: string;
 }
 
-const ROLES = ['admin', 'finance', 'project_manager', 'author', 'staff'];
+const ROLES = ['ADMIN', 'FINANCE', 'PROJECT_MANAGER', 'AUTHOR', 'STAFF'];
 
 export function UserManagement() {
   const queryClient = useQueryClient();
@@ -285,7 +285,7 @@ export function UserManagement() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select name="role" required className={cls}>
-                  {ROLES.map((r) => <option key={r} value={r}>{r.replace('_', ' ').toUpperCase()}</option>)}
+                  {ROLES.map((r) => <option key={r} value={r}>{r.replace(/_/g, ' ').split(' ').map(w => w[0] + w.slice(1).toLowerCase()).join(' ')}</option>)}
                 </select>
               </div>
               <div className="flex justify-end gap-3 pt-2">
@@ -326,7 +326,7 @@ export function UserManagement() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select name="role" required className={cls}>
-                  {ROLES.map((r) => <option key={r} value={r}>{r.replace('_', ' ').toUpperCase()}</option>)}
+                  {ROLES.map((r) => <option key={r} value={r}>{r.replace(/_/g, ' ').split(' ').map(w => w[0] + w.slice(1).toLowerCase()).join(' ')}</option>)}
                 </select>
               </div>
               <div className="flex justify-end gap-3 pt-2">

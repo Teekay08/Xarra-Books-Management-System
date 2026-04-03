@@ -3,11 +3,11 @@ import { useNavigate, Link } from 'react-router';
 import { signIn, signOut } from '../lib/auth-client';
 
 const roles = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'finance', label: 'Finance' },
-  { value: 'project_manager', label: 'Project Manager' },
-  { value: 'author', label: 'Author' },
-  { value: 'staff', label: 'Staff' },
+  { value: 'ADMIN', label: 'Admin' },
+  { value: 'FINANCE', label: 'Finance' },
+  { value: 'PROJECT_MANAGER', label: 'Project Manager' },
+  { value: 'AUTHOR', label: 'Author' },
+  { value: 'STAFF', label: 'Staff' },
 ];
 
 export function Login() {
