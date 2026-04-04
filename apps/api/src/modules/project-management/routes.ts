@@ -698,7 +698,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/time-logs/:id/reject', {
     preHandler: requireRole('admin', 'project_manager'),
   }, async (request, reply) => {
-    const body = z.object({ reason: z.string().min(1) }).parse(request.body);
+    const body = z.object({ reason: z.string().nullable().optional() }).parse(request.body || {});
     const userId = request.session?.user?.id;
 
     const [updated] = await app.db.update(taskTimeLogs)

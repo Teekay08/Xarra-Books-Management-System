@@ -136,8 +136,11 @@ export function TaskDetail() {
   });
 
   const approveLogMutation = useMutation({
-    mutationFn: ({ logId, action }: { logId: string; action: 'approve' | 'reject' }) =>
-      api(`/project-management/time-logs/${logId}/${action}`, { method: 'POST' }),
+    mutationFn: ({ logId, action, reason }: { logId: string; action: 'approve' | 'reject'; reason?: string }) =>
+      api(`/project-management/time-logs/${logId}/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
     },
@@ -299,33 +302,66 @@ export function TaskDetail() {
         </div>
       </div>
 
-      {/* Action Buttons — role-based */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        {/* Staff or PM can start a task */}
-        {task.status === 'ASSIGNED' && (isAssignedStaff || isPM) && (
-          <button onClick={() => transitionMutation.mutate('IN_PROGRESS')}
-            disabled={transitionMutation.isPending}
-            className="rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50">
-            Start Task
-          </button>
-        )}
-        {/* Staff submits for review */}
-        {task.status === 'IN_PROGRESS' && (isAssignedStaff || isPM) && (
-          <button onClick={() => transitionMutation.mutate('REVIEW')}
-            disabled={transitionMutation.isPending}
-            className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50">
-            Submit for Review
-          </button>
-        )}
-        {/* Only PM can complete/approve */}
-        {task.status === 'REVIEW' && isPM && (
-          <button onClick={() => transitionMutation.mutate('COMPLETED')}
-            disabled={transitionMutation.isPending}
-            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
-            Complete Task
-          </button>
-        )}
-      </div>
+      {/* Action Buttons — role-based with workflow enforcement */}
+      {(() => {
+        const unapprovedLogs = (task.timeLogs || []).filter((l: any) => l.status === 'LOGGED').length;
+        const pendingExtensions = (task.extensionRequests || []).filter((e: any) => e.status === 'PENDING').length;
+        const hasBlockers = unapprovedLogs > 0 || pendingExtensions > 0;
+
+        return (
+          <div className="mb-6">
+            {/* Workflow blocker warning */}
+            {hasBlockers && (task.status === 'IN_PROGRESS' || task.status === 'REVIEW') && isPM && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 mb-3 text-sm text-amber-800">
+                <p className="font-medium">Action required before progressing:</p>
+                <ul className="list-disc list-inside mt-1 text-xs">
+                  {unapprovedLogs > 0 && <li>{unapprovedLogs} time log(s) pending approval</li>}
+                  {pendingExtensions > 0 && <li>{pendingExtensions} extension request(s) pending review</li>}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {/* Staff or PM can start a task */}
+              {task.status === 'ASSIGNED' && (isAssignedStaff || isPM) && (
+                <button onClick={() => transitionMutation.mutate('IN_PROGRESS')}
+                  disabled={transitionMutation.isPending}
+                  className="rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50">
+                  Start Task
+                </button>
+              )}
+              {/* Staff submits for review — must have all logs approved first */}
+              {task.status === 'IN_PROGRESS' && (isAssignedStaff || isPM) && (
+                <button onClick={() => {
+                    if (unapprovedLogs > 0 && isAssignedStaff) {
+                      alert(`You have ${unapprovedLogs} unapproved time log(s). Wait for PM approval before submitting for review.`);
+                      return;
+                    }
+                    transitionMutation.mutate('REVIEW');
+                  }}
+                  disabled={transitionMutation.isPending}
+                  className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50">
+                  Submit for Review
+                </button>
+              )}
+              {/* Only PM can complete — must approve all logs and extensions first */}
+              {task.status === 'REVIEW' && isPM && (
+                <button onClick={() => {
+                    if (hasBlockers) {
+                      alert(`Cannot complete: ${unapprovedLogs > 0 ? `${unapprovedLogs} unapproved time log(s)` : ''}${unapprovedLogs > 0 && pendingExtensions > 0 ? ' and ' : ''}${pendingExtensions > 0 ? `${pendingExtensions} pending extension(s)` : ''}. Please review all items first.`);
+                      return;
+                    }
+                    transitionMutation.mutate('COMPLETED');
+                  }}
+                  disabled={transitionMutation.isPending || hasBlockers}
+                  className={`rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${hasBlockers ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-700 hover:bg-green-800'}`}>
+                  Complete Task
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Description */}
       {task.description && (
@@ -380,7 +416,10 @@ export function TaskDetail() {
                     {log.status === 'LOGGED' && isPM && (
                       <ActionMenu items={[
                         { label: 'Approve', onClick: () => approveLogMutation.mutate({ logId: log.id, action: 'approve' }) },
-                        { label: 'Reject', variant: 'danger', onClick: () => approveLogMutation.mutate({ logId: log.id, action: 'reject' }) },
+                        { label: 'Reject', variant: 'danger', onClick: () => {
+                          const reason = window.prompt('Reason for rejection (optional):');
+                          approveLogMutation.mutate({ logId: log.id, action: 'reject', reason: reason || undefined });
+                        }},
                       ]} />
                     )}
                   </td>
