@@ -8,7 +8,7 @@ import {
 } from '@xarra/db';
 import { paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
-import { createBroadcastNotification } from '../../services/notifications.js';
+import { createNotification, createBroadcastNotification } from '../../services/notifications.js';
 
 // ==========================================
 // ZOD SCHEMAS
@@ -827,15 +827,16 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         .where(eq(taskAssignments.id, extension.taskAssignmentId));
     }
 
-    // Notify staff that extension was approved
+    // Notify the specific staff member that extension was approved
     const staffMember = await app.db.query.staffMembers.findFirst({
       where: eq(staffMembers.id, extension.staffMemberId),
     });
     if (staffMember?.userId) {
-      createBroadcastNotification(app, {
+      createNotification(app, {
         type: 'TIMESHEET_APPROVED',
         title: 'Extension Approved',
         message: `Your request for additional hours on "${task?.title}" has been approved. Granted: ${hoursToGrant}h${hoursToGrant !== Number(extension.requestedHours) ? ` (requested ${Number(extension.requestedHours)}h)` : ''}.`,
+        userId: staffMember.userId, // targeted to the specific staff member
         actionUrl: `/pm/tasks/${extension.taskAssignmentId}`,
         referenceType: 'TASK_ASSIGNMENT',
         referenceId: extension.taskAssignmentId,
@@ -878,10 +879,11 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         where: eq(taskAssignments.id, declinedExt.taskAssignmentId),
       });
       if (declinedStaff?.userId) {
-        createBroadcastNotification(app, {
+        createNotification(app, {
           type: 'TIMESHEET_REJECTED',
           title: 'Extension Declined',
           message: `Your request for ${Number(declinedExt.requestedHours)} additional hours on "${declinedTask?.title}" was declined.${body.notes ? ` Reason: ${body.notes}` : ''}`,
+          userId: declinedStaff.userId,
           actionUrl: `/pm/tasks/${declinedExt.taskAssignmentId}`,
           referenceType: 'TASK_ASSIGNMENT',
           referenceId: declinedExt.taskAssignmentId,
