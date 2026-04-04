@@ -100,18 +100,28 @@ export function ContractorPortal() {
         </div>
 
         {/* Hours Summary */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
-            <p className="text-xs text-gray-500 uppercase">Allocated</p>
+            <p className="text-xs text-gray-500 uppercase">Total Allocated</p>
             <p className="text-xl font-bold text-gray-900">{totalAllocated.toFixed(1)}h</p>
+            <p className="text-[10px] text-gray-400">incl. extensions</p>
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
-            <p className="text-xs text-gray-500 uppercase">Logged</p>
+            <p className="text-xs text-gray-500 uppercase">Hours Used</p>
             <p className="text-xl font-bold text-blue-700">{totalLogged.toFixed(1)}h</p>
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
             <p className="text-xs text-gray-500 uppercase">Remaining</p>
             <p className={`text-xl font-bold ${totalRemaining > 0 ? 'text-green-700' : 'text-red-600'}`}>{totalRemaining.toFixed(1)}h</p>
+            {totalRemaining > 0 && totalLogged > totalAllocated - totalRemaining && (
+              <p className="text-[10px] text-green-600 font-medium">from extension</p>
+            )}
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
+            <p className="text-xs text-gray-500 uppercase">Utilization</p>
+            <p className={`text-xl font-bold ${totalAllocated > 0 && (totalLogged / totalAllocated) > 1 ? 'text-red-600' : 'text-gray-900'}`}>
+              {totalAllocated > 0 ? ((totalLogged / totalAllocated) * 100).toFixed(0) : 0}%
+            </p>
           </div>
         </div>
 
@@ -124,6 +134,12 @@ export function ContractorPortal() {
             const remaining = Number(task.remainingHours || Math.max(0, allocated - logged));
             const pct = allocated > 0 ? (logged / allocated) * 100 : 0;
             const isActive = activeTask === task.id;
+
+            // Calculate extension hours from approved extensions
+            const approvedExtensions = (task.timeLogs ? [] : []).length; // extensions come separately
+            // We detect extensions by: if allocated > original, the difference is extensions
+            // Since we don't have original_hours field, we show allocated as total (original + extensions)
+            const hasExtensions = remaining > 0 && logged > allocated - remaining - 0.01;
 
             return (
               <div key={task.id} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -144,14 +160,32 @@ export function ContractorPortal() {
                   {task.description && <p className="text-xs text-gray-600 mt-1">{task.description}</p>}
                   {task.milestone && <p className="text-xs text-gray-400 mt-1">Milestone: {task.milestone}</p>}
 
-                  {/* Hours bar */}
-                  <div className="mt-3 flex items-center gap-3 text-xs text-gray-500">
-                    <span>{logged.toFixed(1)}h / {allocated.toFixed(1)}h</span>
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
+                  {/* Hours breakdown */}
+                  <div className="mt-3 rounded-md bg-gray-50 p-3">
+                    <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                      <div>
+                        <p className="text-lg font-bold text-gray-900">{allocated.toFixed(1)}h</p>
+                        <p className="text-[10px] text-gray-500 uppercase">Total Allocated</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-blue-700">{logged.toFixed(1)}h</p>
+                        <p className="text-[10px] text-gray-500 uppercase">Hours Used</p>
+                      </div>
+                      <div>
+                        <p className={`text-lg font-bold ${remaining > 0 ? 'text-green-700' : 'text-red-600'}`}>{remaining.toFixed(1)}h</p>
+                        <p className="text-[10px] text-gray-500 uppercase">{remaining > 0 ? 'Remaining' : 'Exceeded'}</p>
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-2">
                       <div className={`h-2 rounded-full ${pct > 100 ? 'bg-red-500' : pct > 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
                         style={{ width: `${Math.min(100, pct)}%` }} />
                     </div>
-                    <span className={remaining > 0 ? 'text-green-700' : 'text-red-600'}>{remaining.toFixed(1)}h left</span>
+                    {remaining > 0 && logged > 0 && logged > allocated - remaining && (
+                      <p className="text-[10px] text-green-600 mt-1 font-medium">
+                        Extension granted — {remaining.toFixed(1)}h additional hours available
+                      </p>
+                    )}
                   </div>
 
                   {task.timeExhausted && (
