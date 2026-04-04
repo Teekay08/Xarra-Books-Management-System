@@ -1550,4 +1550,172 @@ export async function projectManagementRoutes(app: FastifyInstance) {
 
     return reply.status(201).send({ data: log });
   });
+
+  // ==========================================
+  // EXCEL TIMESHEET DOWNLOAD
+  // ==========================================
+
+  // Download timesheet as Excel for a staff member on a project
+  app.get<{ Params: { projectId: string; staffMemberId: string } }>('/projects/:projectId/staff/:staffMemberId/timesheet-excel', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { projectId, staffMemberId } = request.params;
+
+    const staff = await app.db.query.staffMembers.findFirst({ where: eq(staffMembers.id, staffMemberId) });
+    const project = await app.db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+    if (!staff || !project) return reply.notFound('Staff or project not found');
+
+    const tasks = await app.db.query.taskAssignments.findMany({
+      where: and(eq(taskAssignments.projectId, projectId), eq(taskAssignments.staffMemberId, staffMemberId)),
+      with: { timeLogs: { orderBy: (l, { asc }) => [asc(l.workDate)] }, milestone: true },
+    });
+
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Xarra Books';
+    workbook.created = new Date();
+
+    // Sheet 1: Timesheet Summary
+    const summarySheet = workbook.addWorksheet('Timesheet');
+
+    // Header
+    summarySheet.mergeCells('A1:F1');
+    summarySheet.getCell('A1').value = 'XARRA BOOKS — TIMESHEET';
+    summarySheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FF166534' } };
+
+    summarySheet.getCell('A3').value = 'Staff Member:';
+    summarySheet.getCell('B3').value = staff.name;
+    summarySheet.getCell('B3').font = { bold: true };
+    summarySheet.getCell('A4').value = 'Role:';
+    summarySheet.getCell('B4').value = staff.role;
+    summarySheet.getCell('A5').value = 'Project:';
+    summarySheet.getCell('B5').value = `${project.name} (${project.number})`;
+    summarySheet.getCell('B5').font = { bold: true };
+    summarySheet.getCell('A6').value = 'Rate:';
+    summarySheet.getCell('B6').value = `R ${Number(staff.hourlyRate).toFixed(2)}/hr`;
+    summarySheet.getCell('A7').value = 'Generated:';
+    summarySheet.getCell('B7').value = new Date().toLocaleDateString('en-ZA');
+
+    // Task summary table
+    const taskHeaderRow = 9;
+    summarySheet.getCell(`A${taskHeaderRow}`).value = 'Task';
+    summarySheet.getCell(`B${taskHeaderRow}`).value = 'Milestone';
+    summarySheet.getCell(`C${taskHeaderRow}`).value = 'Allocated Hours';
+    summarySheet.getCell(`D${taskHeaderRow}`).value = 'Logged Hours';
+    summarySheet.getCell(`E${taskHeaderRow}`).value = 'Remaining';
+    summarySheet.getCell(`F${taskHeaderRow}`).value = 'Status';
+    for (let col = 1; col <= 6; col++) {
+      const cell = summarySheet.getCell(taskHeaderRow, col);
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } };
+    }
+
+    let row = taskHeaderRow + 1;
+    let totalAllocated = 0;
+    let totalLogged = 0;
+    for (const task of tasks) {
+      summarySheet.getCell(`A${row}`).value = `${task.number} — ${task.title}`;
+      summarySheet.getCell(`B${row}`).value = task.milestone?.name || '—';
+      summarySheet.getCell(`C${row}`).value = Number(task.allocatedHours);
+      summarySheet.getCell(`D${row}`).value = Number(task.loggedHours);
+      summarySheet.getCell(`E${row}`).value = Number(task.remainingHours);
+      summarySheet.getCell(`F${row}`).value = task.status;
+      totalAllocated += Number(task.allocatedHours);
+      totalLogged += Number(task.loggedHours);
+      row++;
+    }
+    // Totals row
+    summarySheet.getCell(`A${row}`).value = 'TOTAL';
+    summarySheet.getCell(`A${row}`).font = { bold: true };
+    summarySheet.getCell(`C${row}`).value = totalAllocated;
+    summarySheet.getCell(`C${row}`).font = { bold: true };
+    summarySheet.getCell(`D${row}`).value = totalLogged;
+    summarySheet.getCell(`D${row}`).font = { bold: true };
+    summarySheet.getCell(`E${row}`).value = totalAllocated - totalLogged;
+    summarySheet.getCell(`E${row}`).font = { bold: true };
+
+    summarySheet.columns = [
+      { width: 40 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 },
+    ];
+
+    // Sheet 2: Detailed Time Logs (existing entries)
+    const logsSheet = workbook.addWorksheet('Time Logs');
+    logsSheet.columns = [
+      { header: 'Date', key: 'date', width: 15 },
+      { header: 'Task', key: 'task', width: 35 },
+      { header: 'Hours', key: 'hours', width: 10 },
+      { header: 'Description', key: 'description', width: 50 },
+      { header: 'Status', key: 'status', width: 12 },
+    ];
+    logsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    logsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } };
+
+    for (const task of tasks) {
+      for (const log of task.timeLogs || []) {
+        logsSheet.addRow({
+          date: new Date(log.workDate).toLocaleDateString('en-ZA'),
+          task: `${task.number} — ${task.title}`,
+          hours: Number(log.hours),
+          description: log.description,
+          status: log.status,
+        });
+      }
+    }
+
+    // Sheet 3: Blank Entry Sheet (for manual time logging)
+    const entrySheet = workbook.addWorksheet('Log Hours (Fill In)');
+    entrySheet.columns = [
+      { header: 'Date', key: 'date', width: 15 },
+      { header: 'Task Number', key: 'taskNumber', width: 18 },
+      { header: 'Task Title', key: 'taskTitle', width: 35 },
+      { header: 'Hours Worked', key: 'hours', width: 14 },
+      { header: 'Description of Work Done', key: 'description', width: 50 },
+    ];
+    entrySheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    entrySheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } };
+
+    // Pre-fill task numbers for convenience
+    for (const task of tasks) {
+      if (task.status !== 'COMPLETED' && task.status !== 'CANCELLED') {
+        for (let i = 0; i < 5; i++) {
+          entrySheet.addRow({
+            date: '',
+            taskNumber: task.number,
+            taskTitle: task.title,
+            hours: '',
+            description: '',
+          });
+        }
+      }
+    }
+
+    // Add signature area
+    const sigRow = entrySheet.rowCount + 3;
+    entrySheet.getCell(`A${sigRow}`).value = 'Staff Signature: ____________________';
+    entrySheet.getCell(`D${sigRow}`).value = 'Date: ____________________';
+    entrySheet.getCell(`A${sigRow + 2}`).value = 'PM Approval: ____________________';
+    entrySheet.getCell(`D${sigRow + 2}`).value = 'Date: ____________________';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileName = `Timesheet-${staff.name.replace(/\s+/g, '-')}-${project.number}.xlsx`;
+
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${fileName}"`)
+      .send(Buffer.from(buffer as ArrayBuffer));
+  });
+
+  // Contractor portal: download timesheet Excel via magic link (NO AUTH)
+  app.get<{ Params: { token: string } }>('/contractor-portal/:token/timesheet-excel', async (request, reply) => {
+    const tokenRecord = await app.db.query.contractorAccessTokens.findFirst({
+      where: eq(contractorAccessTokens.token, request.params.token),
+    });
+    if (!tokenRecord) return reply.notFound('Invalid access link');
+    if (new Date() > new Date(tokenRecord.expiresAt)) return reply.badRequest('Link expired');
+
+    // Redirect to the authenticated endpoint logic by building the URL
+    // Re-invoke the same handler
+    const redirectUrl = `/project-management/projects/${tokenRecord.projectId}/staff/${tokenRecord.staffMemberId}/timesheet-excel`;
+    return reply.redirect(redirectUrl);
+  });
 }

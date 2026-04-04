@@ -100,10 +100,14 @@ export function ContractorPortal() {
               <h2 className="text-lg font-semibold text-gray-900">{project.name}</h2>
               <p className="text-sm text-gray-500">{project.number} {project.titleName ? `— ${project.titleName}` : ''}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 print:hidden">
+              <a href={`/api/v1/project-management/contractor-portal/${token}/timesheet-excel`}
+                className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">
+                Download Timesheet (Excel)
+              </a>
               <button onClick={() => window.print()}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 print:hidden">
-                Print / Save as PDF
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                Print as PDF
               </button>
             </div>
           </div>
