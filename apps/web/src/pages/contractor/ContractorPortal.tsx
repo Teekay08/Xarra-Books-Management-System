@@ -93,10 +93,20 @@ export function ContractorPortal() {
       </header>
 
       <main className="max-w-4xl mx-auto p-4 sm:p-6">
-        {/* Project Info */}
+        {/* Project Info + Downloads */}
         <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900">{project.name}</h2>
-          <p className="text-sm text-gray-500">{project.number} {project.titleName ? `— ${project.titleName}` : ''}</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">{project.name}</h2>
+              <p className="text-sm text-gray-500">{project.number} {project.titleName ? `— ${project.titleName}` : ''}</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => window.print()}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 print:hidden">
+                Print / Save as PDF
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Hours Summary */}

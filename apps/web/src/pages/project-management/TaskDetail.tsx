@@ -198,6 +198,12 @@ export function TaskDetail() {
       <PageHeader
         title={`${task.number}: ${task.title}`}
         backTo={{ label: 'Tasks', href: task.project?.id ? `/pm/projects/${task.project.id}/tasks` : '/pm/staff' }}
+        action={
+          <button onClick={() => window.print()}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 print:hidden">
+            Print / Save as PDF
+          </button>
+        }
       />
 
       {/* Status badge next to header */}
