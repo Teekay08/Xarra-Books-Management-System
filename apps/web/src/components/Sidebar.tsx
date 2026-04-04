@@ -73,6 +73,8 @@ const allSections: NavSection[] = [
       { name: 'Projects', href: '/pm/projects', module: 'projectManagement' },
       { name: 'Staff Members', href: '/pm/staff', module: 'projectManagement' },
       { name: 'Resource Planning', href: '/pm/capacity', module: 'projectManagement' },
+      { name: 'Timesheets', href: '/budgeting/timesheets', module: 'projectManagement' },
+      { name: 'SOW Documents', href: '/budgeting/sow', module: 'projectManagement' },
     ],
   },
   {
@@ -87,8 +89,6 @@ const allSections: NavSection[] = [
       { name: 'Budget Dashboard', href: '/budgeting', module: 'budgeting' },
       { name: 'Projects', href: '/budgeting/projects', module: 'budgeting' },
       { name: 'Rate Cards', href: '/budgeting/rate-cards', module: 'budgeting' },
-      { name: 'Timesheets', href: '/budgeting/timesheets', module: 'budgeting' },
-      { name: 'SOW Documents', href: '/budgeting/sow', module: 'budgeting' },
     ],
   },
   {
