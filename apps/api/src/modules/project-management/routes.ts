@@ -836,7 +836,8 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         type: 'TIMESHEET_APPROVED',
         title: 'Extension Approved',
         message: `Your request for additional hours on "${task?.title}" has been approved. Granted: ${hoursToGrant}h${hoursToGrant !== Number(extension.requestedHours) ? ` (requested ${Number(extension.requestedHours)}h)` : ''}.`,
-        userId: staffMember.userId, // targeted to the specific staff member
+        userId: staffMember.userId,
+        recipientEmail: staffMember.email, // send email to staff
         actionUrl: `/pm/tasks/${extension.taskAssignmentId}`,
         referenceType: 'TASK_ASSIGNMENT',
         referenceId: extension.taskAssignmentId,
@@ -884,6 +885,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
           title: 'Extension Declined',
           message: `Your request for ${Number(declinedExt.requestedHours)} additional hours on "${declinedTask?.title}" was declined.${body.notes ? ` Reason: ${body.notes}` : ''}`,
           userId: declinedStaff.userId,
+          recipientEmail: declinedStaff.email, // send email to staff
           actionUrl: `/pm/tasks/${declinedExt.taskAssignmentId}`,
           referenceType: 'TASK_ASSIGNMENT',
           referenceId: declinedExt.taskAssignmentId,
