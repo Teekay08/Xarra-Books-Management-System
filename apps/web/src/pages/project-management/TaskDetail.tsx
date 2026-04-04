@@ -89,6 +89,7 @@ export function TaskDetail() {
   const [showExtensionForm, setShowExtensionForm] = useState(false);
   const [extensionForm, setExtensionForm] = useState({ requestedHours: '', reason: '' });
   const [extensionError, setExtensionError] = useState('');
+  const [approvalForm, setApprovalForm] = useState<{ extId: string; grantedHours: string; notes: string } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['pm-task', id],
@@ -144,10 +145,14 @@ export function TaskDetail() {
   });
 
   const extensionMutation = useMutation({
-    mutationFn: ({ extId, action }: { extId: string; action: 'approve' | 'decline' }) =>
-      api(`/project-management/extensions/${extId}/${action}`, { method: 'POST' }),
+    mutationFn: ({ extId, action, grantedHours, notes }: { extId: string; action: 'approve' | 'decline'; grantedHours?: number; notes?: string }) =>
+      api(`/project-management/extensions/${extId}/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ grantedHours, notes }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
+      setApprovalForm(null);
     },
     onError: (err: Error) => alert(err.message),
   });
@@ -451,16 +456,15 @@ export function TaskDetail() {
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${extensionStatusColors[ext.status] || ''}`}>
                     {ext.status}
                   </span>
-                  {ext.status === 'PENDING' && canApproveExtension && (
+                  {ext.status === 'PENDING' && canApproveExtension && approvalForm?.extId !== ext.id && (
                     <div className="flex gap-1 ml-2">
                       <button
-                        onClick={() => extensionMutation.mutate({ extId: ext.id, action: 'approve' })}
-                        disabled={extensionMutation.isPending}
-                        className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-200 disabled:opacity-50">
-                        Approve
+                        onClick={() => setApprovalForm({ extId: ext.id, grantedHours: String(Number(ext.requestedHours)), notes: '' })}
+                        className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-200">
+                        Grant Hours
                       </button>
                       <button
-                        onClick={() => extensionMutation.mutate({ extId: ext.id, action: 'decline' })}
+                        onClick={() => extensionMutation.mutate({ extId: ext.id, action: 'decline', notes: '' })}
                         disabled={extensionMutation.isPending}
                         className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 disabled:opacity-50">
                         Decline
@@ -468,6 +472,44 @@ export function TaskDetail() {
                     </div>
                   )}
                 </div>
+              {/* Approval form for this extension */}
+              {approvalForm?.extId === ext.id && (
+                <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 w-full">
+                  <p className="text-xs font-semibold text-gray-900 mb-2">Grant Additional Hours</p>
+                  <div className="flex items-end gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Hours to Grant *</label>
+                      <input type="number" min={0.5} step={0.5} value={approvalForm.grantedHours}
+                        onChange={(e) => setApprovalForm({ ...approvalForm, grantedHours: e.target.value })}
+                        className="w-24 rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs text-gray-600 mb-1">Notes (optional)</label>
+                      <input type="text" value={approvalForm.notes}
+                        onChange={(e) => setApprovalForm({ ...approvalForm, notes: e.target.value })}
+                        placeholder="e.g. Granted less due to budget constraints"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+                    </div>
+                    <button onClick={() => extensionMutation.mutate({
+                        extId: ext.id,
+                        action: 'approve',
+                        grantedHours: Number(approvalForm.grantedHours),
+                        notes: approvalForm.notes || undefined,
+                      })}
+                      disabled={!approvalForm.grantedHours || extensionMutation.isPending}
+                      className="rounded-md bg-green-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                      {extensionMutation.isPending ? 'Granting...' : 'Grant'}
+                    </button>
+                    <button onClick={() => setApprovalForm(null)}
+                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700">
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Staff requested {Number(ext.requestedHours)}h. You can grant more or less.
+                  </p>
+                </div>
+              )}
               </div>
             ))}
           </div>

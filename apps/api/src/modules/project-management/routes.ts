@@ -772,10 +772,15 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     return reply.status(201).send({ data: extension });
   });
 
-  // Approve extension
+  // Approve extension (PM can grant custom hours — more or less than requested)
   app.post<{ Params: { id: string } }>('/extensions/:id/approve', {
     preHandler: requireRole('admin', 'project_manager'),
   }, async (request, reply) => {
+    const body = z.object({
+      grantedHours: z.coerce.number().positive().optional(), // if not provided, uses requested amount
+      notes: z.string().nullable().optional(),
+    }).parse(request.body || {});
+
     const userId = request.session?.user?.id;
 
     const extension = await app.db.query.timeExtensionRequests.findFirst({
@@ -786,12 +791,18 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       return reply.badRequest('Extension request has already been processed');
     }
 
+    // Use custom hours if provided, otherwise use requested amount
+    const hoursToGrant = body.grantedHours || Number(extension.requestedHours);
+
     // Update extension status
     const [updated] = await app.db.update(timeExtensionRequests)
       .set({
         status: 'APPROVED',
         reviewedBy: userId,
         reviewedAt: new Date(),
+        reviewNotes: body.notes || (hoursToGrant !== Number(extension.requestedHours)
+          ? `Requested ${Number(extension.requestedHours)}h, granted ${hoursToGrant}h`
+          : null),
       })
       .where(eq(timeExtensionRequests.id, request.params.id))
       .returning();
@@ -801,8 +812,8 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       where: eq(taskAssignments.id, extension.taskAssignmentId),
     });
     if (task) {
-      const newAllocated = (Number(task.allocatedHours) || 0) + (Number(extension.requestedHours) || 0);
-      const newRemaining = (Number(task.remainingHours) || 0) + (Number(extension.requestedHours) || 0);
+      const newAllocated = (Number(task.allocatedHours) || 0) + hoursToGrant;
+      const newRemaining = (Number(task.remainingHours) || 0) + hoursToGrant;
       const newTotalCost = newAllocated * (Number(task.hourlyRate) || 0);
 
       await app.db.update(taskAssignments)
@@ -824,7 +835,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       createBroadcastNotification(app, {
         type: 'TIMESHEET_APPROVED',
         title: 'Extension Approved',
-        message: `Your request for ${Number(extension.requestedHours)} additional hours on "${task?.title}" has been approved.`,
+        message: `Your request for additional hours on "${task?.title}" has been approved. Granted: ${hoursToGrant}h${hoursToGrant !== Number(extension.requestedHours) ? ` (requested ${Number(extension.requestedHours)}h)` : ''}.`,
         actionUrl: `/pm/tasks/${extension.taskAssignmentId}`,
         referenceType: 'TASK_ASSIGNMENT',
         referenceId: extension.taskAssignmentId,
