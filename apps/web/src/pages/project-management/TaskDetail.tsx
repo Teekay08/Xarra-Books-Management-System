@@ -442,7 +442,7 @@ export function TaskDetail() {
               <div key={ext.id} className="flex items-start justify-between rounded-md border border-gray-100 bg-gray-50 p-3">
                 <div>
                   <p className="text-sm text-gray-900">
-                    <span className="font-medium">+{ext.requestedHours}h</span> requested
+                    <span className="font-medium">+{Number(ext.requestedHours)}h</span> requested
                   </p>
                   <p className="text-sm text-gray-600 mt-0.5">{ext.reason}</p>
                   <p className="text-xs text-gray-400 mt-1">{new Date(ext.createdAt).toLocaleDateString()}</p>

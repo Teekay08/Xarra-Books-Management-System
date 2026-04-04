@@ -8,6 +8,7 @@ import {
 } from '@xarra/db';
 import { paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { createBroadcastNotification } from '../../services/notifications.js';
 
 // ==========================================
 // ZOD SCHEMAS
@@ -757,6 +758,17 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       reason: body.reason,
     }).returning();
 
+    // Notify PM about extension request
+    createBroadcastNotification(app, {
+      type: 'TIMESHEET_SUBMITTED',
+      priority: 'HIGH',
+      title: 'Time Extension Requested',
+      message: `${staff.name} has requested ${body.requestedHours} additional hours on task "${task.title}". Reason: ${body.reason}`,
+      actionUrl: `/pm/tasks/${task.id}`,
+      referenceType: 'TASK_ASSIGNMENT',
+      referenceId: task.id,
+    }).catch(() => {});
+
     return reply.status(201).send({ data: extension });
   });
 
@@ -804,6 +816,21 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         .where(eq(taskAssignments.id, extension.taskAssignmentId));
     }
 
+    // Notify staff that extension was approved
+    const staffMember = await app.db.query.staffMembers.findFirst({
+      where: eq(staffMembers.id, extension.staffMemberId),
+    });
+    if (staffMember?.userId) {
+      createBroadcastNotification(app, {
+        type: 'TIMESHEET_APPROVED',
+        title: 'Extension Approved',
+        message: `Your request for ${Number(extension.requestedHours)} additional hours on "${task?.title}" has been approved.`,
+        actionUrl: `/pm/tasks/${extension.taskAssignmentId}`,
+        referenceType: 'TASK_ASSIGNMENT',
+        referenceId: extension.taskAssignmentId,
+      }).catch(() => {});
+    }
+
     return { data: updated };
   });
 
@@ -827,6 +854,30 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       ))
       .returning();
     if (!updated) return reply.notFound('Extension request not found or already processed');
+
+    // Notify staff that extension was declined
+    const declinedExt = await app.db.query.timeExtensionRequests.findFirst({
+      where: eq(timeExtensionRequests.id, request.params.id),
+    });
+    if (declinedExt) {
+      const declinedStaff = await app.db.query.staffMembers.findFirst({
+        where: eq(staffMembers.id, declinedExt.staffMemberId),
+      });
+      const declinedTask = await app.db.query.taskAssignments.findFirst({
+        where: eq(taskAssignments.id, declinedExt.taskAssignmentId),
+      });
+      if (declinedStaff?.userId) {
+        createBroadcastNotification(app, {
+          type: 'TIMESHEET_REJECTED',
+          title: 'Extension Declined',
+          message: `Your request for ${Number(declinedExt.requestedHours)} additional hours on "${declinedTask?.title}" was declined.${body.notes ? ` Reason: ${body.notes}` : ''}`,
+          actionUrl: `/pm/tasks/${declinedExt.taskAssignmentId}`,
+          referenceType: 'TASK_ASSIGNMENT',
+          referenceId: declinedExt.taskAssignmentId,
+        }).catch(() => {});
+      }
+    }
+
     return { data: updated };
   });
 
@@ -1426,6 +1477,20 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       requestedHours: String(body.requestedHours),
       reason: body.reason,
     }).returning();
+
+    // Notify PM
+    const reqStaff = await app.db.query.staffMembers.findFirst({
+      where: eq(staffMembers.id, tokenRecord.staffMemberId),
+    });
+    createBroadcastNotification(app, {
+      type: 'TIMESHEET_SUBMITTED',
+      priority: 'HIGH',
+      title: 'Time Extension Requested',
+      message: `${reqStaff?.name || 'A staff member'} has requested ${body.requestedHours} additional hours on task "${task.title}". Reason: ${body.reason}`,
+      actionUrl: `/pm/tasks/${task.id}`,
+      referenceType: 'TASK_ASSIGNMENT',
+      referenceId: task.id,
+    }).catch(() => {});
 
     return reply.status(201).send({ data: ext });
   });
