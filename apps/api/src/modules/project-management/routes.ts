@@ -15,7 +15,7 @@ import { createNotification, createBroadcastNotification } from '../../services/
 // ==========================================
 
 const createStaffMemberSchema = z.object({
-  userId: z.string().optional(),
+  userId: z.string().nullable().optional(),
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string().optional(),
