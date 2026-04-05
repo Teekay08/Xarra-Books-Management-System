@@ -32,9 +32,11 @@ export function TaskForm() {
   const [form, setForm] = useState({
     staffMemberId: '',
     milestoneId: '',
+    taskCodeId: '',
     title: '',
     description: '',
     priority: 'MEDIUM',
+    estimatedHours: 0,
     allocatedHours: 0,
     hourlyRate: 0,
     startDate: '',
@@ -44,6 +46,8 @@ export function TaskForm() {
   const [error, setError] = useState('');
   const [showNewMilestone, setShowNewMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ code: '', name: '' });
+  const [showNewCode, setShowNewCode] = useState(false);
+  const [newCode, setNewCode] = useState({ code: '', name: '', category: '' });
 
   const createMilestoneMutation = useMutation({
     mutationFn: () => api(`/budgeting/projects/${projectId}/milestones`, {
@@ -69,6 +73,25 @@ export function TaskForm() {
     queryKey: ['budgeting-project-milestones', projectId],
     queryFn: () => api<{ data: Milestone[] }>(`/budgeting/projects/${projectId}/milestones`),
     enabled: !!projectId,
+  });
+
+  const { data: taskCodesData } = useQuery({
+    queryKey: ['task-codes'],
+    queryFn: () => api<{ data: Array<{ id: string; code: string; name: string; category: string }> }>('/project-management/task-codes'),
+  });
+
+  const createCodeMutation = useMutation({
+    mutationFn: () => api('/project-management/task-codes', {
+      method: 'POST',
+      body: JSON.stringify(newCode),
+    }),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['task-codes'] });
+      setForm((f) => ({ ...f, taskCodeId: data?.data?.id || '' }));
+      setShowNewCode(false);
+      setNewCode({ code: '', name: '', category: '' });
+    },
+    onError: (err: Error) => alert(`Failed to create code: ${err.message}`),
   });
 
   // Auto-fill hourly rate when staff member is selected
@@ -108,9 +131,11 @@ export function TaskForm() {
       const payload = {
         staffMemberId: form.staffMemberId || null,
         milestoneId: form.milestoneId || null,
+        taskCodeId: form.taskCodeId || null,
         title: form.title,
         description: form.description || null,
         priority: form.priority,
+        estimatedHours: form.estimatedHours || null,
         allocatedHours: form.allocatedHours,
         hourlyRate: form.hourlyRate,
         startDate: form.startDate || null,
@@ -220,6 +245,87 @@ export function TaskForm() {
                 </button>
                 <button type="button" onClick={() => setShowNewMilestone(false)}
                   className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Task Code */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-gray-900">Task Code & Estimation</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Task Code</label>
+              <select value={form.taskCodeId}
+                onChange={(e) => {
+                  if (e.target.value === '__CREATE_NEW__') {
+                    setShowNewCode(true);
+                  } else {
+                    setForm({ ...form, taskCodeId: e.target.value });
+                  }
+                }}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                <option value="">-- Select code --</option>
+                {taskCodesData?.data?.map((c) => (
+                  <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
+                ))}
+                <option value="__CREATE_NEW__">+ Create New Code</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Hours</label>
+              <input type="number" min={0} step={0.5} value={form.estimatedHours || ''}
+                onChange={(e) => setForm({ ...form, estimatedHours: Number(e.target.value) || 0 })}
+                placeholder="PM's estimate"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+              <p className="text-[10px] text-gray-400 mt-1">Your estimate for how long this task should take</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Allocated Hours *</label>
+              <input type="number" min={0.5} step={0.5} value={form.allocatedHours || ''}
+                onChange={(e) => setForm({ ...form, allocatedHours: Number(e.target.value) || 0 })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+              <p className="text-[10px] text-gray-400 mt-1">Hours allocated (may differ from estimate)</p>
+            </div>
+          </div>
+
+          {/* Inline new code form */}
+          {showNewCode && (
+            <div className="rounded-md border border-green-200 bg-green-50 p-4 space-y-3">
+              <h4 className="text-sm font-semibold text-green-800">New Task Code</h4>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Code *</label>
+                  <input type="text" value={newCode.code}
+                    onChange={(e) => setNewCode({ ...newCode, code: e.target.value.toUpperCase().replace(/\s+/g, '-') })}
+                    placeholder="e.g. XAR-PUB"
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+                  <input type="text" value={newCode.name}
+                    onChange={(e) => setNewCode({ ...newCode, name: e.target.value })}
+                    placeholder="e.g. Publishing"
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Category *</label>
+                  <input type="text" value={newCode.category}
+                    onChange={(e) => setNewCode({ ...newCode, category: e.target.value })}
+                    placeholder="e.g. Production"
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => createCodeMutation.mutate()}
+                  disabled={!newCode.code || !newCode.name || !newCode.category || createCodeMutation.isPending}
+                  className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                  {createCodeMutation.isPending ? 'Creating...' : 'Create Code'}
+                </button>
+                <button type="button" onClick={() => setShowNewCode(false)}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700">
                   Cancel
                 </button>
               </div>

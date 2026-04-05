@@ -4,7 +4,7 @@ import { eq, sql, and, desc, asc, ilike, or } from 'drizzle-orm';
 import {
   staffMembers, staffProjectAssignments, taskAssignments, taskTimeLogs,
   timeExtensionRequests, staffPayments, projects, projectMilestones,
-  contractorAccessTokens,
+  contractorAccessTokens, taskCodes,
 } from '@xarra/db';
 import { paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
@@ -54,9 +54,11 @@ const updateAssignmentSchema = z.object({
 const createTaskAssignmentSchema = z.object({
   staffMemberId: z.string().uuid(),
   milestoneId: z.string().uuid().nullable().optional(),
+  taskCodeId: z.string().uuid().nullable().optional(),
   title: z.string().min(1),
   description: z.string().nullable().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
+  estimatedHours: z.coerce.number().positive().nullable().optional(), // PM's original estimate
   allocatedHours: z.coerce.number().positive(),
   hourlyRate: z.coerce.number().positive(),
   startDate: z.string().nullable().optional(),
@@ -135,6 +137,61 @@ async function getStaffMemberByUserId(db: any, userId: string) {
 // ==========================================
 
 export async function projectManagementRoutes(app: FastifyInstance) {
+
+  // ==========================================
+  // TASK CODES CRUD
+  // ==========================================
+
+  app.get('/task-codes', { preHandler: requireAuth }, async () => {
+    const codes = await app.db.query.taskCodes.findMany({
+      where: eq(taskCodes.isActive, true),
+      orderBy: (c, { asc }) => [asc(c.code)],
+    });
+    return { data: codes };
+  });
+
+  app.post('/task-codes', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({
+      code: z.string().min(1).max(20).transform(v => v.toUpperCase().replace(/\s+/g, '-')),
+      name: z.string().min(1),
+      category: z.string().min(1),
+      description: z.string().nullable().optional(),
+    }).parse(request.body);
+
+    // Check uniqueness
+    const existing = await app.db.query.taskCodes.findFirst({
+      where: eq(taskCodes.code, body.code),
+    });
+    if (existing) return reply.badRequest(`Task code "${body.code}" already exists`);
+
+    const [code] = await app.db.insert(taskCodes).values({
+      code: body.code,
+      name: body.name,
+      category: body.category,
+      description: body.description || null,
+      createdBy: request.session?.user?.id,
+    }).returning();
+
+    return reply.status(201).send({ data: code });
+  });
+
+  app.patch<{ Params: { id: string } }>('/task-codes/:id', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({
+      name: z.string().min(1).optional(),
+      category: z.string().min(1).optional(),
+      description: z.string().nullable().optional(),
+      isActive: z.boolean().optional(),
+    }).parse(request.body);
+
+    const [updated] = await app.db.update(taskCodes).set(body)
+      .where(eq(taskCodes.id, request.params.id)).returning();
+    if (!updated) return reply.notFound('Task code not found');
+    return { data: updated };
+  });
 
   // ==========================================
   // STAFF MEMBERS CRUD
@@ -430,6 +487,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         staffMember: true,
         project: true,
         milestone: true,
+        taskCode: true,
         timeLogs: {
           orderBy: (l, { desc }) => [desc(l.workDate)],
         },
@@ -479,10 +537,12 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       number,
       projectId: request.params.projectId,
       milestoneId: body.milestoneId || null,
+      taskCodeId: body.taskCodeId || null,
       staffMemberId: body.staffMemberId,
       title: body.title,
       description: body.description || null,
       priority: body.priority,
+      estimatedHours: body.estimatedHours ? String(body.estimatedHours) : null,
       allocatedHours: String(body.allocatedHours),
       loggedHours: '0',
       remainingHours: String(body.allocatedHours),
@@ -1555,7 +1615,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   // EXCEL TIMESHEET DOWNLOAD
   // ==========================================
 
-  // Download timesheet as Excel for a staff member on a project
+  // Download monthly timesheet as Excel for a staff member (all projects)
   app.get<{ Params: { projectId: string; staffMemberId: string } }>('/projects/:projectId/staff/:staffMemberId/timesheet-excel', {
     preHandler: requireAuth,
   }, async (request, reply) => {
@@ -1567,137 +1627,222 @@ export async function projectManagementRoutes(app: FastifyInstance) {
 
     const tasks = await app.db.query.taskAssignments.findMany({
       where: and(eq(taskAssignments.projectId, projectId), eq(taskAssignments.staffMemberId, staffMemberId)),
-      with: { timeLogs: { orderBy: (l, { asc }) => [asc(l.workDate)] }, milestone: true },
+      with: { timeLogs: { orderBy: (l, { asc }) => [asc(l.workDate)] }, milestone: true, taskCode: true, project: true },
     });
+
+    // Get current month boundaries
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const monthName = now.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
 
     const ExcelJS = (await import('exceljs')).default;
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Xarra Books';
     workbook.created = new Date();
 
-    // Sheet 1: Timesheet Summary
-    const summarySheet = workbook.addWorksheet('Timesheet');
+    // Sheet 1: Monthly Summary
+    const summarySheet = workbook.addWorksheet('Monthly Summary');
 
-    // Header
-    summarySheet.mergeCells('A1:F1');
-    summarySheet.getCell('A1').value = 'XARRA BOOKS — TIMESHEET';
-    summarySheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FF166534' } };
+    const greenFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF166534' } };
+    const whiteFont = { bold: true, color: { argb: 'FFFFFFFF' } };
+    const boldFont = { bold: true };
 
-    summarySheet.getCell('A3').value = 'Staff Member:';
-    summarySheet.getCell('B3').value = staff.name;
-    summarySheet.getCell('B3').font = { bold: true };
-    summarySheet.getCell('A4').value = 'Role:';
-    summarySheet.getCell('B4').value = staff.role;
-    summarySheet.getCell('A5').value = 'Project:';
-    summarySheet.getCell('B5').value = `${project.name} (${project.number})`;
-    summarySheet.getCell('B5').font = { bold: true };
-    summarySheet.getCell('A6').value = 'Rate:';
-    summarySheet.getCell('B6').value = `R ${Number(staff.hourlyRate).toFixed(2)}/hr`;
-    summarySheet.getCell('A7').value = 'Generated:';
-    summarySheet.getCell('B7').value = new Date().toLocaleDateString('en-ZA');
+    // === SHEET 1: MONTHLY SUMMARY ===
+    summarySheet.mergeCells('A1:H1');
+    summarySheet.getCell('A1').value = 'XARRA BOOKS — MONTHLY TIMESHEET';
+    summarySheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FF166534' } };
 
-    // Task summary table
-    const taskHeaderRow = 9;
-    summarySheet.getCell(`A${taskHeaderRow}`).value = 'Task';
-    summarySheet.getCell(`B${taskHeaderRow}`).value = 'Milestone';
-    summarySheet.getCell(`C${taskHeaderRow}`).value = 'Allocated Hours';
-    summarySheet.getCell(`D${taskHeaderRow}`).value = 'Logged Hours';
-    summarySheet.getCell(`E${taskHeaderRow}`).value = 'Remaining';
-    summarySheet.getCell(`F${taskHeaderRow}`).value = 'Status';
-    for (let col = 1; col <= 6; col++) {
-      const cell = summarySheet.getCell(taskHeaderRow, col);
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } };
-    }
+    summarySheet.getCell('A3').value = 'Period:';
+    summarySheet.getCell('B3').value = monthName;
+    summarySheet.getCell('B3').font = boldFont;
+    summarySheet.getCell('A4').value = 'Staff Member:';
+    summarySheet.getCell('B4').value = staff.name;
+    summarySheet.getCell('B4').font = boldFont;
+    summarySheet.getCell('A5').value = 'Role:';
+    summarySheet.getCell('B5').value = staff.role;
+    summarySheet.getCell('A6').value = 'Project:';
+    summarySheet.getCell('B6').value = `${project.name} (${project.number})`;
+    summarySheet.getCell('B6').font = boldFont;
+    summarySheet.getCell('A7').value = 'Hourly Rate:';
+    summarySheet.getCell('B7').value = `R ${Number(staff.hourlyRate).toFixed(2)}`;
+    summarySheet.getCell('A8').value = 'Generated:';
+    summarySheet.getCell('B8').value = new Date().toLocaleDateString('en-ZA');
+    summarySheet.getCell('D3').value = 'Status:';
+    summarySheet.getCell('E3').value = 'Draft';
 
-    let row = taskHeaderRow + 1;
-    let totalAllocated = 0;
-    let totalLogged = 0;
-    for (const task of tasks) {
-      summarySheet.getCell(`A${row}`).value = `${task.number} — ${task.title}`;
-      summarySheet.getCell(`B${row}`).value = task.milestone?.name || '—';
-      summarySheet.getCell(`C${row}`).value = Number(task.allocatedHours);
-      summarySheet.getCell(`D${row}`).value = Number(task.loggedHours);
-      summarySheet.getCell(`E${row}`).value = Number(task.remainingHours);
-      summarySheet.getCell(`F${row}`).value = task.status;
-      totalAllocated += Number(task.allocatedHours);
-      totalLogged += Number(task.loggedHours);
+    // Task summary table with codes + est vs actual
+    const headers = ['Code', 'Task', 'Project', 'Milestone', 'Est. Hours', 'Allocated', 'Actual', 'Variance', 'Status'];
+    const hr = 10;
+    headers.forEach((h, i) => {
+      const cell = summarySheet.getCell(hr, i + 1);
+      cell.value = h;
+      cell.font = whiteFont;
+      cell.fill = greenFill;
+    });
+
+    let row = hr + 1;
+    let totalEst = 0, totalAlloc = 0, totalActual = 0;
+    for (const t of tasks) {
+      const est = Number(t.estimatedHours || 0);
+      const alloc = Number(t.allocatedHours);
+      const actual = Number(t.loggedHours);
+      const variance = est > 0 ? actual - est : 0;
+      summarySheet.getCell(`A${row}`).value = (t.taskCode as any)?.code || '—';
+      summarySheet.getCell(`B${row}`).value = `${t.number} — ${t.title}`;
+      summarySheet.getCell(`C${row}`).value = (t.project as any)?.number || project.number;
+      summarySheet.getCell(`D${row}`).value = t.milestone?.name || '—';
+      summarySheet.getCell(`E${row}`).value = est || '—';
+      summarySheet.getCell(`F${row}`).value = alloc;
+      summarySheet.getCell(`G${row}`).value = actual;
+      summarySheet.getCell(`H${row}`).value = est > 0 ? variance : '—';
+      if (variance > 0) summarySheet.getCell(`H${row}`).font = { color: { argb: 'FFCC0000' } };
+      if (variance < 0) summarySheet.getCell(`H${row}`).font = { color: { argb: 'FF006600' } };
+      summarySheet.getCell(`I${row}`).value = t.status;
+      totalEst += est; totalAlloc += alloc; totalActual += actual;
       row++;
     }
-    // Totals row
+    // Totals
     summarySheet.getCell(`A${row}`).value = 'TOTAL';
-    summarySheet.getCell(`A${row}`).font = { bold: true };
-    summarySheet.getCell(`C${row}`).value = totalAllocated;
-    summarySheet.getCell(`C${row}`).font = { bold: true };
-    summarySheet.getCell(`D${row}`).value = totalLogged;
-    summarySheet.getCell(`D${row}`).font = { bold: true };
-    summarySheet.getCell(`E${row}`).value = totalAllocated - totalLogged;
-    summarySheet.getCell(`E${row}`).font = { bold: true };
+    summarySheet.getCell(`A${row}`).font = boldFont;
+    summarySheet.getCell(`E${row}`).value = totalEst || '—';
+    summarySheet.getCell(`E${row}`).font = boldFont;
+    summarySheet.getCell(`F${row}`).value = totalAlloc;
+    summarySheet.getCell(`F${row}`).font = boldFont;
+    summarySheet.getCell(`G${row}`).value = totalActual;
+    summarySheet.getCell(`G${row}`).font = boldFont;
+    summarySheet.getCell(`H${row}`).value = totalEst > 0 ? totalActual - totalEst : '—';
+    summarySheet.getCell(`H${row}`).font = boldFont;
+
+    // Cost summary
+    row += 2;
+    summarySheet.getCell(`A${row}`).value = 'COST SUMMARY';
+    summarySheet.getCell(`A${row}`).font = { bold: true, size: 12 };
+    row++;
+    summarySheet.getCell(`A${row}`).value = 'Total Hours:';
+    summarySheet.getCell(`B${row}`).value = totalActual;
+    summarySheet.getCell(`B${row}`).font = boldFont;
+    row++;
+    summarySheet.getCell(`A${row}`).value = 'Hourly Rate:';
+    summarySheet.getCell(`B${row}`).value = `R ${Number(staff.hourlyRate).toFixed(2)}`;
+    row++;
+    summarySheet.getCell(`A${row}`).value = 'Gross Amount:';
+    summarySheet.getCell(`B${row}`).value = `R ${(totalActual * Number(staff.hourlyRate)).toFixed(2)}`;
+    summarySheet.getCell(`B${row}`).font = { bold: true, size: 13 };
+
+    // Signatures
+    row += 3;
+    summarySheet.getCell(`A${row}`).value = 'Staff Signature: ____________________';
+    summarySheet.getCell(`D${row}`).value = 'Date: ____________________';
+    row += 2;
+    summarySheet.getCell(`A${row}`).value = 'PM Approval: ____________________';
+    summarySheet.getCell(`D${row}`).value = 'Date: ____________________';
+    row += 2;
+    summarySheet.getCell(`A${row}`).value = 'Finance Approval: ____________________';
+    summarySheet.getCell(`D${row}`).value = 'Date: ____________________';
 
     summarySheet.columns = [
-      { width: 40 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 },
+      { width: 14 }, { width: 35 }, { width: 14 }, { width: 18 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 },
     ];
 
-    // Sheet 2: Detailed Time Logs (existing entries)
-    const logsSheet = workbook.addWorksheet('Time Logs');
+    // === SHEET 2: DAILY LOG ===
+    const logsSheet = workbook.addWorksheet('Daily Log');
     logsSheet.columns = [
-      { header: 'Date', key: 'date', width: 15 },
+      { header: 'Date', key: 'date', width: 14 },
+      { header: 'Code', key: 'code', width: 12 },
       { header: 'Task', key: 'task', width: 35 },
+      { header: 'Project', key: 'project', width: 14 },
       { header: 'Hours', key: 'hours', width: 10 },
       { header: 'Description', key: 'description', width: 50 },
       { header: 'Status', key: 'status', width: 12 },
     ];
-    logsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    logsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } };
+    logsSheet.getRow(1).font = whiteFont;
+    logsSheet.getRow(1).fill = greenFill;
 
-    for (const task of tasks) {
-      for (const log of task.timeLogs || []) {
+    // Group logs by week
+    for (const t of tasks) {
+      for (const l of t.timeLogs || []) {
         logsSheet.addRow({
-          date: new Date(log.workDate).toLocaleDateString('en-ZA'),
-          task: `${task.number} — ${task.title}`,
-          hours: Number(log.hours),
-          description: log.description,
-          status: log.status,
+          date: new Date(l.workDate).toLocaleDateString('en-ZA'),
+          code: (t.taskCode as any)?.code || '—',
+          task: `${t.number} — ${t.title}`,
+          project: (t.project as any)?.number || project.number,
+          hours: Number(l.hours),
+          description: l.description,
+          status: l.status,
         });
       }
     }
 
-    // Sheet 3: Blank Entry Sheet (for manual time logging)
+    // === SHEET 3: COST BREAKDOWN ===
+    const costSheet = workbook.addWorksheet('Cost Summary');
+    costSheet.mergeCells('A1:F1');
+    costSheet.getCell('A1').value = `COST SUMMARY — ${monthName}`;
+    costSheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FF166534' } };
+
+    const costHeaders = ['Code', 'Task', 'Hours', 'Rate (R)', 'Amount (R)', 'Status'];
+    costHeaders.forEach((h, i) => {
+      const cell = costSheet.getCell(3, i + 1);
+      cell.value = h;
+      cell.font = whiteFont;
+      cell.fill = greenFill;
+    });
+
+    let costRow = 4;
+    let grandTotal = 0;
+    for (const t of tasks) {
+      const hrs = Number(t.loggedHours);
+      const rate = Number(t.hourlyRate);
+      const amt = hrs * rate;
+      costSheet.getCell(`A${costRow}`).value = (t.taskCode as any)?.code || '—';
+      costSheet.getCell(`B${costRow}`).value = `${t.number} — ${t.title}`;
+      costSheet.getCell(`C${costRow}`).value = hrs;
+      costSheet.getCell(`D${costRow}`).value = rate;
+      costSheet.getCell(`E${costRow}`).value = amt;
+      costSheet.getCell(`E${costRow}`).numFmt = '#,##0.00';
+      costSheet.getCell(`F${costRow}`).value = t.status;
+      grandTotal += amt;
+      costRow++;
+    }
+    costSheet.getCell(`A${costRow}`).value = 'TOTAL';
+    costSheet.getCell(`A${costRow}`).font = boldFont;
+    costSheet.getCell(`C${costRow}`).value = totalActual;
+    costSheet.getCell(`C${costRow}`).font = boldFont;
+    costSheet.getCell(`E${costRow}`).value = grandTotal;
+    costSheet.getCell(`E${costRow}`).font = { bold: true, size: 13 };
+    costSheet.getCell(`E${costRow}`).numFmt = '#,##0.00';
+    costSheet.columns = [{ width: 14 }, { width: 35 }, { width: 12 }, { width: 12 }, { width: 15 }, { width: 12 }];
+
+    // === SHEET 4: BLANK ENTRY (for offline manual logging) ===
     const entrySheet = workbook.addWorksheet('Log Hours (Fill In)');
     entrySheet.columns = [
-      { header: 'Date', key: 'date', width: 15 },
-      { header: 'Task Number', key: 'taskNumber', width: 18 },
-      { header: 'Task Title', key: 'taskTitle', width: 35 },
+      { header: 'Date', key: 'date', width: 14 },
+      { header: 'Task Code', key: 'code', width: 12 },
+      { header: 'Task Number', key: 'taskNumber', width: 16 },
+      { header: 'Task Title', key: 'taskTitle', width: 30 },
       { header: 'Hours Worked', key: 'hours', width: 14 },
       { header: 'Description of Work Done', key: 'description', width: 50 },
     ];
-    entrySheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    entrySheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } };
+    entrySheet.getRow(1).font = whiteFont;
+    entrySheet.getRow(1).fill = greenFill;
 
-    // Pre-fill task numbers for convenience
-    for (const task of tasks) {
-      if (task.status !== 'COMPLETED' && task.status !== 'CANCELLED') {
+    for (const t of tasks) {
+      if (t.status !== 'COMPLETED' && t.status !== 'CANCELLED') {
         for (let i = 0; i < 5; i++) {
-          entrySheet.addRow({
-            date: '',
-            taskNumber: task.number,
-            taskTitle: task.title,
-            hours: '',
-            description: '',
-          });
+          entrySheet.addRow({ date: '', code: (t.taskCode as any)?.code || '', taskNumber: t.number, taskTitle: t.title, hours: '', description: '' });
         }
       }
     }
-
-    // Add signature area
-    const sigRow = entrySheet.rowCount + 3;
-    entrySheet.getCell(`A${sigRow}`).value = 'Staff Signature: ____________________';
-    entrySheet.getCell(`D${sigRow}`).value = 'Date: ____________________';
-    entrySheet.getCell(`A${sigRow + 2}`).value = 'PM Approval: ____________________';
-    entrySheet.getCell(`D${sigRow + 2}`).value = 'Date: ____________________';
+    const sigR = entrySheet.rowCount + 3;
+    entrySheet.getCell(`A${sigR}`).value = 'Staff Signature: ____________________';
+    entrySheet.getCell(`D${sigR}`).value = 'Date: ____________________';
+    entrySheet.getCell(`A${sigR + 2}`).value = 'PM Approval: ____________________';
+    entrySheet.getCell(`D${sigR + 2}`).value = 'Date: ____________________';
+    entrySheet.getCell(`A${sigR + 4}`).value = 'Finance Approval: ____________________';
+    entrySheet.getCell(`D${sigR + 4}`).value = 'Date: ____________________';
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = `Timesheet-${staff.name.replace(/\s+/g, '-')}-${project.number}.xlsx`;
+    const fileName = `Timesheet-${staff.name.replace(/\s+/g, '-')}-${monthName.replace(/\s+/g, '-')}.xlsx`;
 
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

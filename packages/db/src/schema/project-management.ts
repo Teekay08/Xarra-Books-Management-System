@@ -24,6 +24,24 @@ export const staffPaymentStatusEnum = pgEnum('staff_payment_status', [
 ]);
 
 // ==========================================
+// TASK CODES (categorize tasks for reporting + timesheets)
+// ==========================================
+
+export const taskCodes = pgTable('task_codes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  code: varchar('code', { length: 20 }).notNull().unique(), // e.g. XAR-PUB
+  name: varchar('name', { length: 100 }).notNull(), // e.g. Publishing
+  category: varchar('category', { length: 50 }).notNull(), // e.g. Production, Operations
+  description: text('description'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: text('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_task_codes_code').on(t.code),
+  index('idx_task_codes_active').on(t.isActive),
+]);
+
+// ==========================================
 // STAFF MEMBERS
 // ==========================================
 
@@ -86,11 +104,13 @@ export const taskAssignments = pgTable('task_assignments', {
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   milestoneId: uuid('milestone_id').references(() => projectMilestones.id),
   staffMemberId: uuid('staff_member_id').notNull().references(() => staffMembers.id),
+  taskCodeId: uuid('task_code_id').references(() => taskCodes.id), // XAR-PUB, XAR-MKT, etc.
   title: varchar('title', { length: 255 }).notNull(), // task title
   description: text('description'),
   status: taskAssignmentStatusEnum('status').notNull().default('DRAFT'),
   priority: varchar('priority', { length: 10 }).notNull().default('MEDIUM'), // LOW, MEDIUM, HIGH, URGENT
   // Time allocation
+  estimatedHours: decimal('estimated_hours', { precision: 10, scale: 2 }), // PM's original estimate
   allocatedHours: decimal('allocated_hours', { precision: 10, scale: 2 }).notNull(),
   loggedHours: decimal('logged_hours', { precision: 10, scale: 2 }).notNull().default('0'),
   remainingHours: decimal('remaining_hours', { precision: 10, scale: 2 }).notNull(),
@@ -228,10 +248,15 @@ export const staffProjectAssignmentsRelations = relations(staffProjectAssignment
   project: one(projects, { fields: [staffProjectAssignments.projectId], references: [projects.id] }),
 }));
 
+export const taskCodesRelations = relations(taskCodes, ({ many }) => ({
+  taskAssignments: many(taskAssignments),
+}));
+
 export const taskAssignmentsRelations = relations(taskAssignments, ({ one, many }) => ({
   project: one(projects, { fields: [taskAssignments.projectId], references: [projects.id] }),
   milestone: one(projectMilestones, { fields: [taskAssignments.milestoneId], references: [projectMilestones.id] }),
   staffMember: one(staffMembers, { fields: [taskAssignments.staffMemberId], references: [staffMembers.id] }),
+  taskCode: one(taskCodes, { fields: [taskAssignments.taskCodeId], references: [taskCodes.id] }),
   timeLogs: many(taskTimeLogs),
   extensionRequests: many(timeExtensionRequests),
 }));
