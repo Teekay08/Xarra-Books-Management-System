@@ -138,6 +138,7 @@ import { StaffList } from './pages/project-management/StaffList';
 import { StaffDetail } from './pages/project-management/StaffDetail';
 import { CreateStaffSow } from './pages/project-management/CreateStaffSow';
 import { ContractorPortal } from './pages/contractor/ContractorPortal';
+import { SystemHealth } from './pages/admin/SystemHealth';
 import { StaffForm } from './pages/project-management/StaffForm';
 import { ProjectTeam } from './pages/project-management/ProjectTeam';
 import { TaskList } from './pages/project-management/TaskList';
@@ -366,6 +367,7 @@ const router = createBrowserRouter([
 
       // Admin — Audit & Deletion
       { path: 'admin/audit-log', element: <AuditLog /> },
+      { path: 'admin/system-health', element: <SystemHealth /> },
       { path: 'admin/deletion-requests', element: <DeletionRequests /> },
 
       // 404

@@ -115,6 +115,7 @@ const allSections: NavSection[] = [
       { name: 'Scheduling', href: '/settings/scheduling', module: 'settings' },
       { name: 'Data Export', href: '/settings/export', module: 'settings' },
       { name: 'Audit Trail', href: '/admin/audit-log', module: 'auditLogs' },
+      { name: 'System Health', href: '/admin/system-health', module: 'settings' },
       { name: 'Deletion Requests', href: '/admin/deletion-requests', module: 'deletionRequests' },
     ],
   },

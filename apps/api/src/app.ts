@@ -6,6 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
+import { sql } from 'drizzle-orm';
 import databasePlugin from './plugins/database.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -207,6 +208,87 @@ export async function buildApp() {
     timestamp: new Date().toISOString(),
     environment: config.nodeEnv,
   }));
+
+  // System health dashboard (detailed, for admin console)
+  app.get('/api/v1/system-health', async (request) => {
+    const startTime = Date.now();
+    let dbConnected = false;
+    let dbLatency = 0;
+    let dbStats: any = {};
+
+    try {
+      const dbStart = Date.now();
+      const result = await app.db.execute(sql`SELECT 1`);
+      dbLatency = Date.now() - dbStart;
+      dbConnected = true;
+
+      // Quick stats
+      const [users, titles, projects, staff] = await Promise.all([
+        app.db.execute(sql`SELECT COUNT(*) as count FROM "user"`),
+        app.db.execute(sql`SELECT COUNT(*) as count FROM titles`),
+        app.db.execute(sql`SELECT COUNT(*) as count FROM projects`),
+        app.db.execute(sql`SELECT COUNT(*) as count FROM staff_members WHERE is_active = true`),
+      ]);
+      dbStats = {
+        users: Number(users[0]?.count || 0),
+        titles: Number(titles[0]?.count || 0),
+        projects: Number(projects[0]?.count || 0),
+        staff: Number(staff[0]?.count || 0),
+      };
+    } catch { dbConnected = false; }
+
+    let redisConnected = false;
+    let redisStatus = 'unknown';
+    try {
+      const pong = await app.redis.ping();
+      redisConnected = pong === 'PONG';
+      redisStatus = redisConnected ? 'connected' : 'disconnected';
+    } catch { redisStatus = 'unavailable'; }
+
+    // Recent email log
+    let recentEmails: any[] = [];
+    try {
+      const emails = await app.db.execute(sql`
+        SELECT recipient_email as to, subject, status, queued_at
+        FROM notification_email_log
+        ORDER BY queued_at DESC LIMIT 10
+      `);
+      recentEmails = emails.map((e: any) => ({
+        to: e.to,
+        subject: e.subject,
+        status: e.status,
+        time: new Date(e.queued_at).toLocaleString('en-ZA'),
+      }));
+    } catch {}
+
+    const mem = process.memoryUsage();
+
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      environment: config.nodeEnv,
+      version: 'v1',
+      nodeVersion: process.version,
+      platform: process.platform,
+      uptime: process.uptime(),
+      memory: {
+        used: Math.round(mem.heapUsed / 1024 / 1024),
+        total: Math.round(mem.heapTotal / 1024 / 1024),
+        rss: Math.round(mem.rss / 1024 / 1024),
+      },
+      database: { connected: dbConnected, latency: dbLatency, stats: dbStats },
+      redis: { connected: redisConnected, status: redisStatus },
+      jobs: [
+        { name: 'SOR Expiry Alerts', status: sorQueue ? 'active' : 'disabled', schedule: 'Daily 7:00 SAST' },
+        { name: 'Invoice Reminders', status: reminderQueue ? 'active' : 'disabled', schedule: 'Daily 8:00 SAST' },
+        { name: 'SOR Auto-Invoice', status: sorInvoiceQueue ? 'active' : 'disabled', schedule: 'Daily 8:00 SAST' },
+        { name: 'Monthly Statements', status: stmtQueue ? 'active' : 'disabled', schedule: '1st of month 6:00 SAST' },
+        { name: 'Takealot Sync', status: takealotQueue ? 'active' : 'disabled', schedule: 'Daily 6:00 SAST' },
+      ],
+      recentEmails,
+      responseTime: Date.now() - startTime,
+    };
+  });
 
   // API version prefix
   app.register(async (api) => {
