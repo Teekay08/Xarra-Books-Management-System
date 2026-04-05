@@ -326,15 +326,29 @@ export function ContractorPortal() {
                     <p className="text-xs font-medium text-gray-700 mb-2">Time Log History</p>
                     <div className="space-y-1">
                       {task.timeLogs.map((log: any) => (
-                        <div key={log.id} className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">{new Date(log.workDate).toLocaleDateString('en-ZA')}</span>
-                            <span className="font-medium">{Number(log.hours).toFixed(1)}h</span>
-                            <span className="text-gray-500 truncate max-w-[200px]">{log.description}</span>
+                        <div key={log.id} className={`py-1 ${log.status === 'REJECTED' ? 'bg-red-50 rounded px-2 -mx-2' : ''}`}>
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">{new Date(log.workDate).toLocaleDateString('en-ZA')}</span>
+                              <span className="font-medium">{Number(log.hours).toFixed(1)}h</span>
+                              <span className="text-gray-500 truncate max-w-[200px]">{log.description}</span>
+                            </div>
+                            <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${logStatusColors[log.status] || ''}`}>
+                              {log.status}
+                            </span>
                           </div>
-                          <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${logStatusColors[log.status] || ''}`}>
-                            {log.status}
-                          </span>
+                          {log.status === 'REJECTED' && log.rejectionReason && (
+                            <p className="text-[10px] text-red-600 mt-0.5">Reason: {log.rejectionReason}</p>
+                          )}
+                          {log.status === 'REJECTED' && (
+                            <button onClick={() => {
+                              setActiveTask(task.id);
+                              setLogForm({ workDate: log.workDate?.split('T')[0] || '', hours: String(Number(log.hours)), description: `[DISPUTE] ${log.description}` });
+                            }}
+                              className="mt-1 rounded bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700 hover:bg-orange-200">
+                              Dispute / Re-submit
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>

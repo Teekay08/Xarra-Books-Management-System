@@ -12,6 +12,7 @@ interface TimeLog {
   hours: string;
   description: string;
   status: string;
+  rejectionReason?: string | null;
 }
 
 interface ExtensionRequest {
@@ -409,10 +410,15 @@ export function TaskDetail() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {task.timeLogs?.map((log) => (
-                <tr key={log.id}>
+                <tr key={log.id} className={log.status === 'REJECTED' ? 'bg-red-50' : ''}>
                   <td className="px-4 py-2 text-sm text-gray-700">{new Date(log.workDate).toLocaleDateString('en-ZA')}</td>
                   <td className="px-4 py-2 text-sm text-right font-mono">{Number(log.hours).toFixed(1)}h</td>
-                  <td className="px-4 py-2 text-sm text-gray-700">{log.description}</td>
+                  <td className="px-4 py-2 text-sm text-gray-700">
+                    {log.description}
+                    {log.status === 'REJECTED' && log.rejectionReason && (
+                      <p className="text-xs text-red-600 mt-1">Rejection reason: {log.rejectionReason}</p>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-sm">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${timeLogStatusColors[log.status] || ''}`}>
                       {log.status}
@@ -423,10 +429,19 @@ export function TaskDetail() {
                       <ActionMenu items={[
                         { label: 'Approve', onClick: () => approveLogMutation.mutate({ logId: log.id, action: 'approve' }) },
                         { label: 'Reject', variant: 'danger', onClick: () => {
-                          const reason = window.prompt('Reason for rejection (optional):');
-                          approveLogMutation.mutate({ logId: log.id, action: 'reject', reason: reason || undefined });
+                          const reason = window.prompt('Reason for rejection:');
+                          if (reason !== null) approveLogMutation.mutate({ logId: log.id, action: 'reject', reason: reason || undefined });
                         }},
                       ]} />
+                    )}
+                    {log.status === 'REJECTED' && isAssignedStaff && (
+                      <button onClick={() => {
+                        // Re-log the same hours as a dispute/correction
+                        setLogForm({ date: log.workDate.split('T')[0], hours: log.hours, description: `[DISPUTE] ${log.description} — original rejected: ${log.rejectionReason || 'no reason given'}` });
+                      }}
+                        className="rounded bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700 hover:bg-orange-200">
+                        Dispute / Re-submit
+                      </button>
                     )}
                   </td>
                 </tr>
