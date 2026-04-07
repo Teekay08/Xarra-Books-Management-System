@@ -18,6 +18,10 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().default(''),
   FROM_EMAIL: z.string().email().default('onboarding@resend.dev'),
   TAKEALOT_API_KEY: z.string().default(''),
+  GEMINI_API_KEY: z.string().default(''),
+  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  GEMINI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(700),
+  GEMINI_TEMPERATURE: z.coerce.number().min(0).max(1).default(0.4),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -64,5 +68,12 @@ export const config = {
 
   takealot: {
     apiKey: env.TAKEALOT_API_KEY,
+  },
+
+  ai: {
+    apiKey: env.GEMINI_API_KEY,
+    model: env.GEMINI_MODEL,
+    maxOutputTokens: env.GEMINI_MAX_OUTPUT_TOKENS,
+    temperature: env.GEMINI_TEMPERATURE,
   },
 } as const;

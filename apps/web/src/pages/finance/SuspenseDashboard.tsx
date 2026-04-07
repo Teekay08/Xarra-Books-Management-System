@@ -149,7 +149,7 @@ export function SuspenseDashboard() {
       )}
 
       {/* Ledger */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Suspense Ledger</h3>
           <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}

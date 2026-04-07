@@ -594,6 +594,9 @@ export const createTimesheetSchema = z.object({
   entries: z.array(z.object({
     milestoneId: z.string().uuid(),
     budgetLineItemId: z.string().uuid().optional().nullable(),
+    taskCodeId: z.string().uuid().optional().nullable(),
+    taskAssignmentId: z.string().uuid().optional().nullable(),
+    taskTimeLogId: z.string().uuid().optional().nullable(),
     workDate: z.string().or(z.date()),
     hours: z.number().positive().max(24),
     description: z.string().min(1),
@@ -606,6 +609,9 @@ export const updateTimesheetSchema = z.object({
     id: z.string().uuid().optional(), // existing entry to update
     milestoneId: z.string().uuid(),
     budgetLineItemId: z.string().uuid().optional().nullable(),
+    taskCodeId: z.string().uuid().optional().nullable(),
+    taskAssignmentId: z.string().uuid().optional().nullable(),
+    taskTimeLogId: z.string().uuid().optional().nullable(),
     workDate: z.string().or(z.date()),
     hours: z.number().positive().max(24),
     description: z.string().min(1),

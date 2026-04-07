@@ -332,7 +332,7 @@ function BatchManagement() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -699,7 +699,7 @@ function IndividualStatement() {
             </div>
             <p className="text-xs text-gray-500">{preview.transactions.length} transactions in period</p>
             {preview.transactions.length > 0 && (
-              <div className="mt-4 border rounded-md overflow-hidden">
+              <div className="mt-4 border rounded-md overflow-x-auto">
                 <table className="min-w-full text-xs">
                   <thead className="bg-gray-50">
                     <tr>

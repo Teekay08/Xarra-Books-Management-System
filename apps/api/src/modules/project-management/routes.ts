@@ -1,14 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, sql, and, desc, asc, ilike, or } from 'drizzle-orm';
+import { eq, sql, and, desc, asc, ilike, or, gte, lte, notInArray } from 'drizzle-orm';
 import {
   staffMembers, staffProjectAssignments, taskAssignments, taskTimeLogs,
   timeExtensionRequests, staffPayments, projects, projectMilestones,
-  contractorAccessTokens, taskCodes,
+  contractorAccessTokens, taskCodes, sowDocuments, staffTaskPlannerEntries, taskRequests,
+  user as authUsers,
 } from '@xarra/db';
 import { paginationSchema } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { createNotification, createBroadcastNotification } from '../../services/notifications.js';
+import { regenerateSowFromTasks } from '../../services/sow-regen.js';
+import { sendEmail, isEmailConfigured } from '../../services/email.js';
+import { config } from '../../config.js';
+import crypto from 'node:crypto';
 
 // ==========================================
 // ZOD SCHEMAS
@@ -19,10 +24,10 @@ const createStaffMemberSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string().optional(),
-  role: z.string().min(1),
+  role: z.string().optional().nullable().transform((v) => (v && v.trim()) || 'Staff Member'),
   skills: z.array(z.string()).default([]),
   availabilityType: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT']).default('FULL_TIME'),
-  maxHoursPerWeek: z.coerce.number().int().positive().default(40),
+  maxHoursPerMonth: z.coerce.number().int().positive().default(160),
   hourlyRate: z.preprocess((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)), z.number().min(0)),
   currency: z.string().length(3).default('ZAR'),
   isInternal: z.boolean().default(true),
@@ -35,7 +40,8 @@ const updateStaffMemberSchema = createStaffMemberSchema.partial().extend({
 
 const assignStaffToProjectSchema = z.object({
   staffMemberId: z.string().uuid(),
-  role: z.string().min(1),
+  // Role on the project — falls back to the staff member's default role if omitted.
+  role: z.string().optional().nullable(),
   startDate: z.string().nullable().optional(),
   endDate: z.string().nullable().optional(),
   totalAllocatedHours: z.coerce.number().min(0).default(0),
@@ -43,7 +49,7 @@ const assignStaffToProjectSchema = z.object({
 });
 
 const updateAssignmentSchema = z.object({
-  role: z.string().min(1).optional(),
+  role: z.string().optional().nullable(),
   startDate: z.string().nullable().optional(),
   endDate: z.string().nullable().optional(),
   totalAllocatedHours: z.coerce.number().min(0).optional(),
@@ -108,6 +114,38 @@ const staffListQuerySchema = paginationSchema.extend({
   availabilityType: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT']).optional(),
 });
 
+const plannerWeekQuerySchema = z.object({
+  start: z.string().optional(), // YYYY-MM-DD
+});
+
+const plannerMonthQuerySchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional(),
+});
+
+// plannedHours is now the TOTAL hours across the span (start..end inclusive),
+// not per-day. UI shows the implied per-day rate.
+const upsertPlannerEntrySchema = z.object({
+  taskAssignmentId: z.string().uuid(),
+  plannedDate: z.string(), // YYYY-MM-DD — span start
+  endDate: z.string().nullable().optional(), // YYYY-MM-DD — span end (omit/null = single day)
+  plannedHours: z.coerce.number().min(0).max(2000).nullable().optional(),
+  note: z.string().max(1000).nullable().optional(),
+  slotStart: z.string().nullable().optional(),
+  slotEnd: z.string().nullable().optional(),
+});
+
+const updatePlannerEntrySchema = z.object({
+  plannedDate: z.string().optional(),
+  endDate: z.string().nullable().optional(),
+  plannedHours: z.coerce.number().min(0).max(2000).nullable().optional(),
+  note: z.string().max(1000).nullable().optional(),
+  slotStart: z.string().nullable().optional(),
+  slotEnd: z.string().nullable().optional(),
+}).refine((v) => Object.keys(v).length > 0, {
+  message: 'At least one field is required to update planner entry',
+});
+
 // ==========================================
 // HELPERS
 // ==========================================
@@ -130,6 +168,41 @@ async function getStaffMemberByUserId(db: any, userId: string) {
   return db.query.staffMembers.findFirst({
     where: eq(staffMembers.userId, userId),
   });
+}
+
+function startOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function addDays(d: Date, days: number) {
+  const next = new Date(d);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function startOfWeekMonday(d: Date) {
+  const base = startOfDay(d);
+  const day = base.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  return addDays(base, diff);
+}
+
+function endOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
+
+function formatYmd(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function safeDate(value?: string | Date | null): Date | null {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return startOfDay(parsed);
 }
 
 // ==========================================
@@ -266,29 +339,141 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   });
 
   // Create staff member (PM/admin only)
+  // For internal staff without an existing user account, auto-creates a system login
   app.post('/staff', {
     preHandler: requireRole('admin', 'project_manager'),
   }, async (request, reply) => {
     const body = createStaffMemberSchema.parse(request.body);
-    const userId = request.session?.user?.id;
+    const currentUserId = request.session?.user?.id;
+
+    let linkedUserId = body.userId || null;
+
+    // Auto-create system account for internal staff who don't have one
+    if (body.isInternal && !linkedUserId) {
+      // Check if a user with this email already exists
+      const existingUser = await app.db.query.user.findFirst({
+        where: eq(authUsers.email, body.email),
+        columns: { id: true },
+      });
+
+      if (existingUser) {
+        // Link to existing account
+        linkedUserId = existingUser.id;
+      } else {
+        // Create new user via Better Auth sign-up endpoint
+        const tempPassword = crypto.randomBytes(16).toString('hex'); // random, user will reset
+        const origin = process.env.BETTER_AUTH_URL || `http://localhost:${config.port}`;
+
+        const signUpResponse = await fetch(`${origin}/api/auth/sign-up/email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Origin: origin },
+          body: JSON.stringify({
+            email: body.email,
+            name: body.name,
+            password: tempPassword,
+          }),
+        });
+
+        if (!signUpResponse.ok) {
+          const errText = await signUpResponse.text();
+          app.log.error(`Failed to create user account for staff: ${errText}`);
+          return reply.badRequest(`Failed to create system account: ${errText}`);
+        }
+
+        const { user: newUser } = await signUpResponse.json() as { user: { id: string } };
+        linkedUserId = newUser.id;
+
+        // Set role to STAFF
+        await app.db
+          .update(authUsers)
+          .set({ role: 'STAFF', updatedAt: new Date() })
+          .where(eq(authUsers.id, newUser.id));
+
+        const frontendUrl = config.cors.origins[0] || 'http://localhost:5173';
+
+        // In development, log the temporary password so the PM can share it for testing
+        if (config.nodeEnv === 'development') {
+          app.log.info(`========================================`);
+          app.log.info(`NEW STAFF ACCOUNT CREATED`);
+          app.log.info(`Name: ${body.name}`);
+          app.log.info(`Email: ${body.email}`);
+          app.log.info(`Temporary password: ${tempPassword}`);
+          app.log.info(`Login: ${frontendUrl}/login`);
+          app.log.info(`========================================`);
+        }
+
+        // Trigger password reset so the new staff member can set their own password
+        try {
+          const resetRes = await fetch(`${origin}/api/auth/request-password-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Origin: origin },
+            body: JSON.stringify({ email: body.email, redirectTo: `${frontendUrl}/reset-password` }),
+          });
+          if (!resetRes.ok) {
+            app.log.warn(`Password reset request returned ${resetRes.status} for ${body.email}`);
+          }
+        } catch (e) {
+          app.log.warn(`Password reset trigger failed for ${body.email}: ${e}`);
+        }
+
+        // Send welcome email
+        if (isEmailConfigured()) {
+          try {
+            await sendEmail({
+              to: body.email,
+              subject: 'Welcome to Xarra Books — Your Account Has Been Created',
+              html: `
+                <div style="font-family: 'Inter', sans-serif; max-width: 520px; margin: 0 auto; padding: 32px;">
+                  <h2 style="color: #1f2937; margin-bottom: 16px;">Welcome to Xarra Books</h2>
+                  <p style="color: #4b5563; line-height: 1.6;">Hi ${body.name},</p>
+                  <p style="color: #4b5563; line-height: 1.6;">
+                    A staff account has been created for you on the Xarra Books Management System.
+                    You'll receive a separate email to set your password.
+                  </p>
+                  <p style="color: #4b5563; line-height: 1.6;"><strong>Your role:</strong> ${body.role}</p>
+                  <p style="color: #4b5563; line-height: 1.6;"><strong>Email:</strong> ${body.email}</p>
+                  <div style="text-align: center; margin: 32px 0;">
+                    <a href="${frontendUrl}/login"
+                       style="background-color: #8B1A1A; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">
+                      Go to Xarra Books
+                    </a>
+                  </div>
+                  <p style="color: #9ca3af; font-size: 13px;">
+                    If you have questions, please contact your project manager.
+                  </p>
+                  <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+                  <p style="color: #d1d5db; font-size: 11px; text-align: center;">Xarra Books &mdash; We mainstream the African book</p>
+                </div>
+              `,
+            });
+            app.log.info(`Welcome email sent to ${body.email}`);
+          } catch (emailErr) {
+            app.log.warn(`Welcome email failed for ${body.email}: ${emailErr}`);
+          }
+        }
+      }
+    }
 
     const [staff] = await app.db.insert(staffMembers).values({
-      userId: body.userId || null,
+      userId: linkedUserId,
       name: body.name,
       email: body.email,
       phone: body.phone || null,
       role: body.role,
       skills: body.skills,
       availabilityType: body.availabilityType,
-      maxHoursPerWeek: body.maxHoursPerWeek,
+      maxHoursPerMonth: body.maxHoursPerMonth,
       hourlyRate: String(body.hourlyRate),
       currency: body.currency,
       isInternal: body.isInternal,
       notes: body.notes || null,
-      createdBy: userId,
+      createdBy: currentUserId,
     }).returning();
 
-    return reply.status(201).send({ data: staff });
+    return reply.status(201).send({
+      data: staff,
+      accountCreated: body.isInternal && !body.userId && !!linkedUserId,
+    });
   });
 
   // Update staff member
@@ -304,7 +489,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     if (body.role !== undefined) updates.role = body.role;
     if (body.skills !== undefined) updates.skills = body.skills;
     if (body.availabilityType !== undefined) updates.availabilityType = body.availabilityType;
-    if (body.maxHoursPerWeek !== undefined) updates.maxHoursPerWeek = body.maxHoursPerWeek;
+    if (body.maxHoursPerMonth !== undefined) updates.maxHoursPerMonth = body.maxHoursPerMonth;
     if (body.hourlyRate !== undefined) updates.hourlyRate = String(body.hourlyRate);
     if (body.currency !== undefined) updates.currency = body.currency;
     if (body.isInternal !== undefined) updates.isInternal = body.isInternal;
@@ -324,7 +509,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   // STAFF PROJECT ASSIGNMENTS
   // ==========================================
 
-  // List staff assigned to a project
+  // List staff assigned to a project — totals derived live from task assignments
   app.get<{ Params: { projectId: string } }>('/projects/:projectId/team', {
     preHandler: requireAuth,
   }, async (request) => {
@@ -333,7 +518,40 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       with: { staffMember: true, project: true },
       orderBy: (a, { asc }) => [asc(a.createdAt)],
     });
-    return { data: items };
+
+    // Live totals from task assignments (excludes CANCELLED tasks)
+    const projectTasks = await app.db.query.taskAssignments.findMany({
+      where: and(
+        eq(taskAssignments.projectId, request.params.projectId),
+        notInArray(taskAssignments.status, ['CANCELLED']),
+      ),
+      columns: { staffMemberId: true, allocatedHours: true, loggedHours: true },
+    });
+    const totalsByStaff = new Map<string, { allocated: number; logged: number }>();
+    for (const t of projectTasks) {
+      const cur = totalsByStaff.get(t.staffMemberId) || { allocated: 0, logged: 0 };
+      cur.allocated += Number(t.allocatedHours || 0);
+      cur.logged += Number(t.loggedHours || 0);
+      totalsByStaff.set(t.staffMemberId, cur);
+    }
+
+    const enriched = items.map((a) => {
+      const live = totalsByStaff.get(a.staffMemberId);
+      // Prefer the live task total when present; fall back to the row's stored value.
+      const allocatedFromTasks = live?.allocated ?? 0;
+      const loggedFromTasks = live?.logged ?? 0;
+      return {
+        ...a,
+        totalAllocatedHours: String(
+          Math.max(Number(a.totalAllocatedHours || 0), allocatedFromTasks),
+        ),
+        totalLoggedHours: String(
+          Math.max(Number(a.totalLoggedHours || 0), loggedFromTasks),
+        ),
+      };
+    });
+
+    return { data: enriched };
   });
 
   // Assign staff to project
@@ -355,10 +573,13 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     });
     if (!staff) return reply.notFound('Staff member not found');
 
+    // Contractor SOW requirement is enforced at task creation time, not at team assignment.
+    // This lets a PM add a contractor to a project before issuing the SOW.
+
     const [assignment] = await app.db.insert(staffProjectAssignments).values({
       staffMemberId: body.staffMemberId,
       projectId: request.params.projectId,
-      role: body.role,
+      role: body.role || staff.role,
       startDate: body.startDate ? new Date(body.startDate) : null,
       endDate: body.endDate ? new Date(body.endDate) : null,
       totalAllocatedHours: String(body.totalAllocatedHours),
@@ -407,6 +628,39 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   // ==========================================
 
   // List tasks for a project
+  // List all tasks (for reports — PM/admin only)
+  app.get('/tasks', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request) => {
+    const query = paginationSchema.parse(request.query);
+    const { page, limit, search } = query;
+    const offset = (page - 1) * limit;
+
+    const where = search
+      ? or(ilike(taskAssignments.title, `%${search}%`), ilike(taskAssignments.number, `%${search}%`))
+      : undefined;
+
+    const [items, countResult] = await Promise.all([
+      app.db.query.taskAssignments.findMany({
+        where: where ? () => where : undefined,
+        with: { staffMember: true, project: true, taskCode: true },
+        orderBy: (t, { desc }) => [desc(t.createdAt)],
+        limit,
+        offset,
+      }),
+      app.db.select({ count: sql<number>`count(*)` }).from(taskAssignments).where(where),
+    ]);
+
+    return {
+      data: items,
+      pagination: {
+        page, limit,
+        total: Number(countResult[0].count),
+        totalPages: Math.ceil(Number(countResult[0].count) / limit),
+      },
+    };
+  });
+
   app.get<{ Params: { projectId: string } }>('/projects/:projectId/tasks', {
     preHandler: requireAuth,
   }, async (request) => {
@@ -519,6 +773,46 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     });
     if (!staff) return reply.notFound('Staff member not found');
 
+    // SOW-first workflow: every staff member (internal or contractor) requires an ACCEPTED
+    // SOW for this project before tasks can be created. The SOW defines the scope of work
+    // and tasks are derived from it.
+    const acceptedSow = await app.db.query.sowDocuments.findFirst({
+      where: and(
+        eq(sowDocuments.projectId, request.params.projectId),
+        eq(sowDocuments.status, 'ACCEPTED'),
+      ),
+    });
+    if (!acceptedSow) {
+      return reply.badRequest(
+        'Cannot create task: an ACCEPTED SOW is required for this project before tasks can be created. The SOW defines the scope of work; tasks are derived from it.',
+      );
+    }
+
+    // Capacity check — monthly model.
+    // The new task is attributed to the calendar month containing its due date (or this month if no due date).
+    // Sum of allocated hours for tasks in that month must stay within maxHoursPerMonth.
+    const maxMonthly = staff.maxHoursPerMonth || 160;
+    const targetMonthRef = body.dueDate ? new Date(body.dueDate) : new Date();
+    const monthStart = new Date(targetMonthRef.getFullYear(), targetMonthRef.getMonth(), 1);
+    const monthEnd = new Date(targetMonthRef.getFullYear(), targetMonthRef.getMonth() + 1, 0, 23, 59, 59);
+
+    const monthTasks = await app.db.query.taskAssignments.findMany({
+      where: and(
+        eq(taskAssignments.staffMemberId, body.staffMemberId),
+        notInArray(taskAssignments.status, ['CANCELLED']),
+        gte(taskAssignments.dueDate, monthStart),
+        lte(taskAssignments.dueDate, monthEnd),
+      ),
+      columns: { allocatedHours: true },
+    });
+    const monthAllocated = monthTasks.reduce((sum, t) => sum + Number(t.allocatedHours || 0), 0);
+    if (monthAllocated + body.allocatedHours > maxMonthly) {
+      const monthLabel = monthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+      return reply.badRequest(
+        `Cannot create task: ${staff.name} already has ${monthAllocated.toFixed(1)}h allocated in ${monthLabel}. Adding ${body.allocatedHours}h would exceed the monthly cap of ${maxMonthly}h. Push the due date to next month, reduce hours, or raise the staff member's monthly capacity.`,
+      );
+    }
+
     // Verify milestone belongs to project (if provided)
     if (body.milestoneId) {
       const milestone = await app.db.query.projectMilestones.findFirst({
@@ -555,6 +849,14 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       status: 'ASSIGNED',
     }).returning();
 
+    // Auto-regen the SOW so its cost breakdown reflects the new task.
+    regenerateSowFromTasks(app, {
+      projectId: request.params.projectId,
+      staffMemberId: body.staffMemberId,
+      reason: `Task added: ${task.title}`,
+      userId,
+    }).catch((e) => app.log.error({ err: e }, 'SOW regen failed after task create'));
+
     return reply.status(201).send({ data: task });
   });
 
@@ -582,54 +884,147 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     return { data: updated };
   });
 
-  // Start task (mark as IN_PROGRESS)
+  // ==========================================
+  // TASK WORKFLOW — enforced status transitions
+  //
+  // DRAFT/ASSIGNED → IN_PROGRESS   (assigned staff only)
+  // IN_PROGRESS    → REVIEW        (assigned staff only, requires ≥1 time log, all logs approved)
+  // REVIEW         → COMPLETED     (PM/admin only, all logs approved, no pending extensions)
+  // REVIEW         → IN_PROGRESS   (PM sends back for rework)
+  // Any            → CANCELLED     (PM/admin only)
+  // ==========================================
+
+  // Start task → IN_PROGRESS (assigned staff or PM)
   app.post<{ Params: { id: string } }>('/tasks/:id/start', {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const task = await app.db.query.taskAssignments.findFirst({
       where: eq(taskAssignments.id, request.params.id),
+      with: { staffMember: true },
     });
     if (!task) return reply.notFound('Task assignment not found');
     if (task.status !== 'ASSIGNED' && task.status !== 'DRAFT') {
       return reply.badRequest('Task can only be started from DRAFT or ASSIGNED status');
     }
 
+    // Verify caller is the assigned staff or a PM/admin
+    const userId = request.session?.user?.id;
+    const isAssignedStaff = task.staffMember?.userId === userId;
+    const userRole = (request.session?.user as any)?.role?.toLowerCase() || '';
+    const isPMOrAdmin = ['admin', 'project_manager', 'projectmanager'].includes(userRole.replace(/_/g, ''));
+    if (!isAssignedStaff && !isPMOrAdmin) {
+      return reply.forbidden('Only the assigned staff member or a PM can start this task');
+    }
+
     const [updated] = await app.db.update(taskAssignments)
       .set({ status: 'IN_PROGRESS', startDate: task.startDate || new Date(), updatedAt: new Date() })
       .where(eq(taskAssignments.id, request.params.id))
       .returning();
+
+    // Notify PM that staff started working
+    if (isAssignedStaff && task.assignedBy) {
+      createNotification(app, {
+        userId: task.assignedBy,
+        type: 'TASK_STARTED' as any,
+        title: `Task started: ${task.title}`,
+        message: `${task.staffMember?.name || 'Staff'} has started working on "${task.title}"`,
+        actionUrl: `/pm/projects/${task.projectId}/tasks/${task.id}`,
+      }).catch(() => {});
+    }
+
     return { data: updated };
   });
 
-  // Submit for review
+  // Submit for review → REVIEW (assigned staff only)
+  // Requires: at least 1 time log exists AND all logs are APPROVED (none pending)
   app.post<{ Params: { id: string } }>('/tasks/:id/submit-review', {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const task = await app.db.query.taskAssignments.findFirst({
       where: eq(taskAssignments.id, request.params.id),
+      with: { staffMember: true, timeLogs: true },
     });
     if (!task) return reply.notFound('Task assignment not found');
     if (task.status !== 'IN_PROGRESS') {
       return reply.badRequest('Task can only be submitted for review from IN_PROGRESS status');
     }
 
+    // Verify caller is the assigned staff
+    const userId = request.session?.user?.id;
+    const isAssignedStaff = task.staffMember?.userId === userId;
+    const userRole = (request.session?.user as any)?.role?.toLowerCase() || '';
+    const isPMOrAdmin = ['admin', 'project_manager', 'projectmanager'].includes(userRole.replace(/_/g, ''));
+    if (!isAssignedStaff && !isPMOrAdmin) {
+      return reply.forbidden('Only the assigned staff member can submit a task for review');
+    }
+
+    // Enforce: must have at least one time log
+    const logs = task.timeLogs || [];
+    if (logs.length === 0) {
+      return reply.badRequest('Cannot submit for review: no time has been logged on this task. Please log your hours first.');
+    }
+
+    // Enforce: no REJECTED logs (must re-submit or fix them first)
+    const rejectedLogs = logs.filter((l) => l.status === 'REJECTED');
+    if (rejectedLogs.length > 0) {
+      return reply.badRequest(`Cannot submit for review: ${rejectedLogs.length} time log(s) have been rejected. Please dispute or re-submit them.`);
+    }
+
+    // Enforce: all logs must be APPROVED (none still in LOGGED status)
+    const pendingLogs = logs.filter((l) => l.status === 'LOGGED');
+    if (pendingLogs.length > 0) {
+      return reply.badRequest(`Cannot submit for review: ${pendingLogs.length} time log(s) are still pending approval. Please wait for PM approval.`);
+    }
+
     const [updated] = await app.db.update(taskAssignments)
       .set({ status: 'REVIEW', updatedAt: new Date() })
       .where(eq(taskAssignments.id, request.params.id))
       .returning();
+
+    // Notify PM that task is ready for review
+    if (task.assignedBy) {
+      createNotification(app, {
+        userId: task.assignedBy,
+        type: 'TASK_REVIEW_REQUESTED' as any,
+        title: `Task ready for review: ${task.title}`,
+        message: `${task.staffMember?.name || 'Staff'} has submitted "${task.title}" for your review. ${logs.length} time log(s), ${Number(task.loggedHours)}h logged.`,
+        actionUrl: `/pm/projects/${task.projectId}/tasks/${task.id}`,
+      }).catch(() => {});
+    }
+
     return { data: updated };
   });
 
-  // Complete task (PM approves)
+  // Complete task → COMPLETED (PM/admin only)
+  // Requires: all time logs APPROVED, no pending extensions
   app.post<{ Params: { id: string } }>('/tasks/:id/complete', {
     preHandler: requireRole('admin', 'project_manager'),
   }, async (request, reply) => {
     const task = await app.db.query.taskAssignments.findFirst({
       where: eq(taskAssignments.id, request.params.id),
+      with: { staffMember: true, timeLogs: true, extensionRequests: true },
     });
     if (!task) return reply.notFound('Task assignment not found');
     if (task.status !== 'REVIEW') {
       return reply.badRequest('Task can only be completed from REVIEW status');
+    }
+
+    // Enforce: all time logs must be APPROVED
+    const logs = task.timeLogs || [];
+    const unapprovedLogs = logs.filter((l) => l.status === 'LOGGED');
+    if (unapprovedLogs.length > 0) {
+      return reply.badRequest(`Cannot complete: ${unapprovedLogs.length} time log(s) still pending approval. Please approve or reject all time logs first.`);
+    }
+
+    const rejectedLogs = logs.filter((l) => l.status === 'REJECTED');
+    if (rejectedLogs.length > 0) {
+      return reply.badRequest(`Cannot complete: ${rejectedLogs.length} rejected time log(s) need resolution. The staff member should dispute or the logs should be removed.`);
+    }
+
+    // Enforce: no pending extension requests
+    const pendingExtensions = (task.extensionRequests || []).filter((e) => e.status === 'PENDING');
+    if (pendingExtensions.length > 0) {
+      return reply.badRequest(`Cannot complete: ${pendingExtensions.length} extension request(s) pending. Please approve or decline them first.`);
     }
 
     const userId = request.session?.user?.id;
@@ -643,6 +1038,51 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       })
       .where(eq(taskAssignments.id, request.params.id))
       .returning();
+
+    // Notify staff that task is completed
+    if (task.staffMember?.userId) {
+      createNotification(app, {
+        userId: task.staffMember.userId,
+        type: 'TASK_COMPLETED' as any,
+        title: `Task completed: ${task.title}`,
+        message: `Your task "${task.title}" has been marked as completed and approved.`,
+        actionUrl: `/employee`,
+      }).catch(() => {});
+    }
+
+    return { data: updated };
+  });
+
+  // Send back for rework → IN_PROGRESS (PM/admin only, from REVIEW)
+  app.post<{ Params: { id: string } }>('/tasks/:id/send-back', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({ reason: z.string().min(1) }).parse(request.body);
+    const task = await app.db.query.taskAssignments.findFirst({
+      where: eq(taskAssignments.id, request.params.id),
+      with: { staffMember: true },
+    });
+    if (!task) return reply.notFound('Task assignment not found');
+    if (task.status !== 'REVIEW') {
+      return reply.badRequest('Task can only be sent back from REVIEW status');
+    }
+
+    const [updated] = await app.db.update(taskAssignments)
+      .set({ status: 'IN_PROGRESS', notes: `[Sent back] ${body.reason}${task.notes ? '\n\n' + task.notes : ''}`, updatedAt: new Date() })
+      .where(eq(taskAssignments.id, request.params.id))
+      .returning();
+
+    // Notify staff
+    if (task.staffMember?.userId) {
+      createNotification(app, {
+        userId: task.staffMember.userId,
+        type: 'TASK_SENT_BACK' as any,
+        title: `Task sent back: ${task.title}`,
+        message: `Your task "${task.title}" has been sent back for rework. Reason: ${body.reason}`,
+        actionUrl: `/employee`,
+      }).catch(() => {});
+    }
+
     return { data: updated };
   });
 
@@ -686,10 +1126,38 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     const currentLogged = Number(task.loggedHours) || 0;
     const allocated = Number(task.allocatedHours) || 0;
 
+    // Per-day sanity ceiling
+    const MAX_HOURS_PER_DAY = 12;
+    if (body.hours > MAX_HOURS_PER_DAY) {
+      return reply.badRequest(`Cannot log ${body.hours}h on a single day — above the ${MAX_HOURS_PER_DAY}h sanity limit.`);
+    }
+
     // Validate: hours + loggedHours <= allocatedHours (unless already exhausted)
     if (!task.timeExhausted && (currentLogged + body.hours) > allocated) {
       return reply.badRequest(
         `Cannot log ${body.hours}h — only ${(allocated - currentLogged).toFixed(2)}h remaining. Request a time extension if needed.`,
+      );
+    }
+
+    // Monthly cap: month-to-date approved+logged hours for this staff member must stay within maxHoursPerMonth.
+    const workDate = new Date(body.workDate);
+    const maxMonthly = staff.maxHoursPerMonth || 160;
+    const monthStart = new Date(workDate.getFullYear(), workDate.getMonth(), 1);
+    const monthEnd = new Date(workDate.getFullYear(), workDate.getMonth() + 1, 0, 23, 59, 59);
+    const monthLogs = await app.db.query.taskTimeLogs.findMany({
+      where: and(
+        eq(taskTimeLogs.staffMemberId, staff.id),
+        gte(taskTimeLogs.workDate, monthStart),
+        lte(taskTimeLogs.workDate, monthEnd),
+        sql`${taskTimeLogs.status} <> 'REJECTED'`,
+      ),
+      columns: { hours: true },
+    });
+    const monthHours = monthLogs.reduce((sum, l) => sum + Number(l.hours || 0), 0);
+    if (monthHours + body.hours > maxMonthly) {
+      const monthLabel = monthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+      return reply.badRequest(
+        `Cannot log ${body.hours}h — you already have ${monthHours.toFixed(1)}h logged in ${monthLabel} (cap ${maxMonthly}h). Request a time extension or push this work to next month.`,
       );
     }
 
@@ -804,8 +1272,8 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       where: eq(taskAssignments.id, request.params.taskId),
     });
     if (!task) return reply.notFound('Task assignment not found');
-    if (!task.timeExhausted) {
-      return reply.badRequest('Time extension can only be requested when allocated hours are exhausted');
+    if (task.status === 'COMPLETED' || task.status === 'CANCELLED') {
+      return reply.badRequest('Cannot request extension on a completed or cancelled task');
     }
 
     const staff = await getStaffMemberByUserId(app.db, userId!);
@@ -1040,6 +1508,601 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     return { data: items };
   });
 
+  const mapTaskToPlannerDto = (task: any, today: Date) => ({
+    id: task.id,
+    number: task.number,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    projectId: task.project?.id || task.projectId || null,
+    projectName: task.project?.name || null,
+    projectNumber: task.project?.number || null,
+    milestoneName: task.milestone?.name || null,
+    startDate: task.startDate,
+    dueDate: task.dueDate,
+    allocatedHours: Number(task.allocatedHours || 0),
+    loggedHours: Number(task.loggedHours || 0),
+    remainingHours: Number(task.remainingHours || 0),
+    isOverdue: !!(task.dueDate && safeDate(task.dueDate)! < today && task.status !== 'COMPLETED'),
+  });
+
+  // Create or update planner entry (span). plannedHours = total across the span.
+  app.put('/my/planner/entry', { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(app.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found for your user account');
+
+    const body = upsertPlannerEntrySchema.parse(request.body);
+    const startDate = safeDate(body.plannedDate);
+    if (!startDate) return reply.badRequest('Invalid plannedDate. Use YYYY-MM-DD.');
+    const endDate = body.endDate ? safeDate(body.endDate) : null;
+    if (body.endDate && !endDate) return reply.badRequest('Invalid endDate. Use YYYY-MM-DD.');
+    if (endDate && endDate < startDate) {
+      return reply.badRequest('End date must be on or after start date.');
+    }
+
+    const task = await app.db.query.taskAssignments.findFirst({
+      where: and(
+        eq(taskAssignments.id, body.taskAssignmentId),
+        eq(taskAssignments.staffMemberId, staff.id),
+      ),
+    });
+    if (!task) return reply.notFound('Task not found for your profile');
+
+    // Per-day sanity ceiling: prevent typos like 80h on a single day.
+    const MAX_HOURS_PER_DAY = 12;
+    if (body.plannedHours != null) {
+      const totalDays = endDate
+        ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1)
+        : 1;
+      const perDay = body.plannedHours / totalDays;
+      if (perDay > MAX_HOURS_PER_DAY) {
+        return reply.badRequest(
+          `Cannot plan ${body.plannedHours}h over ${totalDays} day${totalDays === 1 ? '' : 's'} — that's ${perDay.toFixed(1)}h/day, above the ${MAX_HOURS_PER_DAY}h/day sanity limit.`,
+        );
+      }
+    }
+
+    // Aggregate-hours block: sum across this task's other planner entries + this new entry ≤ task remaining.
+    if (body.plannedHours != null) {
+      const remaining = Number(task.remainingHours || 0);
+      const otherEntries = await app.db.query.staffTaskPlannerEntries.findMany({
+        where: and(
+          eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+          eq(staffTaskPlannerEntries.taskAssignmentId, body.taskAssignmentId),
+        ),
+        columns: { plannedHours: true, plannedDate: true },
+      });
+      const otherSum = otherEntries
+        .filter((e) => e.plannedDate.toISOString().slice(0, 10) !== startDate.toISOString().slice(0, 10))
+        .reduce((sum, e) => sum + Number(e.plannedHours || 0), 0);
+      if (otherSum + body.plannedHours > remaining) {
+        return reply.badRequest(
+          `Cannot plan ${body.plannedHours}h — task has ${remaining.toFixed(1)}h remaining and ${otherSum.toFixed(1)}h is already planned across other entries. Request a time extension if you need more.`,
+        );
+      }
+    }
+
+    // Monthly cap: sum of plannedHours across ALL of this staff member's entries in the same calendar month.
+    // The span is attributed to the calendar month containing its start date.
+    if (body.plannedHours != null) {
+      const maxMonthly = staff.maxHoursPerMonth || 160;
+      const spanMonthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const spanMonthEnd = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0, 23, 59, 59);
+      const monthEntries = await app.db.query.staffTaskPlannerEntries.findMany({
+        where: and(
+          eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+          gte(staffTaskPlannerEntries.plannedDate, spanMonthStart),
+          lte(staffTaskPlannerEntries.plannedDate, spanMonthEnd),
+        ),
+        columns: { id: true, plannedHours: true, plannedDate: true, taskAssignmentId: true },
+      });
+      const monthSumOthers = monthEntries
+        .filter((e) =>
+          !(e.taskAssignmentId === body.taskAssignmentId &&
+            e.plannedDate.toISOString().slice(0, 10) === startDate.toISOString().slice(0, 10)),
+        )
+        .reduce((sum, e) => sum + Number(e.plannedHours || 0), 0);
+      if (monthSumOthers + body.plannedHours > maxMonthly) {
+        const monthLabel = spanMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+        return reply.badRequest(
+          `Cannot plan ${body.plannedHours}h — you already have ${monthSumOthers.toFixed(1)}h planned in ${monthLabel} (cap ${maxMonthly}h). Request a time extension if needed.`,
+        );
+      }
+    }
+
+    const [entry] = await app.db.insert(staffTaskPlannerEntries)
+      .values({
+        staffMemberId: staff.id,
+        taskAssignmentId: body.taskAssignmentId,
+        plannedDate: startDate,
+        endDate: endDate || null,
+        plannedHours: body.plannedHours == null ? null : String(body.plannedHours),
+        note: body.note ?? null,
+        slotStart: body.slotStart ? new Date(body.slotStart) : null,
+        slotEnd: body.slotEnd ? new Date(body.slotEnd) : null,
+      })
+      .onConflictDoUpdate({
+        target: [
+          staffTaskPlannerEntries.staffMemberId,
+          staffTaskPlannerEntries.taskAssignmentId,
+          staffTaskPlannerEntries.plannedDate,
+        ],
+        set: {
+          endDate: endDate || null,
+          plannedHours: body.plannedHours == null ? null : String(body.plannedHours),
+          note: body.note ?? null,
+          slotStart: body.slotStart ? new Date(body.slotStart) : null,
+          slotEnd: body.slotEnd ? new Date(body.slotEnd) : null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    return { data: entry };
+  });
+
+  // Update planner entry details (including shifting date)
+  app.patch<{ Params: { id: string } }>('/my/planner/entry/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(app.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found for your user account');
+
+    const body = updatePlannerEntrySchema.parse(request.body);
+    const existing = await app.db.query.staffTaskPlannerEntries.findFirst({
+      where: and(
+        eq(staffTaskPlannerEntries.id, request.params.id),
+        eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+      ),
+    });
+    if (!existing) return reply.notFound('Planner entry not found');
+
+    const newStart = body.plannedDate ? (safeDate(body.plannedDate) || existing.plannedDate) : existing.plannedDate;
+    const newEnd =
+      body.endDate === undefined
+        ? existing.endDate
+        : (body.endDate == null ? null : safeDate(body.endDate));
+    if (newEnd && newEnd < newStart) {
+      return reply.badRequest('End date must be on or after start date.');
+    }
+
+    // Per-day sanity ceiling on update.
+    if (body.plannedHours !== undefined && body.plannedHours != null) {
+      const MAX_HOURS_PER_DAY = 12;
+      const totalDays = newEnd
+        ? Math.max(1, Math.round((newEnd.getTime() - newStart.getTime()) / 86400000) + 1)
+        : 1;
+      const perDay = body.plannedHours / totalDays;
+      if (perDay > MAX_HOURS_PER_DAY) {
+        return reply.badRequest(
+          `Cannot plan ${body.plannedHours}h over ${totalDays} day${totalDays === 1 ? '' : 's'} — that's ${perDay.toFixed(1)}h/day, above the ${MAX_HOURS_PER_DAY}h/day sanity limit.`,
+        );
+      }
+    }
+
+    // Per-task aggregate block + monthly cap on update.
+    if (body.plannedHours !== undefined && body.plannedHours != null) {
+      const linkedTask = await app.db.query.taskAssignments.findFirst({
+        where: eq(taskAssignments.id, existing.taskAssignmentId),
+      });
+      if (linkedTask) {
+        const remaining = Number(linkedTask.remainingHours || 0);
+        const otherEntries = await app.db.query.staffTaskPlannerEntries.findMany({
+          where: and(
+            eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+            eq(staffTaskPlannerEntries.taskAssignmentId, existing.taskAssignmentId),
+          ),
+          columns: { id: true, plannedHours: true },
+        });
+        const otherSum = otherEntries
+          .filter((e) => e.id !== existing.id)
+          .reduce((sum, e) => sum + Number(e.plannedHours || 0), 0);
+        if (otherSum + body.plannedHours > remaining) {
+          return reply.badRequest(
+            `Cannot plan ${body.plannedHours}h — task has ${remaining.toFixed(1)}h remaining and ${otherSum.toFixed(1)}h is already planned across other entries.`,
+          );
+        }
+      }
+
+      // Monthly cap (excluding this entry).
+      const maxMonthly = staff.maxHoursPerMonth || 160;
+      const spanMonthStart = new Date(newStart.getFullYear(), newStart.getMonth(), 1);
+      const spanMonthEnd = new Date(newStart.getFullYear(), newStart.getMonth() + 1, 0, 23, 59, 59);
+      const monthEntries = await app.db.query.staffTaskPlannerEntries.findMany({
+        where: and(
+          eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+          gte(staffTaskPlannerEntries.plannedDate, spanMonthStart),
+          lte(staffTaskPlannerEntries.plannedDate, spanMonthEnd),
+        ),
+        columns: { id: true, plannedHours: true },
+      });
+      const monthSumOthers = monthEntries
+        .filter((e) => e.id !== existing.id)
+        .reduce((sum, e) => sum + Number(e.plannedHours || 0), 0);
+      if (monthSumOthers + body.plannedHours > maxMonthly) {
+        const monthLabel = spanMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+        return reply.badRequest(
+          `Cannot plan ${body.plannedHours}h — you already have ${monthSumOthers.toFixed(1)}h planned in ${monthLabel} (cap ${maxMonthly}h).`,
+        );
+      }
+    }
+
+    const [updated] = await app.db.update(staffTaskPlannerEntries)
+      .set({
+        plannedDate: newStart,
+        endDate: newEnd,
+        plannedHours: body.plannedHours === undefined
+          ? existing.plannedHours
+          : (body.plannedHours == null ? null : String(body.plannedHours)),
+        note: body.note === undefined ? existing.note : body.note,
+        slotStart: body.slotStart === undefined ? existing.slotStart : (body.slotStart ? new Date(body.slotStart) : null),
+        slotEnd: body.slotEnd === undefined ? existing.slotEnd : (body.slotEnd ? new Date(body.slotEnd) : null),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(staffTaskPlannerEntries.id, request.params.id),
+        eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+      ))
+      .returning();
+
+    return { data: updated };
+  });
+
+  // Delete planner entry
+  app.delete<{ Params: { id: string } }>('/my/planner/entry/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(app.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found for your user account');
+
+    const [deleted] = await app.db.delete(staffTaskPlannerEntries)
+      .where(and(
+        eq(staffTaskPlannerEntries.id, request.params.id),
+        eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+      ))
+      .returning();
+    if (!deleted) return reply.notFound('Planner entry not found');
+
+    return { data: deleted };
+  });
+
+  // Planner analytics: Planned vs Actual (PM/admin)
+  app.get('/planner/analytics', { preHandler: requireRole('admin', 'project_manager') }, async (request, reply) => {
+    const q = z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+    }).parse(request.query);
+
+    const today = new Date();
+    const from = safeDate(q.from || null) || addDays(today, -28);
+    const to = safeDate(q.to || null) || today;
+
+    // All planner entries in window, joined to task + staff
+    const entries = await app.db.query.staffTaskPlannerEntries.findMany({
+      where: and(
+        gte(staffTaskPlannerEntries.plannedDate, from),
+        lte(staffTaskPlannerEntries.plannedDate, to),
+      ),
+      with: {
+        staffMember: true,
+        taskAssignment: { with: { project: true, timeLogs: true } },
+      },
+    });
+
+    // Aggregate per staff member
+    const byStaff = new Map<string, {
+      staffId: string;
+      staffName: string;
+      role: string;
+      plannedHours: number;
+      loggedHours: number;
+      plannedEntries: number;
+      tasks: Set<string>;
+    }>();
+
+    for (const entry of entries) {
+      const staff = entry.staffMember;
+      if (!staff) continue;
+      const key = staff.id;
+      if (!byStaff.has(key)) {
+        byStaff.set(key, {
+          staffId: staff.id,
+          staffName: staff.name,
+          role: staff.role,
+          plannedHours: 0,
+          loggedHours: 0,
+          plannedEntries: 0,
+          tasks: new Set(),
+        });
+      }
+      const row = byStaff.get(key)!;
+      row.plannedHours += Number(entry.plannedHours || 0);
+      row.plannedEntries += 1;
+      row.tasks.add(entry.taskAssignmentId);
+
+      // Sum APPROVED time logs in window for this task by this staff member
+      const task = entry.taskAssignment;
+      if (task) {
+        const entryDateStr = entry.plannedDate.toISOString().slice(0, 10);
+        for (const log of task.timeLogs || []) {
+          if (log.status !== 'APPROVED') continue;
+          const logDateStr = new Date(log.workDate).toISOString().slice(0, 10);
+          if (logDateStr === entryDateStr) {
+            row.loggedHours += Number(log.hours || 0);
+          }
+        }
+      }
+    }
+
+    const rows = Array.from(byStaff.values()).map((r) => {
+      const variance = r.loggedHours - r.plannedHours;
+      const accuracy = r.plannedHours > 0 ? Math.max(0, 100 - Math.abs(variance / r.plannedHours) * 100) : null;
+      return {
+        staffId: r.staffId,
+        staffName: r.staffName,
+        role: r.role,
+        plannedHours: Number(r.plannedHours.toFixed(2)),
+        loggedHours: Number(r.loggedHours.toFixed(2)),
+        variance: Number(variance.toFixed(2)),
+        accuracyPercent: accuracy == null ? null : Number(accuracy.toFixed(1)),
+        uniqueTasks: r.tasks.size,
+        plannedEntries: r.plannedEntries,
+      };
+    }).sort((a, b) => b.plannedHours - a.plannedHours);
+
+    const totals = rows.reduce(
+      (acc, r) => {
+        acc.plannedHours += r.plannedHours;
+        acc.loggedHours += r.loggedHours;
+        return acc;
+      },
+      { plannedHours: 0, loggedHours: 0 },
+    );
+
+    return {
+      data: {
+        from: from.toISOString().slice(0, 10),
+        to: to.toISOString().slice(0, 10),
+        totals: {
+          plannedHours: Number(totals.plannedHours.toFixed(2)),
+          loggedHours: Number(totals.loggedHours.toFixed(2)),
+          variance: Number((totals.loggedHours - totals.plannedHours).toFixed(2)),
+          accuracyPercent:
+            totals.plannedHours > 0
+              ? Number(Math.max(0, 100 - Math.abs((totals.loggedHours - totals.plannedHours) / totals.plannedHours) * 100).toFixed(1))
+              : null,
+        },
+        rows,
+      },
+    };
+  });
+
+  // My planner (weekly)
+  app.get('/my/planner/week', { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(app.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found for your user account');
+
+    const { start } = plannerWeekQuerySchema.parse(request.query);
+    const baseDate = safeDate(start || null) || startOfDay(new Date());
+    const weekStart = startOfWeekMonday(baseDate);
+    const weekEnd = addDays(weekStart, 6);
+    const today = startOfDay(new Date());
+
+    const [tasks, plannerEntries] = await Promise.all([
+      app.db.query.taskAssignments.findMany({
+        where: and(
+          eq(taskAssignments.staffMemberId, staff.id),
+          sql`${taskAssignments.status} NOT IN ('CANCELLED', 'COMPLETED')`,
+        ),
+        with: {
+          project: true,
+          milestone: true,
+        },
+        orderBy: (t, { asc }) => [asc(t.dueDate), asc(t.createdAt)],
+      }),
+      app.db.query.staffTaskPlannerEntries.findMany({
+        where: and(
+          eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+          // Overlap check: span (planned_date .. coalesce(end_date, planned_date)) intersects [weekStart, weekEnd]
+          lte(staffTaskPlannerEntries.plannedDate, weekEnd),
+          sql`COALESCE(${staffTaskPlannerEntries.endDate}, ${staffTaskPlannerEntries.plannedDate}) >= ${weekStart.toISOString()}::timestamptz`,
+        ),
+        with: {
+          taskAssignment: {
+            with: {
+              project: true,
+              milestone: true,
+            },
+          },
+        },
+        orderBy: (p, { asc }) => [asc(p.plannedDate), asc(p.createdAt)],
+      }),
+    ]);
+
+    const days = Array.from({ length: 7 }, (_, idx) => {
+      const date = addDays(weekStart, idx);
+      return {
+        date: formatYmd(date),
+        dayName: date.toLocaleDateString('en-ZA', { weekday: 'short' }),
+        dayOfMonth: date.getDate(),
+        tasks: [] as any[],
+      };
+    });
+
+    for (const entry of plannerEntries) {
+      const task = entry.taskAssignment;
+      if (!task) continue;
+      const spanStart = safeDate(entry.plannedDate);
+      const spanEnd = safeDate(entry.endDate || entry.plannedDate);
+      if (!spanStart || !spanEnd) continue;
+
+      const totalDays = Math.max(1, Math.round((spanEnd.getTime() - spanStart.getTime()) / 86400000) + 1);
+      const totalHours = entry.plannedHours == null ? null : Number(entry.plannedHours);
+      const hoursPerDay = totalHours == null ? null : Number((totalHours / totalDays).toFixed(2));
+
+      // Render this entry on every day in the visible week that falls inside the span.
+      for (let i = 0; i < 7; i++) {
+        const dayDate = addDays(weekStart, i);
+        if (dayDate < spanStart || dayDate > spanEnd) continue;
+        const dayIndex = i;
+        const dayOfSpan = Math.round((dayDate.getTime() - spanStart.getTime()) / 86400000) + 1;
+        days[dayIndex].tasks.push({
+          ...mapTaskToPlannerDto(task, today),
+          plannerEntryId: entry.id,
+          plannedDate: formatYmd(spanStart),
+          spanStart: formatYmd(spanStart),
+          spanEnd: formatYmd(spanEnd),
+          spanTotalDays: totalDays,
+          spanDayIndex: dayOfSpan,
+          plannedHours: totalHours,
+          plannedHoursPerDay: hoursPerDay,
+          note: entry.note,
+          slotStart: entry.slotStart,
+          slotEnd: entry.slotEnd,
+        });
+      }
+    }
+
+    const plannedTaskIds = new Set(plannerEntries.map((e) => e.taskAssignmentId));
+    const unscheduled = tasks
+      .filter((task) => !plannedTaskIds.has(task.id))
+      .map((task) => mapTaskToPlannerDto(task, today));
+
+    const overdueCount = tasks.filter((task) => {
+      const due = safeDate(task.dueDate);
+      return !!(due && due < today);
+    }).length;
+
+    return {
+      data: {
+        weekStart: formatYmd(weekStart),
+        weekEnd: formatYmd(weekEnd),
+        days,
+        unscheduled,
+        totals: {
+          scheduledTasks: days.reduce((acc, d) => acc + d.tasks.length, 0),
+          uniqueTasks: tasks.length,
+          unscheduledTasks: unscheduled.length,
+          overdueTasks: overdueCount,
+        },
+      },
+    };
+  });
+
+  // My planner (monthly)
+  app.get('/my/planner/month', { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(app.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found for your user account');
+
+    const { year, month } = plannerMonthQuerySchema.parse(request.query);
+    const today = startOfDay(new Date());
+    const baseYear = year || today.getFullYear();
+    const baseMonth = month || (today.getMonth() + 1);
+    const monthStart = new Date(baseYear, baseMonth - 1, 1);
+    const monthEnd = endOfMonth(monthStart);
+
+    const [tasks, plannerEntries] = await Promise.all([
+      app.db.query.taskAssignments.findMany({
+        where: and(
+          eq(taskAssignments.staffMemberId, staff.id),
+          sql`${taskAssignments.status} NOT IN ('CANCELLED', 'COMPLETED')`,
+        ),
+        with: {
+          project: true,
+          milestone: true,
+        },
+        orderBy: (t, { asc }) => [asc(t.dueDate), asc(t.createdAt)],
+      }),
+      app.db.query.staffTaskPlannerEntries.findMany({
+        where: and(
+          eq(staffTaskPlannerEntries.staffMemberId, staff.id),
+          lte(staffTaskPlannerEntries.plannedDate, monthEnd),
+          sql`COALESCE(${staffTaskPlannerEntries.endDate}, ${staffTaskPlannerEntries.plannedDate}) >= ${monthStart.toISOString()}::timestamptz`,
+        ),
+        with: {
+          taskAssignment: {
+            with: {
+              project: true,
+              milestone: true,
+            },
+          },
+        },
+        orderBy: (p, { asc }) => [asc(p.plannedDate), asc(p.createdAt)],
+      }),
+    ]);
+
+    const dayMap = new Map<string, any>();
+    const daysInMonth = monthEnd.getDate();
+    for (let i = 0; i < daysInMonth; i++) {
+      const d = addDays(monthStart, i);
+      dayMap.set(formatYmd(d), {
+        date: formatYmd(d),
+        dayOfMonth: d.getDate(),
+        dayName: d.toLocaleDateString('en-ZA', { weekday: 'short' }),
+        tasks: [] as any[],
+      });
+    }
+
+    for (const entry of plannerEntries) {
+      const task = entry.taskAssignment;
+      const spanStart = safeDate(entry.plannedDate);
+      const spanEnd = safeDate(entry.endDate || entry.plannedDate);
+      if (!task || !spanStart || !spanEnd) continue;
+
+      const totalDays = Math.max(1, Math.round((spanEnd.getTime() - spanStart.getTime()) / 86400000) + 1);
+      const totalHours = entry.plannedHours == null ? null : Number(entry.plannedHours);
+      const hoursPerDay = totalHours == null ? null : Number((totalHours / totalDays).toFixed(2));
+
+      for (let i = 0; i < daysInMonth; i++) {
+        const d = addDays(monthStart, i);
+        if (d < spanStart || d > spanEnd) continue;
+        const key = formatYmd(d);
+        const dayOfSpan = Math.round((d.getTime() - spanStart.getTime()) / 86400000) + 1;
+        dayMap.get(key)?.tasks.push({
+          ...mapTaskToPlannerDto(task, today),
+          plannerEntryId: entry.id,
+          plannedDate: formatYmd(spanStart),
+          spanStart: formatYmd(spanStart),
+          spanEnd: formatYmd(spanEnd),
+          spanTotalDays: totalDays,
+          spanDayIndex: dayOfSpan,
+          plannedHours: totalHours,
+          plannedHoursPerDay: hoursPerDay,
+          note: entry.note,
+        });
+      }
+    }
+
+    const plannedTaskIds = new Set(plannerEntries.map((e) => e.taskAssignmentId));
+    const unscheduled = tasks
+      .filter((task) => !plannedTaskIds.has(task.id))
+      .map((task) => mapTaskToPlannerDto(task, today));
+
+    const overdueCount = tasks.filter((task) => {
+      const due = safeDate(task.dueDate);
+      return !!(due && due < today);
+    }).length;
+
+    const days = Array.from(dayMap.values());
+    return {
+      data: {
+        year: baseYear,
+        month: baseMonth,
+        monthStart: formatYmd(monthStart),
+        monthEnd: formatYmd(monthEnd),
+        days,
+        unscheduled,
+        totals: {
+          scheduledTasks: days.reduce((acc, d) => acc + d.tasks.length, 0),
+          uniqueTasks: tasks.length,
+          unscheduledTasks: unscheduled.length,
+          overdueTasks: overdueCount,
+        },
+      },
+    };
+  });
+
   // ==========================================
   // RESOURCE PLANNING
   // ==========================================
@@ -1048,6 +2111,47 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   app.get('/capacity', {
     preHandler: requireRole('admin', 'project_manager'),
   }, async () => {
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const addDays = (d: Date, days: number) => {
+      const next = new Date(d);
+      next.setDate(next.getDate() + days);
+      return next;
+    };
+    const startOfWeekMonday = (d: Date) => {
+      const base = startOfDay(d);
+      const day = base.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      return addDays(base, diff);
+    };
+    const isWeekday = (d: Date) => {
+      const day = d.getDay();
+      return day >= 1 && day <= 5;
+    };
+    const workingDaysBetweenInclusive = (start: Date, end: Date) => {
+      if (end < start) return 0;
+      let count = 0;
+      const cur = new Date(start);
+      while (cur <= end) {
+        if (isWeekday(cur)) count += 1;
+        cur.setDate(cur.getDate() + 1);
+      }
+      return count;
+    };
+
+    const today = startOfDay(new Date());
+    const weekStart = startOfWeekMonday(today);
+    const weekEnd = addDays(weekStart, 6);
+    const forecastMonths = [0, 1, 2].map((offset) => {
+      const start = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+      const end = new Date(today.getFullYear(), today.getMonth() + offset + 1, 0, 23, 59, 59);
+      return {
+        offset,
+        start,
+        end,
+        label: start.toLocaleDateString('en-ZA', { month: 'short', year: '2-digit' }),
+      };
+    });
+
     const allStaff = await app.db.query.staffMembers.findMany({
       where: eq(staffMembers.isActive, true),
       with: {
@@ -1060,6 +2164,33 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       orderBy: (s, { asc }) => [asc(s.name)],
     });
 
+    const getTaskRemainingHours = (t: any) => {
+      const remaining = Number(t.remainingHours);
+      if (Number.isFinite(remaining)) return Math.max(0, remaining);
+      return Math.max(0, (Number(t.allocatedHours) || 0) - (Number(t.loggedHours) || 0));
+    };
+
+    const getTaskAllocationForWindow = (t: any, windowStart: Date, windowEnd: Date) => {
+      const remaining = getTaskRemainingHours(t);
+      if (remaining <= 0) return 0;
+
+      const taskStart = t.startDate ? startOfDay(new Date(t.startDate)) : today;
+      const fallbackEnd = addDays(taskStart, 20);
+      const rawEnd = t.dueDate ? startOfDay(new Date(t.dueDate)) : fallbackEnd;
+      const taskEnd = rawEnd < today ? today : rawEnd;
+
+      const effectiveStart = taskStart < today ? today : taskStart;
+      const totalWorkDays = workingDaysBetweenInclusive(effectiveStart, taskEnd);
+      if (totalWorkDays <= 0) return 0;
+
+      const overlapStart = effectiveStart > windowStart ? effectiveStart : windowStart;
+      const overlapEnd = taskEnd < windowEnd ? taskEnd : windowEnd;
+      const overlapDays = workingDaysBetweenInclusive(overlapStart, overlapEnd);
+      if (overlapDays <= 0) return 0;
+
+      return (remaining * overlapDays) / totalWorkDays;
+    };
+
     const data = allStaff.map((staff) => {
       const allocatedHours = staff.taskAssignments.reduce(
         (sum, t) => sum + (Number(t.allocatedHours) || 0), 0,
@@ -1067,21 +2198,58 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       const loggedHours = staff.taskAssignments.reduce(
         (sum, t) => sum + (Number(t.loggedHours) || 0), 0,
       );
-      const maxWeekly = staff.maxHoursPerWeek;
-      const maxMonthly = maxWeekly * 4;
+      const remainingHours = staff.taskAssignments.reduce((sum, t) => {
+        return sum + getTaskRemainingHours(t);
+      }, 0);
+
+      const maxMonthly = staff.maxHoursPerMonth;
+
+      // Allocated this calendar month = sum of task allocatedHours for tasks whose due date falls in current month
+      const thisMonthStart = forecastMonths[0].start;
+      const thisMonthEnd = forecastMonths[0].end;
+      const allocatedThisMonth = staff.taskAssignments.reduce((sum, t) => {
+        if (!t.dueDate) return sum;
+        const due = new Date(t.dueDate);
+        if (due >= thisMonthStart && due <= thisMonthEnd) {
+          return sum + (Number(t.allocatedHours) || 0);
+        }
+        return sum;
+      }, 0);
+
+      const monthlyForecast = forecastMonths.map((m) => {
+        const allocated = staff.taskAssignments.reduce((sum, t) => {
+          if (!t.dueDate) return sum;
+          const due = new Date(t.dueDate);
+          if (due >= m.start && due <= m.end) return sum + (Number(t.allocatedHours) || 0);
+          return sum;
+        }, 0);
+        const available = Math.max(0, maxMonthly - allocated);
+        const utilizationPct = maxMonthly > 0 ? (allocated / maxMonthly) * 100 : 0;
+        return {
+          offset: m.offset,
+          label: m.label,
+          monthStart: m.start.toISOString(),
+          monthEnd: m.end.toISOString(),
+          allocated,
+          available,
+          utilizationPct,
+        };
+      });
 
       return {
         id: staff.id,
         name: staff.name,
         role: staff.role,
         availabilityType: staff.availabilityType,
-        maxHoursPerWeek: maxWeekly,
         maxHoursPerMonth: maxMonthly,
         allocatedHours,
         loggedHours,
-        availableHoursWeekly: Math.max(0, maxWeekly - (allocatedHours / 4)),
-        availableHoursMonthly: Math.max(0, maxMonthly - allocatedHours),
+        remainingHours,
+        allocatedThisMonth,
+        availableHoursMonthly: Math.max(0, maxMonthly - allocatedThisMonth),
+        utilizationMonthlyPct: maxMonthly > 0 ? (allocatedThisMonth / maxMonthly) * 100 : 0,
         activeTaskCount: staff.taskAssignments.length,
+        monthlyForecast,
       };
     });
 
@@ -1123,7 +2291,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
           id: staff.id,
           name: staff.name,
           role: staff.role,
-          maxHoursPerWeek: staff.maxHoursPerWeek,
+          maxHoursPerMonth: staff.maxHoursPerMonth,
           hourlyRate: staff.hourlyRate,
         },
         summary: {
@@ -1343,6 +2511,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       data: {
         projectId,
         staffMemberId,
+        staffUserId: staff.userId || null,
         staffName: staff.name,
         staffEmail: staff.email,
         isInternal: staff.isInternal,
@@ -1450,10 +2619,34 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       orderBy: (t, { asc }) => [asc(t.createdAt)],
     });
 
+    // Get the contractor's active SOW for this project (most recent ACCEPTED or SENT).
+    const activeSow = await app.db.query.sowDocuments.findFirst({
+      where: and(
+        eq(sowDocuments.projectId, tokenRecord.projectId),
+        or(eq(sowDocuments.status, 'ACCEPTED'), eq(sowDocuments.status, 'SENT')),
+      ),
+      orderBy: (s, { desc }) => [desc(s.createdAt)],
+    });
+
     return {
       data: {
         staff: { name: staff?.name, email: staff?.email, role: staff?.role },
         project: { name: project?.name, number: project?.number, titleName: project?.title?.title },
+        sow: activeSow
+          ? {
+              id: activeSow.id,
+              number: activeSow.number,
+              status: activeSow.status,
+              scope: activeSow.scope,
+              deliverables: activeSow.deliverables,
+              timeline: activeSow.timeline,
+              totalAmount: activeSow.totalAmount,
+              terms: activeSow.terms,
+              validUntil: activeSow.validUntil,
+              acceptedAt: activeSow.acceptedAt,
+              pdfUrl: activeSow.pdfUrl,
+            }
+          : null,
         tasks: tasks.map((t) => ({
           id: t.id,
           number: t.number,
@@ -1957,5 +3150,292 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="Timesheet-${staff.name.replace(/\s+/g, '-')}-${project.number}.xlsx"`)
       .send(Buffer.from(buffer as ArrayBuffer));
+  });
+
+  // ==========================================
+  // TASK REQUESTS — staff/contractor asks PM to add a task
+  // ==========================================
+
+  // Staff submits a task request
+  app.post('/task-requests', { preHandler: requireAuth }, async (request, reply) => {
+    const body = z.object({
+      projectId: z.string().uuid(),
+      title: z.string().min(1).max(255),
+      description: z.string().min(1),
+      justification: z.string().min(1),
+      estimatedHours: z.coerce.number().positive(),
+      linkedTaskId: z.string().uuid().nullable().optional(),
+    }).parse(request.body);
+
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(app.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found for your user account');
+
+    const project = await app.db.query.projects.findFirst({ where: eq(projects.id, body.projectId) });
+    if (!project) return reply.notFound('Project not found');
+
+    const [created] = await app.db.insert(taskRequests).values({
+      projectId: body.projectId,
+      requestedByStaffId: staff.id,
+      linkedTaskId: body.linkedTaskId || null,
+      title: body.title,
+      description: body.description,
+      justification: body.justification,
+      estimatedHours: String(body.estimatedHours),
+    }).returning();
+
+    // Notify PMs/admins
+    createBroadcastNotification(app, {
+      type: 'TASK_REQUEST_SUBMITTED' as any,
+      priority: 'NORMAL',
+      title: 'New task request',
+      message: `${staff.name} requested a new task on project ${project.number}: "${body.title}" (${body.estimatedHours}h)`,
+      actionUrl: `/pm/task-requests/${created.id}`,
+      referenceType: 'TASK_REQUEST',
+      referenceId: created.id,
+    }).catch(() => {});
+
+    return reply.status(201).send({ data: created });
+  });
+
+  // Staff: list my task requests
+  app.get('/my/task-requests', { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(app.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found for your user account');
+
+    const items = await app.db.query.taskRequests.findMany({
+      where: eq(taskRequests.requestedByStaffId, staff.id),
+      with: { project: true, createdTask: true },
+      orderBy: (r, { desc }) => [desc(r.createdAt)],
+    });
+    return { data: items };
+  });
+
+  // PM: list all task requests, optional ?status=PENDING
+  app.get('/task-requests', { preHandler: requireRole('admin', 'project_manager') }, async (request) => {
+    const q = z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'NEEDS_INFO']).optional() }).parse(request.query);
+    const where = q.status ? eq(taskRequests.status, q.status) : undefined;
+    const items = await app.db.query.taskRequests.findMany({
+      where: where ? () => where : undefined,
+      with: { project: true, requestedBy: true, linkedTask: true, createdTask: true },
+      orderBy: (r, { desc }) => [desc(r.createdAt)],
+    });
+    return { data: items };
+  });
+
+  // PM: get one
+  app.get<{ Params: { id: string } }>('/task-requests/:id', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const item = await app.db.query.taskRequests.findFirst({
+      where: eq(taskRequests.id, request.params.id),
+      with: { project: true, requestedBy: true, linkedTask: true, createdTask: true },
+    });
+    if (!item) return reply.notFound('Task request not found');
+    return { data: item };
+  });
+
+  // PM approves: creates a real task assignment, links it back, notifies staff
+  app.post<{ Params: { id: string } }>('/task-requests/:id/approve', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({
+      milestoneId: z.string().uuid().nullable().optional(),
+      taskCodeId: z.string().uuid().nullable().optional(),
+      allocatedHours: z.coerce.number().positive(),
+      hourlyRate: z.coerce.number().positive(),
+      priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
+      dueDate: z.string().nullable().optional(),
+      reviewNotes: z.string().nullable().optional(),
+    }).parse(request.body);
+
+    const userId = request.session?.user?.id;
+    const tr = await app.db.query.taskRequests.findFirst({
+      where: eq(taskRequests.id, request.params.id),
+      with: { requestedBy: true, project: true },
+    });
+    if (!tr) return reply.notFound('Task request not found');
+    if (tr.status !== 'PENDING' && tr.status !== 'NEEDS_INFO') {
+      return reply.badRequest(`Cannot approve a request in ${tr.status} status`);
+    }
+
+    if (body.milestoneId) {
+      const milestone = await app.db.query.projectMilestones.findFirst({
+        where: and(eq(projectMilestones.id, body.milestoneId), eq(projectMilestones.projectId, tr.projectId)),
+      });
+      if (!milestone) return reply.badRequest('Milestone does not belong to this project');
+    }
+
+    const number = await nextTaskAssignmentNumber(app.db);
+    const totalCost = body.allocatedHours * body.hourlyRate;
+    const [task] = await app.db.insert(taskAssignments).values({
+      number,
+      projectId: tr.projectId,
+      milestoneId: body.milestoneId || null,
+      taskCodeId: body.taskCodeId || null,
+      staffMemberId: tr.requestedByStaffId,
+      title: tr.title,
+      description: tr.description,
+      priority: body.priority,
+      estimatedHours: tr.estimatedHours,
+      allocatedHours: String(body.allocatedHours),
+      loggedHours: '0',
+      remainingHours: String(body.allocatedHours),
+      hourlyRate: String(body.hourlyRate),
+      totalCost: String(totalCost),
+      dueDate: body.dueDate ? new Date(body.dueDate) : null,
+      deliverables: [],
+      assignedBy: userId,
+      status: 'ASSIGNED',
+    }).returning();
+
+    const [updated] = await app.db.update(taskRequests)
+      .set({
+        status: 'APPROVED',
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewNotes: body.reviewNotes || null,
+        createdTaskId: task.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(taskRequests.id, request.params.id))
+      .returning();
+
+    // Auto-regen the SOW so the new task is reflected in cost/deliverables/timeline.
+    regenerateSowFromTasks(app, {
+      projectId: tr.projectId,
+      staffMemberId: tr.requestedByStaffId,
+      reason: `Task request approved: ${tr.title}`,
+      userId,
+    }).catch((e) => app.log.error({ err: e }, 'SOW regen failed after task-request approve'));
+
+    if (tr.requestedBy?.userId) {
+      createNotification(app, {
+        userId: tr.requestedBy.userId,
+        type: 'TASK_STARTED' as any,
+        title: 'Task request approved',
+        message: `Your request "${tr.title}" was approved and is now task ${task.number}.`,
+        actionUrl: `/pm/tasks/${task.id}`,
+        referenceType: 'TASK_ASSIGNMENT',
+        referenceId: task.id,
+      }).catch(() => {});
+    }
+
+    return { data: { request: updated, task } };
+  });
+
+  // PM rejects
+  app.post<{ Params: { id: string } }>('/task-requests/:id/reject', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({ reviewNotes: z.string().min(1) }).parse(request.body);
+    const userId = request.session?.user?.id;
+
+    const tr = await app.db.query.taskRequests.findFirst({
+      where: eq(taskRequests.id, request.params.id),
+      with: { requestedBy: true },
+    });
+    if (!tr) return reply.notFound('Task request not found');
+    if (tr.status !== 'PENDING' && tr.status !== 'NEEDS_INFO') {
+      return reply.badRequest(`Cannot reject a request in ${tr.status} status`);
+    }
+
+    const [updated] = await app.db.update(taskRequests)
+      .set({
+        status: 'REJECTED',
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewNotes: body.reviewNotes,
+        updatedAt: new Date(),
+      })
+      .where(eq(taskRequests.id, request.params.id))
+      .returning();
+
+    if (tr.requestedBy?.userId) {
+      createNotification(app, {
+        userId: tr.requestedBy.userId,
+        type: 'TASK_SENT_BACK' as any,
+        title: 'Task request rejected',
+        message: `Your request "${tr.title}" was rejected. Reason: ${body.reviewNotes}`,
+        referenceType: 'TASK_REQUEST',
+        referenceId: tr.id,
+      }).catch(() => {});
+    }
+
+    return { data: updated };
+  });
+
+  // PM asks for more info
+  app.post<{ Params: { id: string } }>('/task-requests/:id/needs-info', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({ reviewNotes: z.string().min(1) }).parse(request.body);
+    const userId = request.session?.user?.id;
+
+    const tr = await app.db.query.taskRequests.findFirst({
+      where: eq(taskRequests.id, request.params.id),
+      with: { requestedBy: true },
+    });
+    if (!tr) return reply.notFound('Task request not found');
+    if (tr.status !== 'PENDING') {
+      return reply.badRequest(`Can only ask for info on PENDING requests`);
+    }
+
+    const [updated] = await app.db.update(taskRequests)
+      .set({
+        status: 'NEEDS_INFO',
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewNotes: body.reviewNotes,
+        updatedAt: new Date(),
+      })
+      .where(eq(taskRequests.id, request.params.id))
+      .returning();
+
+    if (tr.requestedBy?.userId) {
+      createNotification(app, {
+        userId: tr.requestedBy.userId,
+        type: 'TASK_SENT_BACK' as any,
+        title: 'More info needed on task request',
+        message: `Your request "${tr.title}" needs more info: ${body.reviewNotes}`,
+        actionUrl: `/employee/task-requests`,
+        referenceType: 'TASK_REQUEST',
+        referenceId: tr.id,
+      }).catch(() => {});
+    }
+
+    return { data: updated };
+  });
+
+  // Staff: update a request when PM asks for more info
+  app.patch<{ Params: { id: string } }>('/my/task-requests/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const body = z.object({
+      title: z.string().min(1).max(255).optional(),
+      description: z.string().min(1).optional(),
+      justification: z.string().min(1).optional(),
+      estimatedHours: z.coerce.number().positive().optional(),
+    }).parse(request.body);
+
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(app.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found for your user account');
+
+    const existing = await app.db.query.taskRequests.findFirst({
+      where: and(eq(taskRequests.id, request.params.id), eq(taskRequests.requestedByStaffId, staff.id)),
+    });
+    if (!existing) return reply.notFound('Task request not found');
+    if (existing.status !== 'NEEDS_INFO' && existing.status !== 'PENDING') {
+      return reply.badRequest('Cannot edit a request that has been approved or rejected');
+    }
+
+    const updates: Record<string, any> = { updatedAt: new Date(), status: 'PENDING' };
+    if (body.title !== undefined) updates.title = body.title;
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.justification !== undefined) updates.justification = body.justification;
+    if (body.estimatedHours !== undefined) updates.estimatedHours = String(body.estimatedHours);
+
+    const [updated] = await app.db.update(taskRequests).set(updates).where(eq(taskRequests.id, request.params.id)).returning();
+    return { data: updated };
   });
 }

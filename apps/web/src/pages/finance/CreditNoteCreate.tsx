@@ -187,7 +187,7 @@ export function CreditNoteCreate() {
             <label className="text-sm font-medium text-gray-700">Line Items</label>
             <button type="button" onClick={addLine} className="text-xs text-green-700 hover:underline">+ Add Line</button>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

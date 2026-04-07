@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { AiSuggestButton } from '../../components/AiSuggestButton';
 
 const PROJECT_TYPES = [
   { value: 'NEW_TITLE', label: 'New Title' },
@@ -43,6 +44,7 @@ export function ProjectForm() {
     notes: '',
   });
   const [error, setError] = useState('');
+  const [aiSuggestions, setAiSuggestions] = useState<any>(null);
 
   // Load existing project for edit
   const { data: existing } = useQuery({
@@ -80,9 +82,10 @@ export function ProjectForm() {
     queryKey: ['titles-dropdown'],
     queryFn: () => api<{ data: Title[] }>('/titles?limit=500'),
   });
-  const { data: usersData } = useQuery({
-    queryKey: ['users-dropdown'],
-    queryFn: () => api<{ data: User[] }>('/users?limit=500'),
+  // Fetch users with PM/admin system role for the Project Manager picker
+  const { data: staffData } = useQuery({
+    queryKey: ['pm-managers-dropdown'],
+    queryFn: () => api<{ data: Array<{ id: string; name: string; email: string; role: string }> }>('/users/managers'),
   });
 
   const mutation = useMutation({
@@ -186,8 +189,8 @@ export function ProjectForm() {
               <select value={form.projectManager} onChange={(e) => setForm({ ...form, projectManager: e.target.value })}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                 <option value="">— Select manager —</option>
-                {usersData?.data?.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
+                {staffData?.data?.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
                 ))}
               </select>
             </div>
@@ -254,6 +257,97 @@ export function ProjectForm() {
             </div>
           </div>
         </div>
+
+        {/* Description */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-gray-700">Description</label>
+            {!isEdit && form.name && (
+              <AiSuggestButton
+                endpoint="/ai/suggest/project"
+                payload={{
+                  bookTitle: form.name,
+                  authorName: authorsData?.data?.find((a) => a.id === form.authorId)?.legalName || 'Unknown',
+                  projectType: form.projectType,
+                  contractType: form.contractType,
+                }}
+                onSuggestion={(data) => {
+                  if (data.description && !form.description) {
+                    setForm((f) => ({ ...f, description: data.description }));
+                  }
+                  setAiSuggestions(data);
+                }}
+                label="AI Suggest"
+                disabled={!form.name}
+              />
+            )}
+          </div>
+          <textarea rows={3} value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="Brief description of the project scope, goals, and deliverables..."
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+        </div>
+
+        {/* AI Suggestions Panel */}
+        {aiSuggestions && (
+          <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-purple-900 flex items-center gap-1.5">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M12 2L12 6M12 18L12 22M2 12L6 12M18 12L22 12" strokeLinecap="round" />
+                  <path d="M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93" strokeLinecap="round" />
+                </svg>
+                AI Suggestions
+              </h3>
+              <button type="button" onClick={() => setAiSuggestions(null)} className="text-xs text-purple-500 hover:text-purple-700">dismiss</button>
+            </div>
+
+            {aiSuggestions.estimatedTimeline && (
+              <p className="text-sm text-purple-800">
+                <strong>Estimated Timeline:</strong> {aiSuggestions.estimatedTimeline}
+              </p>
+            )}
+
+            {aiSuggestions.keyConsiderations?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-purple-700 uppercase mb-1">Key Considerations</p>
+                <ul className="text-sm text-purple-800 list-disc list-inside space-y-0.5">
+                  {aiSuggestions.keyConsiderations.map((c: string, i: number) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {aiSuggestions.suggestedMilestones?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-purple-700 uppercase mb-1">Suggested Milestones</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {aiSuggestions.suggestedMilestones.map((m: any, i: number) => (
+                    <div key={i} className="rounded-md bg-white border border-purple-100 p-2.5">
+                      <p className="text-sm font-medium text-gray-900">{m.name}</p>
+                      <p className="text-xs text-gray-500">{m.estimatedWeeks} weeks — {m.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {aiSuggestions.suggestedBudgetCategories?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-purple-700 uppercase mb-1">Budget Estimate Ranges</p>
+                <div className="text-sm space-y-1">
+                  {aiSuggestions.suggestedBudgetCategories.map((b: any, i: number) => (
+                    <div key={i} className="flex justify-between">
+                      <span className="text-gray-700">{b.category}: <span className="text-gray-500 text-xs">{b.description}</span></span>
+                      <span className="text-purple-700 font-medium text-xs">{b.estimatedRangeZAR}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Notes */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">

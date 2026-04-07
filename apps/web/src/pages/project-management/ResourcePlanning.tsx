@@ -40,24 +40,28 @@ export function ResourcePlanning() {
     queryFn: () => api<{ data: any[] }>('/project-management/staff?limit=200'),
   });
 
-  // All projects for breakdown
-  const { data: projectsData } = useQuery({
-    queryKey: ['pm-all-projects-resource'],
-    queryFn: () => api<{ data: any[] }>('/budgeting/projects?limit=100'),
-  });
-
   const capacity = capacityData?.data || [];
   const allStaff = staffData?.data || [];
 
   // Merge capacity data with staff data
   const enriched = allStaff.filter((s: any) => s.isActive !== false).map((s: any) => {
-    const cap = capacity.find((c: any) => (c.staffId || c.id) === s.id);
-    const maxHours = Number(s.maxHoursPerWeek || 40);
-    const allocated = Number(cap?.allocatedThisWeek ?? cap?.allocated_this_week ?? 0);
-    const available = Math.max(0, maxHours - allocated);
-    const utilPct = maxHours > 0 ? (allocated / maxHours) * 100 : 0;
+    const cap = capacity.find((c: any) => c.id === s.id);
+    const maxHours = Number(cap?.maxHoursPerMonth ?? s.maxHoursPerMonth ?? 160);
+    const allocated = Number(cap?.allocatedThisMonth ?? 0);
+    const available = Number(cap?.availableHoursMonthly ?? (maxHours - allocated));
+    const utilPct = Number(cap?.utilizationMonthlyPct ?? (maxHours > 0 ? (allocated / maxHours) * 100 : 0));
     const skills = Array.isArray(s.skills) ? s.skills : [];
-    return { ...s, maxHours, allocated, available, utilPct, skills };
+    return {
+      ...s,
+      maxHours,
+      allocated,
+      available,
+      utilPct,
+      skills,
+      activeTaskCount: Number(cap?.activeTaskCount ?? 0),
+      allocatedHoursOpenTasks: Number(cap?.allocatedHours ?? 0),
+      monthlyForecast: Array.isArray(cap?.monthlyForecast) ? cap.monthlyForecast : [],
+    };
   });
 
   // Apply filters
@@ -105,9 +109,9 @@ export function ResourcePlanning() {
           </div>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs text-gray-500 uppercase">Total Capacity</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">{totalCapacityHours}h/wk</p>
-          <p className="text-xs text-gray-400">{totalAllocatedHours}h allocated</p>
+          <p className="text-xs text-gray-500 uppercase">Monthly Capacity</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900">{totalCapacityHours}h/mo</p>
+          <p className="text-xs text-gray-400">{totalAllocatedHours.toFixed(1)}h/mo allocated</p>
         </div>
         <div className="rounded-lg border border-green-200 bg-green-50 p-4">
           <p className="text-xs text-green-600 uppercase">Fully Available</p>
@@ -138,23 +142,29 @@ export function ResourcePlanning() {
         </select>
       </div>
 
+      <p className="mb-2 text-xs text-gray-500">Forecast: M0 = current month, M1-M2 = next 2 months (based on task due dates and remaining hours).</p>
+
       {/* Staff Table */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Staff Member</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Skills</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Capacity</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Allocated</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Available</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Capacity (mo)</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Allocated (mo)</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Available (mo)</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Active Tasks</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">M0</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">M1</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">M2</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-40">Utilization</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {capLoading && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {filtered.map((s: any) => (
               <tr key={s.id} className={`hover:bg-gray-50 cursor-pointer ${utilizationBg(s.utilPct)}`}
@@ -179,13 +189,25 @@ export function ResourcePlanning() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-500">{s.availabilityType?.replace(/_/g, ' ')}</td>
-                <td className="px-4 py-3 text-sm text-right font-mono">{s.maxHours}h</td>
-                <td className="px-4 py-3 text-sm text-right font-mono">{s.allocated}h</td>
+                <td className="px-4 py-3 text-sm text-right font-mono">{s.maxHours.toFixed(1)}h</td>
+                <td className="px-4 py-3 text-sm text-right font-mono">{s.allocated.toFixed(1)}h</td>
                 <td className="px-4 py-3 text-sm text-right font-mono">
                   <span className={s.available > 0 ? 'text-green-700 font-medium' : 'text-red-600 font-medium'}>
-                    {s.available}h
+                    {s.available.toFixed(1)}h
                   </span>
                 </td>
+                <td className="px-4 py-3 text-sm text-right text-gray-700">{s.activeTaskCount}</td>
+                {[0, 1, 2].map((offset) => {
+                  const m = (s.monthlyForecast as any[]).find((x: any) => x.offset === offset);
+                  const pct = Number(m?.utilizationPct ?? 0);
+                  const allocatedHours = Number(m?.allocated ?? 0);
+                  return (
+                    <td key={offset} className="px-4 py-3 text-sm text-right">
+                      <div className={`font-mono ${utilizationColor(pct)}`}>{allocatedHours.toFixed(1)}h</div>
+                      <div className={`text-[10px] ${utilizationColor(pct)}`}>{pct.toFixed(0)}%</div>
+                    </td>
+                  );
+                })}
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 bg-gray-200 rounded-full h-2.5">
@@ -203,7 +225,7 @@ export function ResourcePlanning() {
               </tr>
             ))}
             {!capLoading && filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                 {enriched.length === 0 ? 'No staff members yet.' : 'No staff match the current filters.'}
               </td></tr>
             )}

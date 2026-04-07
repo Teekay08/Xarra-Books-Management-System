@@ -260,7 +260,7 @@ export function RemittanceCreate() {
         {partnerId && outstandingInvoices.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Link to Invoices</label>
-            <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -376,7 +376,7 @@ export function RemittanceCreate() {
 
             {/* Existing allocations */}
             {creditAllocations.length > 0 && (
-              <div className="rounded-lg border border-green-200 bg-green-50/30 mb-3 overflow-hidden">
+              <div className="rounded-lg border border-green-200 bg-green-50/30 mb-3 overflow-x-auto">
                 <table className="min-w-full divide-y divide-green-100">
                   <thead className="bg-green-50">
                     <tr>

@@ -11,9 +11,11 @@ interface SowDocument {
   status: string;
   totalAmount: string;
   version: number;
+  scope: string;
   createdAt: string;
   project?: { name: string; number: string } | null;
   contractor?: { name: string } | null;
+  staffUser?: { name: string } | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -55,13 +57,13 @@ export function SowList() {
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm" />
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Number</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Project</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contractor</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned To</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Version</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -77,7 +79,11 @@ export function SowList() {
               <tr key={sow.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 text-sm font-mono text-gray-500">{sow.number}</td>
                 <td className="px-4 py-3 text-sm text-gray-900">{sow.project?.name || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{sow.contractor?.name || '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700">
+                  {sow.contractor?.name || sow.staffUser?.name || sow.scope?.match(/Statement of Work for (.+?) on project/)?.[1] || '—'}
+                  {!sow.contractor && sow.staffUser && <span className="ml-1 text-xs text-blue-500">(Staff)</span>}
+                  {sow.contractor && <span className="ml-1 text-xs text-orange-500">(Contractor)</span>}
+                </td>
                 <td className="px-4 py-3 text-sm text-right font-medium">R {Number(sow.totalAmount).toFixed(2)}</td>
                 <td className="px-4 py-3 text-sm text-gray-500">v{sow.version}</td>
                 <td className="px-4 py-3 text-sm">

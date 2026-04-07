@@ -548,7 +548,7 @@ function TitleProfitLoss({ titleId }: { titleId: string }) {
   const pl = data?.data;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+    <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -600,7 +600,7 @@ function TitleProfitLoss({ titleId }: { titleId: string }) {
                   <summary className="text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer hover:text-gray-600">
                     Sales by Channel
                   </summary>
-                  <div className="mt-2 rounded-md border border-gray-100 overflow-hidden">
+                  <div className="mt-2 rounded-md border border-gray-100 overflow-x-auto">
                     <table className="min-w-full text-xs">
                       <thead className="bg-gray-50">
                         <tr>

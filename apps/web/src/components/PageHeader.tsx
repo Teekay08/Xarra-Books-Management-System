@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 
 interface PageHeaderProps {
   title: string;
@@ -9,12 +9,30 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({ title, subtitle, action, backTo }: PageHeaderProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleBack = () => {
+    // If the user navigated here from within the app, go back in history.
+    // Otherwise (direct load / external referrer), fall back to backTo.href.
+    const hasHistory = (location.key && location.key !== 'default') || window.history.length > 1;
+    if (hasHistory) {
+      navigate(-1);
+    } else if (backTo) {
+      navigate(backTo.href);
+    }
+  };
+
   return (
     <div className="mb-6">
       {backTo && (
-        <Link to={backTo.href} className="mb-2 inline-flex items-center text-sm text-green-700 hover:underline">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="mb-2 inline-flex items-center text-sm text-green-700 hover:underline"
+        >
           &larr; {backTo.label}
-        </Link>
+        </button>
       )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>

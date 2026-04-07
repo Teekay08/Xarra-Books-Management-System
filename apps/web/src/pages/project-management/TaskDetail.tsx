@@ -91,6 +91,11 @@ export function TaskDetail() {
   const [extensionForm, setExtensionForm] = useState({ requestedHours: '', reason: '' });
   const [extensionError, setExtensionError] = useState('');
   const [approvalForm, setApprovalForm] = useState<{ extId: string; grantedHours: string; notes: string } | null>(null);
+  const [transitionError, setTransitionError] = useState('');
+  const [showSendBack, setShowSendBack] = useState(false);
+  const [sendBackReason, setSendBackReason] = useState('');
+  const [rejectModal, setRejectModal] = useState<{ logId: string; staffName: string; hours: string; description: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['pm-task', id],
@@ -105,17 +110,21 @@ export function TaskDetail() {
     IN_PROGRESS: 'start',
     REVIEW: 'submit-review',
     COMPLETED: 'complete',
+    SEND_BACK: 'send-back',
   };
 
   const transitionMutation = useMutation({
-    mutationFn: (newStatus: string) => {
-      const endpoint = STATUS_ENDPOINTS[newStatus];
-      return api(`/project-management/tasks/${id}/${endpoint}`, { method: 'POST' });
+    mutationFn: ({ status, body }: { status: string; body?: Record<string, any> }) => {
+      const endpoint = STATUS_ENDPOINTS[status];
+      return api(`/project-management/tasks/${id}/${endpoint}`, {
+        method: 'POST',
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
     },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => setTransitionError(err.message),
   });
 
   const logTimeMutation = useMutation({
@@ -309,63 +318,120 @@ export function TaskDetail() {
         </div>
       </div>
 
-      {/* Action Buttons — role-based with workflow enforcement */}
+      {/* Workflow Actions — enforced by backend */}
       {(() => {
-        const unapprovedLogs = (task.timeLogs || []).filter((l: any) => l.status === 'LOGGED').length;
+        const logs = task.timeLogs || [];
+        const totalLogs = logs.length;
+        const approvedLogs = logs.filter((l: any) => l.status === 'APPROVED').length;
+        const pendingLogs = logs.filter((l: any) => l.status === 'LOGGED').length;
+        const rejectedLogs = logs.filter((l: any) => l.status === 'REJECTED').length;
         const pendingExtensions = (task.extensionRequests || []).filter((e: any) => e.status === 'PENDING').length;
-        const hasBlockers = unapprovedLogs > 0 || pendingExtensions > 0;
+
+        // Readiness checks for submit-for-review
+        const canSubmitForReview = totalLogs > 0 && pendingLogs === 0 && rejectedLogs === 0;
+        // Readiness checks for complete
+        const canComplete = pendingLogs === 0 && rejectedLogs === 0 && pendingExtensions === 0;
 
         return (
-          <div className="mb-6">
-            {/* Workflow blocker warning */}
-            {hasBlockers && (task.status === 'IN_PROGRESS' || task.status === 'REVIEW') && isPM && (
-              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 mb-3 text-sm text-amber-800">
-                <p className="font-medium">Action required before progressing:</p>
-                <ul className="list-disc list-inside mt-1 text-xs">
-                  {unapprovedLogs > 0 && <li>{unapprovedLogs} time log(s) pending approval</li>}
-                  {pendingExtensions > 0 && <li>{pendingExtensions} extension request(s) pending review</li>}
+          <div className="mb-6 space-y-3">
+            {/* Transition error from backend */}
+            {transitionError && (
+              <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                {transitionError}
+                <button onClick={() => setTransitionError('')} className="ml-2 underline text-xs">dismiss</button>
+              </div>
+            )}
+
+            {/* Workflow status guide */}
+            {task.status === 'IN_PROGRESS' && isAssignedStaff && (
+              <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
+                <p className="font-medium">What's needed to submit for review:</p>
+                <ul className="mt-1 text-xs space-y-0.5">
+                  <li className={totalLogs > 0 ? 'text-green-700' : 'text-gray-500'}>{totalLogs > 0 ? '✓' : '○'} Log at least one time entry</li>
+                  <li className={pendingLogs === 0 && totalLogs > 0 ? 'text-green-700' : 'text-gray-500'}>{pendingLogs === 0 && totalLogs > 0 ? '✓' : '○'} All time logs approved by PM ({approvedLogs}/{totalLogs} approved)</li>
+                  <li className={rejectedLogs === 0 ? 'text-green-700' : 'text-red-600'}>{rejectedLogs === 0 ? '✓' : '✗'} No rejected time logs ({rejectedLogs} rejected)</li>
+                </ul>
+              </div>
+            )}
+
+            {task.status === 'REVIEW' && isPM && (
+              <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
+                <p className="font-medium">Review checklist:</p>
+                <ul className="mt-1 text-xs space-y-0.5">
+                  <li className={pendingLogs === 0 ? 'text-green-700' : 'text-amber-600'}>{pendingLogs === 0 ? '✓' : '○'} All time logs reviewed ({pendingLogs} pending)</li>
+                  <li className={rejectedLogs === 0 ? 'text-green-700' : 'text-red-600'}>{rejectedLogs === 0 ? '✓' : '✗'} No rejected logs outstanding ({rejectedLogs} rejected)</li>
+                  <li className={pendingExtensions === 0 ? 'text-green-700' : 'text-amber-600'}>{pendingExtensions === 0 ? '✓' : '○'} All extension requests resolved ({pendingExtensions} pending)</li>
                 </ul>
               </div>
             )}
 
             <div className="flex flex-wrap gap-2">
-              {/* Staff or PM can start a task */}
+              {/* ASSIGNED → IN_PROGRESS: assigned staff starts working */}
               {task.status === 'ASSIGNED' && (isAssignedStaff || isPM) && (
-                <button onClick={() => transitionMutation.mutate('IN_PROGRESS')}
+                <button onClick={() => { setTransitionError(''); transitionMutation.mutate({ status: 'IN_PROGRESS' }); }}
                   disabled={transitionMutation.isPending}
                   className="rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50">
-                  Start Task
+                  {isAssignedStaff ? 'Start Working' : 'Start Task'}
                 </button>
               )}
-              {/* Staff submits for review — must have all logs approved first */}
-              {task.status === 'IN_PROGRESS' && (isAssignedStaff || isPM) && (
-                <button onClick={() => {
-                    if (unapprovedLogs > 0 && isAssignedStaff) {
-                      alert(`You have ${unapprovedLogs} unapproved time log(s). Wait for PM approval before submitting for review.`);
-                      return;
-                    }
-                    transitionMutation.mutate('REVIEW');
-                  }}
-                  disabled={transitionMutation.isPending}
-                  className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50">
+
+              {/* IN_PROGRESS → REVIEW: staff submits (backend enforces time log requirements) */}
+              {task.status === 'IN_PROGRESS' && isAssignedStaff && (
+                <button onClick={() => { setTransitionError(''); transitionMutation.mutate({ status: 'REVIEW' }); }}
+                  disabled={transitionMutation.isPending || !canSubmitForReview}
+                  className={`rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${canSubmitForReview ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-400 cursor-not-allowed'}`}>
                   Submit for Review
                 </button>
               )}
-              {/* Only PM can complete — must approve all logs and extensions first */}
+
+              {/* REVIEW → COMPLETED: PM approves (backend enforces all checks) */}
               {task.status === 'REVIEW' && isPM && (
-                <button onClick={() => {
-                    if (hasBlockers) {
-                      alert(`Cannot complete: ${unapprovedLogs > 0 ? `${unapprovedLogs} unapproved time log(s)` : ''}${unapprovedLogs > 0 && pendingExtensions > 0 ? ' and ' : ''}${pendingExtensions > 0 ? `${pendingExtensions} pending extension(s)` : ''}. Please review all items first.`);
-                      return;
-                    }
-                    transitionMutation.mutate('COMPLETED');
-                  }}
-                  disabled={transitionMutation.isPending || hasBlockers}
-                  className={`rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${hasBlockers ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-700 hover:bg-green-800'}`}>
-                  Complete Task
-                </button>
+                <>
+                  <button onClick={() => { setTransitionError(''); transitionMutation.mutate({ status: 'COMPLETED' }); }}
+                    disabled={transitionMutation.isPending || !canComplete}
+                    className={`rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${canComplete ? 'bg-green-700 hover:bg-green-800' : 'bg-gray-400 cursor-not-allowed'}`}>
+                    Approve & Complete
+                  </button>
+                  <button onClick={() => setShowSendBack(true)}
+                    disabled={transitionMutation.isPending}
+                    className="rounded-md border border-orange-300 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50">
+                    Send Back for Rework
+                  </button>
+                </>
               )}
             </div>
+
+            {/* Send Back Modal */}
+            {showSendBack && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Send Back for Rework</h3>
+                  <p className="text-sm text-gray-600 mb-3">This will move the task back to IN PROGRESS so the staff member can address the issues.</p>
+                  <textarea
+                    value={sendBackReason}
+                    onChange={(e) => setSendBackReason(e.target.value)}
+                    placeholder="Reason for sending back (required)..."
+                    rows={3}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm mb-4"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => { setShowSendBack(false); setSendBackReason(''); }}
+                      className="rounded-md border border-gray-300 px-4 py-2 text-sm">Cancel</button>
+                    <button
+                      onClick={() => {
+                        setTransitionError('');
+                        transitionMutation.mutate({ status: 'SEND_BACK', body: { reason: sendBackReason } }, {
+                          onSuccess: () => { setShowSendBack(false); setSendBackReason(''); },
+                        });
+                      }}
+                      disabled={!sendBackReason.trim() || transitionMutation.isPending}
+                      className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50">
+                      {transitionMutation.isPending ? 'Sending...' : 'Send Back'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -397,7 +463,7 @@ export function TaskDetail() {
       <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Time Logs</h3>
 
-        <div className="overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -429,8 +495,8 @@ export function TaskDetail() {
                       <ActionMenu items={[
                         { label: 'Approve', onClick: () => approveLogMutation.mutate({ logId: log.id, action: 'approve' }) },
                         { label: 'Reject', variant: 'danger', onClick: () => {
-                          const reason = window.prompt('Reason for rejection:');
-                          if (reason !== null) approveLogMutation.mutate({ logId: log.id, action: 'reject', reason: reason || undefined });
+                          setRejectModal({ logId: log.id, staffName: task.staffMember?.name || 'Staff', hours: log.hours, description: log.description });
+                          setRejectReason('');
                         }},
                       ]} />
                     )}
@@ -577,6 +643,65 @@ export function TaskDetail() {
           <p className="text-sm text-gray-400">No extension requests.</p>
         )}
       </div>
+
+      {/* Time Log Rejection Modal */}
+      {rejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Reject Time Log</h3>
+            <div className="rounded-md bg-gray-50 border border-gray-200 p-3 mb-4 text-sm">
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-600">Staff:</span>
+                <span className="font-medium text-gray-900">{rejectModal.staffName}</span>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-600">Hours:</span>
+                <span className="font-medium text-gray-900">{rejectModal.hours}h</span>
+              </div>
+              <div className="mt-1">
+                <span className="text-gray-600">Work done:</span>
+                <p className="text-gray-800 text-xs mt-0.5">{rejectModal.description}</p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reason for rejection <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Explain why this time log is being rejected. The staff member will see this reason and can dispute or re-submit."
+                rows={4}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                autoFocus
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Be specific — e.g. "Hours seem high for this deliverable" or "Description doesn't match assigned task scope"
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => { setRejectModal(null); setRejectReason(''); }}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  approveLogMutation.mutate(
+                    { logId: rejectModal.logId, action: 'reject', reason: rejectReason || undefined },
+                    { onSuccess: () => { setRejectModal(null); setRejectReason(''); } },
+                  );
+                }}
+                disabled={!rejectReason.trim() || approveLogMutation.isPending}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {approveLogMutation.isPending ? 'Rejecting...' : 'Reject Time Log'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

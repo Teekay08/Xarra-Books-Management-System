@@ -12,6 +12,7 @@
     "migrate-data": "tsx src/scripts/migrate-data.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "@better-auth/drizzle-adapter": "^1.5.3",
     "@fastify/cors": "^11.0.0",
     "@fastify/helmet": "^13.0.0",
@@ -19,6 +20,7 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/sensible": "^6.0.0",
     "@fastify/static": "^9.0.0",
+    "@google/generative-ai": "^0.24.1",
     "@xarra/db": "*",
     "@xarra/shared": "*",
     "better-auth": "^1.5.3",

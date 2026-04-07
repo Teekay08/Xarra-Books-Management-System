@@ -326,7 +326,7 @@ export function RemittanceDetail() {
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Linked Invoices</h2>
           <div className="space-y-4 mb-6">
             {r.invoiceAllocations.map((alloc) => (
-              <div key={alloc.id} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div key={alloc.id} className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
                 <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
                   <div>
                     <Link to={`/invoices/${alloc.invoice.id}`} className="text-sm font-medium text-green-700 hover:underline">

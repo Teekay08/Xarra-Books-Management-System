@@ -134,7 +134,6 @@ export const PERMISSIONS: PermissionMatrix = {
     settings: ['read'],
   },
   staff: {
-    dashboard: ['read'],
     employeePortal: ['read', 'create', 'update'],
     settings: ['read'],
   },

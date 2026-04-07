@@ -44,7 +44,7 @@ export function InventoryReport() {
       {isLoading && <p className="text-gray-400">Loading...</p>}
 
       {rows.length > 0 && (
-        <div className="rounded-lg border bg-white overflow-hidden">
+        <div className="rounded-lg border bg-white overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>

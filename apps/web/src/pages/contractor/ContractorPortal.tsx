@@ -113,6 +113,55 @@ export function ContractorPortal() {
           </div>
         </div>
 
+        {/* SOW Summary */}
+        {data?.data?.sow && (
+          <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase text-blue-700">Statement of Work</p>
+                <p className="text-base font-semibold text-blue-900">
+                  {data.data.sow.number} <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700">{data.data.sow.status}</span>
+                </p>
+                <p className="mt-1 text-xs text-blue-700">
+                  Total: R{Number(data.data.sow.totalAmount || 0).toLocaleString('en-ZA')}
+                  {data.data.sow.acceptedAt && ` · Accepted ${new Date(data.data.sow.acceptedAt).toLocaleDateString('en-ZA')}`}
+                </p>
+              </div>
+              {data.data.sow.pdfUrl && (
+                <a href={data.data.sow.pdfUrl} target="_blank" rel="noreferrer"
+                  className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100">
+                  View SOW PDF
+                </a>
+              )}
+            </div>
+            {data.data.sow.scope && (
+              <details className="mt-3 text-xs text-blue-900">
+                <summary className="cursor-pointer font-medium">Scope of work</summary>
+                <p className="mt-2 whitespace-pre-wrap">{data.data.sow.scope}</p>
+              </details>
+            )}
+            {Array.isArray(data.data.sow.deliverables) && data.data.sow.deliverables.length > 0 && (
+              <details className="mt-2 text-xs text-blue-900">
+                <summary className="cursor-pointer font-medium">Deliverables ({data.data.sow.deliverables.length})</summary>
+                <ul className="mt-2 list-disc pl-5 space-y-1">
+                  {data.data.sow.deliverables.map((d: any, i: number) => (
+                    <li key={i}>
+                      <span className="font-medium">{d.description}</span>
+                      {d.dueDate && <span className="text-blue-600"> — due {new Date(d.dueDate).toLocaleDateString('en-ZA')}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {data.data.sow.terms && (
+              <details className="mt-2 text-xs text-blue-900">
+                <summary className="cursor-pointer font-medium">Terms</summary>
+                <p className="mt-2 whitespace-pre-wrap">{data.data.sow.terms}</p>
+              </details>
+            )}
+          </div>
+        )}
+
         {/* Hours Summary */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
@@ -156,7 +205,7 @@ export function ContractorPortal() {
             const hasExtensions = remaining > 0 && logged > allocated - remaining - 0.01;
 
             return (
-              <div key={task.id} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div key={task.id} className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
                 {/* Task Header */}
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-2">

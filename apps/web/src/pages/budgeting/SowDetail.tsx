@@ -69,6 +69,7 @@ export function SowDetail() {
   const queryClient = useQueryClient();
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendEmail, setSendEmail] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['sow-document', id],
@@ -89,7 +90,9 @@ export function SowDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sow-document', id] });
       setShowSendModal(false);
+      setSuccessMsg(`SOW sent successfully to ${sendEmail}`);
       setSendEmail('');
+      setTimeout(() => setSuccessMsg(''), 5000);
     },
     onError: (err: Error) => alert(`Failed to send SOW: ${err.message}`),
   });
@@ -105,15 +108,26 @@ export function SowDetail() {
   if (!data?.data) return <div className="py-12 text-center text-gray-400">SOW not found</div>;
 
   const sow = data.data;
-  const contractorName = sow.contractor?.name || sow.staffUser?.name || '—';
+  const assigneeName = sow.contractor?.name || sow.staffUser?.name || sow.scope?.match(/Statement of Work for (.+?) on project/)?.[1] || '—';
+  const assigneeType = sow.contractor ? 'Contractor' : 'Staff Member';
   const versions = versionsData?.data ?? [];
   const costBreakdown = sow.costBreakdown || [];
   const deliverables = sow.deliverables || [];
   const timeline = sow.timeline || { startDate: null, endDate: null, milestones: [] };
   const costGrandTotal = costBreakdown.reduce((s: number, c: any) => s + Number(c.total || 0), 0);
 
+  const wasRegenerated = sow.version > 1 && sow.status === 'DRAFT';
+
   return (
     <div>
+      {wasRegenerated && (
+        <div className="mb-4 rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900">
+          <p className="font-medium">SOW updated from tasks (v{sow.version})</p>
+          <p className="text-xs">
+            This SOW was automatically regenerated because tasks for this staff member were added or changed. Re-send it for acceptance.
+          </p>
+        </div>
+      )}
       <PageHeader
         title={sow.number}
         subtitle={sow.project?.name || 'Statement of Work'}
@@ -146,6 +160,10 @@ export function SowDetail() {
         }
       />
 
+      {successMsg && (
+        <div className="mb-4 rounded-md bg-green-50 border border-green-200 p-3 text-sm text-green-700">{successMsg}</div>
+      )}
+
       <div className="max-w-4xl space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
@@ -161,8 +179,9 @@ export function SowDetail() {
             )}
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-500 uppercase">Contractor</p>
-            <p className="mt-1 text-sm font-medium text-gray-900">{contractorName}</p>
+            <p className="text-xs text-gray-500 uppercase">Assigned To</p>
+            <p className="mt-1 text-sm font-medium text-gray-900">{assigneeName}</p>
+            <p className="text-xs text-gray-400">{assigneeType}</p>
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <p className="text-xs text-gray-500 uppercase">Total Amount</p>
@@ -188,7 +207,7 @@ export function SowDetail() {
 
         {/* Deliverables */}
         {deliverables.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
             <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold text-gray-900">Deliverables</h3>
             </div>
@@ -249,7 +268,7 @@ export function SowDetail() {
 
         {/* Cost Breakdown */}
         {costBreakdown.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
             <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold text-gray-900">Cost Breakdown</h3>
             </div>
@@ -308,7 +327,7 @@ export function SowDetail() {
 
         {/* Version History */}
         {versions.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
             <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold text-gray-900">Version History</h3>
             </div>

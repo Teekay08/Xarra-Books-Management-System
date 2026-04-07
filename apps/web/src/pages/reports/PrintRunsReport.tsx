@@ -117,7 +117,7 @@ export function PrintRunsReport() {
       )}
 
       {rows.length > 0 && (
-        <div className="rounded-lg border bg-white overflow-hidden">
+        <div className="rounded-lg border bg-white overflow-x-auto">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">

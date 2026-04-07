@@ -92,8 +92,8 @@ export function StaffDetail() {
           <p className="mt-1 text-xl font-bold text-gray-900">R {Number(staff.hourlyRate || 0).toFixed(2)}/hr</p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs text-gray-500 uppercase">Max Hours/Week</p>
-          <p className="mt-1 text-xl font-bold text-gray-900">{staff.maxHoursPerWeek || 40}h</p>
+          <p className="text-xs text-gray-500 uppercase">Max Hours/Month</p>
+          <p className="mt-1 text-xl font-bold text-gray-900">{staff.maxHoursPerMonth || 160}h</p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-xs text-gray-500 uppercase">Active Tasks</p>

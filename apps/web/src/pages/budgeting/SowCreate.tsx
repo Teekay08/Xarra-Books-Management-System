@@ -281,7 +281,7 @@ export function SowCreate() {
         {/* Deliverables */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Deliverables</label>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -405,7 +405,7 @@ export function SowCreate() {
         {/* Cost Breakdown */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Cost Breakdown</label>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

@@ -86,7 +86,7 @@ export function PortalSalesSummary() {
       ) : (
         <div className="space-y-4">
           {titles.map((t) => (
-            <div key={t.titleId} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div key={t.titleId} className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
               <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">{t.titleName}</h3>
                 <div className="flex items-center gap-4 text-sm">

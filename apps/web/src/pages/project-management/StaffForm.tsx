@@ -44,7 +44,7 @@ export function StaffForm() {
     role: '',
     skills: [] as string[],
     availabilityType: 'FULL_TIME',
-    maxHoursPerWeek: 40,
+    maxHoursPerMonth: 160,
     hourlyRate: 0,
     isInternal: true,
     userId: '',
@@ -68,7 +68,7 @@ export function StaffForm() {
         role: s.role || '',
         skills: s.skills || [],
         availabilityType: s.availabilityType || 'FULL_TIME',
-        maxHoursPerWeek: Number(s.maxHoursPerWeek) || 40,
+        maxHoursPerMonth: Number(s.maxHoursPerMonth) || 160,
         hourlyRate: Number(s.hourlyRate) || 0,
         isInternal: !!s.isInternal,
         userId: s.userId || '',
@@ -77,9 +77,12 @@ export function StaffForm() {
     }
   }, [existing]);
 
+  // Only fetch users list when editing (to show linked user) — PMs may not have access to /users
   const { data: usersData } = useQuery({
     queryKey: ['users-dropdown'],
     queryFn: () => api<{ data: User[] }>('/users?limit=500'),
+    enabled: isEdit,
+    retry: false,
   });
 
   function toggleSkill(skill: string) {
@@ -91,6 +94,8 @@ export function StaffForm() {
     }));
   }
 
+  const [successMsg, setSuccessMsg] = useState('');
+
   const mutation = useMutation({
     mutationFn: async () => {
       const payload = {
@@ -101,21 +106,26 @@ export function StaffForm() {
       };
 
       if (isEdit) {
-        return api(`/project-management/staff/${id}`, {
+        return api<{ data: any; accountCreated?: boolean }>(`/project-management/staff/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
       } else {
-        return api('/project-management/staff', {
+        return api<{ data: any; accountCreated?: boolean }>('/project-management/staff', {
           method: 'POST',
           body: JSON.stringify(payload),
           headers: { 'X-Idempotency-Key': crypto.randomUUID() },
         });
       }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['pm-staff'] });
-      navigate('/pm/staff');
+      if (result?.accountCreated) {
+        setSuccessMsg(`Staff member added. A system account was created for ${form.email} — they'll receive a password setup email.`);
+        setTimeout(() => navigate('/pm/staff'), 3000);
+      } else {
+        navigate('/pm/staff');
+      }
     },
     onError: (err: Error) => setError(err.message),
   });
@@ -139,6 +149,10 @@ export function StaffForm() {
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {successMsg && (
+        <div className="mb-4 rounded-md bg-green-50 border border-green-200 p-3 text-sm text-green-700">{successMsg}</div>
       )}
 
       <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
@@ -177,7 +191,7 @@ export function StaffForm() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
             <input type="text" value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
-              placeholder="e.g. Senior Editor, Freelance Designer"
+              placeholder="e.g. Senior Editor, Freelance Designer (optional — defaults to 'Staff Member')"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
           </div>
 
@@ -215,10 +229,11 @@ export function StaffForm() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Hours/Week</label>
-              <input type="number" min={0} max={168} value={form.maxHoursPerWeek}
-                onChange={(e) => setForm({ ...form, maxHoursPerWeek: Number(e.target.value) })}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Max Hours/Month</label>
+              <input type="number" min={0} max={744} value={form.maxHoursPerMonth}
+                onChange={(e) => setForm({ ...form, maxHoursPerMonth: Number(e.target.value) })}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+              <p className="mt-1 text-xs text-gray-500">Default 160h. Staff manage their own pace within the monthly cap.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate (ZAR)</label>
@@ -238,19 +253,35 @@ export function StaffForm() {
 
         {/* System User Link */}
         <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-gray-900">System User Link</h3>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Link to System User (optional)</label>
-            <select value={form.userId}
-              onChange={(e) => setForm({ ...form, userId: e.target.value })}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
-              <option value="">-- None --</option>
-              {usersData?.data?.map((u) => (
-                <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-400 mt-1">Links this staff profile to a system login for self-service features</p>
-          </div>
+          <h3 className="text-sm font-semibold text-gray-900">System Account</h3>
+
+          {isEdit && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Linked System User</label>
+              <select value={form.userId}
+                onChange={(e) => setForm({ ...form, userId: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                <option value="">-- None --</option>
+                {usersData?.data?.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Links this staff profile to a system login for self-service features</p>
+            </div>
+          )}
+
+          {!isEdit && form.isInternal && (
+            <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
+              <strong>Auto-account creation:</strong> A system login will be created automatically using the email above.
+              The staff member will receive a welcome email with a link to set their password.
+            </div>
+          )}
+
+          {!isEdit && !form.isInternal && (
+            <p className="text-sm text-gray-500">
+              External contractors access their tasks via magic link — no system account is needed.
+            </p>
+          )}
         </div>
 
         {/* Notes */}

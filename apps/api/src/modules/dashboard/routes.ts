@@ -237,10 +237,16 @@ export async function dashboardRoutes(app: FastifyInstance) {
         COUNT(ap.id)::int AS entry_count,
         MIN(ap.period_to) AS earliest_period_end
       FROM authors a
-      JOIN author_contracts ac ON ac.author_id = a.id AND ac.is_active = true
       LEFT JOIN author_payments ap ON ap.author_id = a.id
         AND ap.status IN ('PENDING', 'PROCESSING')
       WHERE a.is_active = true
+        AND EXISTS (
+          SELECT 1
+          FROM author_contracts ac
+          WHERE ac.author_id = a.id
+            AND ac.start_date <= NOW()
+            AND (ac.end_date IS NULL OR ac.end_date >= NOW())
+        )
       GROUP BY a.id, a.legal_name, a.pen_name
       HAVING COALESCE(SUM(ap.amount_due::numeric - COALESCE(ap.amount_paid::numeric, 0)), 0) > 0
       ORDER BY amount_pending DESC

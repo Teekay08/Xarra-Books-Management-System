@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { ActionMenu } from '../../components/ActionMenu';
@@ -31,8 +31,10 @@ const statusColors: Record<string, string> = {
 
 export function ProjectList() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['budgeting-projects', page, search],
@@ -40,6 +42,11 @@ export function ProjectList() {
       api<{ data: Project[]; pagination: { page: number; totalPages: number; total: number } }>(
         `/budgeting/projects?page=${page}&limit=20&search=${search}`,
       ),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (projectId: string) => api(`/budgeting/projects/${projectId}`, { method: 'DELETE' }),
+    onSuccess: () => { setDeleteTarget(null); queryClient.invalidateQueries({ queryKey: ['budgeting-projects'] }); },
   });
 
   return (
@@ -60,7 +67,7 @@ export function ProjectList() {
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm" />
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -106,6 +113,7 @@ export function ProjectList() {
                     <ActionMenu items={[
                       { label: 'View', onClick: () => navigate(`/budgeting/projects/${p.id}`) },
                       { label: 'Edit', onClick: () => navigate(`/budgeting/projects/${p.id}/edit`) },
+                      { label: 'Delete', onClick: () => setDeleteTarget(p), variant: 'danger' as const, hidden: p.status !== 'PLANNING' },
                     ]} />
                   </td>
                 </tr>
@@ -126,6 +134,32 @@ export function ProjectList() {
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50">Previous</button>
             <button onClick={() => setPage((p) => p + 1)} disabled={page >= data.pagination.totalPages}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50">Next</button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Project</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              Are you sure you want to delete <strong>{deleteTarget.name}</strong> ({deleteTarget.number})?
+            </p>
+            <p className="text-sm text-red-600 mb-4">
+              This will permanently remove the project and all associated data. This cannot be undone.
+            </p>
+            {deleteMutation.isError && (
+              <p className="text-sm text-red-600 mb-3">{(deleteMutation.error as Error)?.message || 'Failed to delete'}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setDeleteTarget(null); deleteMutation.reset(); }}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm">Cancel</button>
+              <button onClick={() => deleteMutation.mutate(deleteTarget.id)} disabled={deleteMutation.isPending}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete Project'}
+              </button>
+            </div>
           </div>
         </div>
       )}

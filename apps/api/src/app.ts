@@ -15,6 +15,7 @@ import { createTakealotSyncQueue, createTakealotSyncWorker, scheduleTakealotSync
 import { createInvoiceReminderQueue, createInvoiceReminderWorker, scheduleInvoiceReminderJob } from './jobs/invoice-reminders.js';
 import { createSorInvoiceQueue, createSorInvoiceWorker, scheduleSorInvoiceJob } from './jobs/sor-invoice.js';
 import { createMonthlyStatementQueue, createMonthlyStatementWorker, scheduleMonthlyStatementJob } from './jobs/monthly-statements.js';
+import { createTaskPlannerReminderQueue, createTaskPlannerReminderWorker, scheduleTaskPlannerReminderJob } from './jobs/task-planner-reminders.js';
 import { authorRoutes } from './modules/authors/routes.js';
 import { titleRoutes } from './modules/titles/routes.js';
 import { partnerRoutes } from './modules/partners/routes.js';
@@ -43,6 +44,7 @@ import { budgetingRoutes } from './modules/budgeting/routes.js';
 import { orderTrackingRoutes } from './modules/order-tracking/routes.js';
 import { suspenseRoutes } from './modules/suspense/routes.js';
 import { projectManagementRoutes } from './modules/project-management/routes.js';
+import { aiRoutes } from './modules/ai/routes.js';
 import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
@@ -149,6 +151,8 @@ export async function buildApp() {
   let stmtWorker: ReturnType<typeof createMonthlyStatementWorker> | null = null;
   let takealotQueue: ReturnType<typeof createTakealotSyncQueue> | null = null;
   let takealotWorker: ReturnType<typeof createTakealotSyncWorker> | null = null;
+  let plannerReminderQueue: ReturnType<typeof createTaskPlannerReminderQueue> | null = null;
+  let plannerReminderWorker: ReturnType<typeof createTaskPlannerReminderWorker> | null = null;
 
   try {
     // Test Redis connectivity before creating queues
@@ -185,6 +189,12 @@ export async function buildApp() {
     scheduleMonthlyStatementJob(stmtQueue)
       .then(() => app.log.info('Monthly statement job scheduled (1st of month, 6:00 AM SAST)'))
       .catch((err) => app.log.warn({ err }, 'Failed to schedule monthly statement job'));
+
+    plannerReminderQueue = createTaskPlannerReminderQueue(config.redis.url);
+    plannerReminderWorker = createTaskPlannerReminderWorker(config.redis.url);
+    scheduleTaskPlannerReminderJob(plannerReminderQueue)
+      .then(() => app.log.info('Task planner reminder job scheduled (daily 7:30 AM SAST)'))
+      .catch((err) => app.log.warn({ err }, 'Failed to schedule task planner reminder job'));
   } catch {
     app.log.warn('Redis unavailable — background jobs disabled. API will still serve requests.');
   }
@@ -200,6 +210,8 @@ export async function buildApp() {
     if (stmtQueue) await stmtQueue.close();
     if (takealotWorker) await takealotWorker.close();
     if (takealotQueue) await takealotQueue.close();
+    if (plannerReminderWorker) await plannerReminderWorker.close();
+    if (plannerReminderQueue) await plannerReminderQueue.close();
   });
 
   // Health check (no auth required)
@@ -284,6 +296,7 @@ export async function buildApp() {
         { name: 'SOR Auto-Invoice', status: sorInvoiceQueue ? 'active' : 'disabled', schedule: 'Daily 8:00 SAST' },
         { name: 'Monthly Statements', status: stmtQueue ? 'active' : 'disabled', schedule: '1st of month 6:00 SAST' },
         { name: 'Takealot Sync', status: takealotQueue ? 'active' : 'disabled', schedule: 'Daily 6:00 SAST' },
+        { name: 'Task Planner Reminders', status: plannerReminderQueue ? 'active' : 'disabled', schedule: 'Daily 7:30 SAST' },
       ],
       recentEmails,
       responseTime: Date.now() - startTime,
@@ -338,6 +351,7 @@ export async function buildApp() {
     api.register(orderTrackingRoutes, { prefix: '/order-tracking' });
     api.register(suspenseRoutes, { prefix: '/suspense' });
     api.register(projectManagementRoutes, { prefix: '/project-management' });
+    api.register(aiRoutes, { prefix: '/ai' });
   }, { prefix: '/api/v1' });
 
   return app;

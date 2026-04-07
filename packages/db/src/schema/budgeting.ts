@@ -226,6 +226,9 @@ export const timesheetEntries = pgTable('timesheet_entries', {
   timesheetId: uuid('timesheet_id').notNull().references(() => timesheets.id, { onDelete: 'cascade' }),
   milestoneId: uuid('milestone_id').notNull().references(() => projectMilestones.id),
   budgetLineItemId: uuid('budget_line_item_id').references(() => budgetLineItems.id),
+  taskCodeId: uuid('task_code_id'),
+  taskAssignmentId: uuid('task_assignment_id'),
+  taskTimeLogId: uuid('task_time_log_id'),
   workDate: timestamp('work_date', { withTimezone: true }).notNull(),
   hours: decimal('hours', { precision: 5, scale: 2 }).notNull(),
   description: varchar('description', { length: 500 }).notNull(),
@@ -233,6 +236,9 @@ export const timesheetEntries = pgTable('timesheet_entries', {
   index('idx_timesheet_entries_timesheet_id').on(t.timesheetId),
   index('idx_timesheet_entries_milestone_id').on(t.milestoneId),
   index('idx_timesheet_entries_work_date').on(t.workDate),
+  index('idx_timesheet_entries_task_code').on(t.taskCodeId),
+  index('idx_timesheet_entries_task_assignment').on(t.taskAssignmentId),
+  index('idx_timesheet_entries_task_time_log').on(t.taskTimeLogId),
 ]);
 
 // ==========================================

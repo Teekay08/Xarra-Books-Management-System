@@ -44,7 +44,9 @@ interface SowData {
   date: string;
   validUntil: string;
   company?: CompanyInfo;
-  contractor: ContractorInfo;
+  contractor?: ContractorInfo;
+  staffName?: string;
+  staffEmail?: string;
   project: {
     name: string;
     number: string;
@@ -166,11 +168,12 @@ export function renderSowHtml(data: SowData): string {
       ${company.email ? `<p>${company.email}</p>` : ''}
     </div>
     <div class="party">
-      <h3>Contractor</h3>
-      <p><strong>${data.contractor.name}</strong></p>
-      ${data.contractor.contactName ? `<p>${data.contractor.contactName}</p>` : ''}
-      ${data.contractor.address ? `<p>${data.contractor.address}</p>` : ''}
-      ${data.contractor.contactEmail ? `<p>${data.contractor.contactEmail}</p>` : ''}
+      <h3>${data.contractor ? 'Contractor' : 'Staff Member'}</h3>
+      <p><strong>${data.contractor?.name || data.staffName || 'Staff Member'}</strong></p>
+      ${data.contractor?.contactName ? `<p>${data.contractor.contactName}</p>` : ''}
+      ${data.contractor?.address ? `<p>${data.contractor.address}</p>` : ''}
+      ${data.contractor?.contactEmail ? `<p>${data.contractor.contactEmail}</p>` : ''}
+      ${!data.contractor && data.staffEmail ? `<p>${data.staffEmail}</p>` : ''}
     </div>
   </div>
 
@@ -260,7 +263,7 @@ export function renderSowHtml(data: SowData): string {
       <div class="sig-line">Date</div>
     </div>
     <div class="sig-block">
-      <h4>${data.contractor.name}</h4>
+      <h4>${data.contractor?.name || data.staffName || 'Staff Member'}</h4>
       <div class="sig-line">Signature</div>
       <div class="sig-line">Name</div>
       <div class="sig-line">Title</div>

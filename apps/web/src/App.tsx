@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { PortalLayout } from './components/PortalLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Dashboard } from './pages/Dashboard';
+import { HomePage } from './pages/HomePage';
 import { Login } from './pages/Login';
 import { AuthorList } from './pages/authors/AuthorList';
 import { AuthorDetail } from './pages/authors/AuthorDetail';
@@ -76,6 +77,9 @@ import { ExpenseTrends } from './pages/reports/ExpenseTrends';
 import { CashFlowAnalysis } from './pages/reports/CashFlowAnalysis';
 import { TaxReport } from './pages/reports/TaxReport';
 import { PrintRunsReport } from './pages/reports/PrintRunsReport';
+import { ProjectCostSummary } from './pages/reports/ProjectCostSummary';
+import { TaskCompletionReport } from './pages/reports/TaskCompletionReport';
+import { PlannedVsActual } from './pages/reports/PlannedVsActual';
 import { SorReconciliation } from './pages/reports/SorReconciliation';
 import { RoyaltyDueReport } from './pages/reports/RoyaltyDueReport';
 import { ReturnsList } from './pages/returns/ReturnsList';
@@ -142,10 +146,12 @@ import { SystemHealth } from './pages/admin/SystemHealth';
 import { StaffForm } from './pages/project-management/StaffForm';
 import { ProjectTeam } from './pages/project-management/ProjectTeam';
 import { TaskList } from './pages/project-management/TaskList';
+import { TaskRequestsInbox } from './pages/project-management/TaskRequestsInbox';
 import { TaskForm } from './pages/project-management/TaskForm';
 import { TaskDetail } from './pages/project-management/TaskDetail';
 import { ResourcePlanning } from './pages/project-management/ResourcePlanning';
 import { EmployeeDashboard } from './pages/employee/EmployeeDashboard';
+import { EmployeePlanner } from './pages/employee/EmployeePlanner';
 // Suspense + Analytics
 import { SuspenseDashboard } from './pages/finance/SuspenseDashboard';
 import { CashFlowDashboard } from './pages/finance/CashFlowDashboard';
@@ -178,7 +184,7 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { index: true, element: <Dashboard /> },
+      { index: true, element: <HomePage /> },
 
       // Authors
       { path: 'authors', element: <AuthorList /> },
@@ -292,9 +298,11 @@ const router = createBrowserRouter([
       { path: 'pm/projects/:projectId/tasks/new', element: <TaskForm /> },
       { path: 'pm/tasks/:id', element: <TaskDetail /> },
       { path: 'pm/capacity', element: <ResourcePlanning /> },
+      { path: 'pm/task-requests', element: <TaskRequestsInbox /> },
 
       // Employee Portal
       { path: 'employee', element: <EmployeeDashboard /> },
+      { path: 'employee/planner', element: <EmployeePlanner /> },
 
       // Project Budgeting
       { path: 'budgeting', element: <BudgetDashboard /> },
@@ -335,6 +343,9 @@ const router = createBrowserRouter([
       { path: 'reports/print-runs', element: <PrintRunsReport /> },
       { path: 'reports/sor-reconciliation', element: <SorReconciliation /> },
       { path: 'reports/royalty-due', element: <RoyaltyDueReport /> },
+      { path: 'reports/project-costs', element: <ProjectCostSummary /> },
+      { path: 'reports/task-completion', element: <TaskCompletionReport /> },
+      { path: 'reports/planned-vs-actual', element: <PlannedVsActual /> },
 
       // Analytics
       { path: 'analytics/suspense', element: <SuspenseDashboard /> },

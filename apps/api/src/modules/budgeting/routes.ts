@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, sql, and, isNull } from 'drizzle-orm';
+import { eq, sql, and, isNull, gte, lte, inArray } from 'drizzle-orm';
+import { z } from 'zod';
 import {
   projects, projectMilestones, budgetLineItems, actualCostEntries,
   rateCards, timesheets, timesheetEntries, sowDocuments, sowDocumentVersions,
-  costEstimationHistory,
+  costEstimationHistory, taskAssignments, taskTimeLogs, staffMembers,
 } from '@xarra/db';
 import {
   createProjectSchema, updateProjectSchema,
@@ -37,6 +38,51 @@ const renderTimesheetHtml = _renderTimesheetHtml as (data: any) => string;
 const renderBudgetReportHtml = _renderBudgetReportHtml as (data: any) => string;
 
 export async function budgetingRoutes(app: FastifyInstance) {
+
+  const deriveSowWorkflowStage = (sowStatus: string, taskStatuses: string[]) => {
+    if (sowStatus === 'DRAFT') return 'DRAFT_SOW';
+    if (sowStatus === 'SENT') return 'SOW_SENT';
+    if (sowStatus === 'CANCELLED') return 'CANCELLED';
+    if (sowStatus === 'EXPIRED') return 'EXPIRED';
+    if (sowStatus !== 'ACCEPTED') return 'UNKNOWN';
+
+    if (taskStatuses.length === 0) return 'SOW_ACCEPTED';
+
+    const allFinal = taskStatuses.every((s) => s === 'COMPLETED' || s === 'CANCELLED');
+    if (allFinal) return 'DELIVERY_COMPLETE';
+
+    const hasExecution = taskStatuses.some((s) => s === 'IN_PROGRESS' || s === 'REVIEW');
+    if (hasExecution) return 'IN_PROGRESS';
+
+    const hasPlanningOnly = taskStatuses.every((s) => s === 'ASSIGNED' || s === 'DRAFT');
+    if (hasPlanningOnly) return 'TASKS_PLANNED';
+
+    return 'TASKS_PLANNED';
+  };
+
+  const deriveMilestonePipelineStatus = (
+    milestone: { status: string; actualStartDate: Date | null; actualEndDate: Date | null },
+    taskStatuses: string[],
+  ) => {
+    if (milestone.status === 'CANCELLED') return 'CANCELLED';
+    if (milestone.actualEndDate) return 'COMPLETED';
+
+    if (!taskStatuses.length) {
+      if (milestone.actualStartDate) return 'IN_PROGRESS';
+      return milestone.status || 'NOT_STARTED';
+    }
+
+    const allFinal = taskStatuses.every((s) => s === 'COMPLETED' || s === 'CANCELLED');
+    const hasCompleted = taskStatuses.some((s) => s === 'COMPLETED');
+    const hasStarted = taskStatuses.some((s) =>
+      s === 'ASSIGNED' || s === 'IN_PROGRESS' || s === 'REVIEW' || s === 'COMPLETED',
+    );
+
+    if (allFinal && hasCompleted) return 'COMPLETED';
+    if (allFinal && !hasCompleted) return 'CANCELLED';
+    if (hasStarted || milestone.actualStartDate) return 'IN_PROGRESS';
+    return 'NOT_STARTED';
+  };
 
   // ==========================================
   // PROJECTS
@@ -94,6 +140,30 @@ export async function budgetingRoutes(app: FastifyInstance) {
     });
     if (!project) return reply.notFound('Project not found');
 
+    const milestoneTaskRows = await app.db.query.taskAssignments.findMany({
+      where: and(
+        eq(taskAssignments.projectId, request.params.id),
+        sql`${taskAssignments.milestoneId} IS NOT NULL`,
+      ),
+      columns: {
+        milestoneId: true,
+        status: true,
+      },
+    });
+
+    const taskStatusByMilestoneId = new Map<string, string[]>();
+    for (const row of milestoneTaskRows) {
+      if (!row.milestoneId) continue;
+      const statuses = taskStatusByMilestoneId.get(row.milestoneId) || [];
+      statuses.push(row.status);
+      taskStatusByMilestoneId.set(row.milestoneId, statuses);
+    }
+
+    const milestones = project.milestones.map((m) => ({
+      ...m,
+      status: deriveMilestonePipelineStatus(m, taskStatusByMilestoneId.get(m.id) || []),
+    }));
+
     // Compute xarraNetBudget
     const totalBudget = Number(project.totalBudget) || 0;
     const authorContribution = Number(project.authorContribution) || 0;
@@ -101,6 +171,7 @@ export async function budgetingRoutes(app: FastifyInstance) {
     return {
       data: {
         ...project,
+        milestones,
         xarraNetBudget: String(totalBudget - authorContribution),
       },
     };
@@ -213,7 +284,32 @@ export async function budgetingRoutes(app: FastifyInstance) {
       where: eq(projectMilestones.projectId, request.params.projectId),
       orderBy: (m, { asc }) => [asc(m.sortOrder)],
     });
-    return { data: items };
+
+    const taskRows = await app.db.query.taskAssignments.findMany({
+      where: and(
+        eq(taskAssignments.projectId, request.params.projectId),
+        sql`${taskAssignments.milestoneId} IS NOT NULL`,
+      ),
+      columns: {
+        milestoneId: true,
+        status: true,
+      },
+    });
+
+    const taskStatusByMilestoneId = new Map<string, string[]>();
+    for (const row of taskRows) {
+      if (!row.milestoneId) continue;
+      const statuses = taskStatusByMilestoneId.get(row.milestoneId) || [];
+      statuses.push(row.status);
+      taskStatusByMilestoneId.set(row.milestoneId, statuses);
+    }
+
+    const derivedItems = items.map((m) => ({
+      ...m,
+      status: deriveMilestonePipelineStatus(m, taskStatusByMilestoneId.get(m.id) || []),
+    }));
+
+    return { data: derivedItems };
   });
 
   // Create milestone
@@ -835,6 +931,9 @@ export async function budgetingRoutes(app: FastifyInstance) {
           timesheetId: ts.id,
           milestoneId: e.milestoneId,
           budgetLineItemId: e.budgetLineItemId || null,
+          taskCodeId: e.taskCodeId || null,
+          taskAssignmentId: e.taskAssignmentId || null,
+          taskTimeLogId: e.taskTimeLogId || null,
           workDate: new Date(e.workDate),
           hours: String(e.hours),
           description: e.description,
@@ -846,6 +945,123 @@ export async function budgetingRoutes(app: FastifyInstance) {
     }
 
     return reply.status(201).send({ data: ts });
+  });
+
+  // Generate a timesheet from APPROVED task time logs for a user/project/period.
+  // This is the proper "tasks → timesheet" pipeline: source of truth is task time logs.
+  app.post('/timesheets/generate', {
+    preHandler: [requirePermission('budgeting', 'create'), requireIdempotencyKey],
+  }, async (request, reply) => {
+    const body = z.object({
+      projectId: z.string().uuid(),
+      userId: z.string(),
+      periodFrom: z.string(),
+      periodTo: z.string(),
+      notes: z.string().nullable().optional(),
+    }).parse(request.body);
+
+    const periodFrom = new Date(body.periodFrom);
+    const periodTo = new Date(body.periodTo);
+    if (Number.isNaN(periodFrom.getTime()) || Number.isNaN(periodTo.getTime())) {
+      return reply.badRequest('Invalid periodFrom/periodTo');
+    }
+
+    // Find the staff member record for this user
+    const staff = await app.db.query.staffMembers.findFirst({
+      where: eq(staffMembers.userId, body.userId),
+    });
+    if (!staff) {
+      return reply.badRequest('No staff member profile found for this user.');
+    }
+
+    // Pull APPROVED task time logs in window for this staff member, restricted to tasks on this project.
+    const projectTasks = await app.db.query.taskAssignments.findMany({
+      where: and(
+        eq(taskAssignments.projectId, body.projectId),
+        eq(taskAssignments.staffMemberId, staff.id),
+      ),
+      columns: { id: true, milestoneId: true, taskCodeId: true, title: true },
+    });
+    if (projectTasks.length === 0) {
+      return reply.badRequest('This staff member has no tasks on this project.');
+    }
+    const taskIds = projectTasks.map((t) => t.id);
+    const taskById = new Map(projectTasks.map((t) => [t.id, t]));
+
+    const logs = await app.db.query.taskTimeLogs.findMany({
+      where: and(
+        inArray(taskTimeLogs.taskAssignmentId, taskIds),
+        eq(taskTimeLogs.status, 'APPROVED'),
+        gte(taskTimeLogs.workDate, periodFrom),
+        lte(taskTimeLogs.workDate, periodTo),
+      ),
+      orderBy: (l, { asc }) => [asc(l.workDate)],
+    });
+
+    if (logs.length === 0) {
+      return reply.badRequest('No APPROVED task time logs found in this period for this staff member on this project.');
+    }
+
+    // Skip logs already pulled into another timesheet to prevent double-counting.
+    const existing = await app.db.query.timesheetEntries.findMany({
+      where: inArray(
+        timesheetEntries.taskTimeLogId,
+        logs.map((l) => l.id),
+      ),
+      columns: { taskTimeLogId: true },
+    });
+    const usedLogIds = new Set(existing.map((e) => e.taskTimeLogId).filter(Boolean));
+    const freshLogs = logs.filter((l) => !usedLogIds.has(l.id));
+    if (freshLogs.length === 0) {
+      return reply.badRequest('All approved time logs in this period are already on existing timesheets.');
+    }
+
+    // Tasks must have a milestone (timesheet_entries.milestoneId is NOT NULL).
+    const orphanLogs = freshLogs.filter((l) => !taskById.get(l.taskAssignmentId)?.milestoneId);
+    if (orphanLogs.length > 0) {
+      return reply.badRequest(
+        `${orphanLogs.length} time log(s) belong to tasks without a milestone. Assign milestones to those tasks before generating a timesheet.`,
+      );
+    }
+
+    const number = await nextTimesheetNumber(app.db as any);
+    const totalHours = freshLogs.reduce((sum, l) => sum + Number(l.hours || 0), 0);
+
+    const [ts] = await app.db.insert(timesheets).values({
+      number,
+      projectId: body.projectId,
+      userId: body.userId,
+      periodFrom,
+      periodTo,
+      totalHours: String(totalHours),
+      notes: body.notes || `Generated from ${freshLogs.length} approved task time log(s).`,
+    }).returning();
+
+    await app.db.insert(timesheetEntries).values(
+      freshLogs.map((l) => {
+        const task = taskById.get(l.taskAssignmentId)!;
+        return {
+          timesheetId: ts.id,
+          milestoneId: task.milestoneId!,
+          budgetLineItemId: null,
+          taskCodeId: task.taskCodeId || null,
+          taskAssignmentId: l.taskAssignmentId,
+          taskTimeLogId: l.id,
+          workDate: l.workDate,
+          hours: String(l.hours),
+          description: `[${task.title}] ${l.description}`.slice(0, 500),
+        };
+      }),
+    );
+
+    return reply.status(201).send({
+      data: ts,
+      meta: {
+        entriesCreated: freshLogs.length,
+        totalHours,
+        skippedAlreadyUsed: logs.length - freshLogs.length,
+      },
+    });
   });
 
   // Update timesheet entries
@@ -869,6 +1085,9 @@ export async function budgetingRoutes(app: FastifyInstance) {
           timesheetId: request.params.id,
           milestoneId: e.milestoneId,
           budgetLineItemId: e.budgetLineItemId || null,
+          taskCodeId: e.taskCodeId || null,
+          taskAssignmentId: e.taskAssignmentId || null,
+          taskTimeLogId: e.taskTimeLogId || null,
           workDate: new Date(e.workDate),
           hours: String(e.hours),
           description: e.description,
@@ -973,7 +1192,7 @@ export async function budgetingRoutes(app: FastifyInstance) {
     const [items, countResult] = await Promise.all([
       app.db.query.sowDocuments.findMany({
         where: where ? () => where : undefined,
-        with: { project: true, contractor: true },
+        with: { project: true, contractor: true, staffUser: true },
         orderBy: (s, { desc }) => [desc(s.createdAt)],
         limit,
         offset,
@@ -996,10 +1215,55 @@ export async function budgetingRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const sow = await app.db.query.sowDocuments.findFirst({
       where: eq(sowDocuments.id, request.params.id),
-      with: { project: { with: { title: true, author: true } }, contractor: true, versions: true },
+      with: { project: { with: { title: true, author: true } }, contractor: true, staffUser: true, versions: true },
     });
     if (!sow) return reply.notFound('SOW not found');
-    return { data: sow };
+
+    const tasks = await app.db.query.taskAssignments.findMany({
+      where: eq(taskAssignments.projectId, sow.projectId),
+      columns: { id: true, status: true },
+    });
+
+    const taskStatuses = tasks.map((t) => t.status);
+    const workflowStage = deriveSowWorkflowStage(sow.status, taskStatuses);
+
+    return {
+      data: {
+        ...sow,
+        workflow: {
+          stage: workflowStage,
+          taskCount: tasks.length,
+          statusBreakdown: {
+            draftOrAssigned: taskStatuses.filter((s) => s === 'DRAFT' || s === 'ASSIGNED').length,
+            inProgressOrReview: taskStatuses.filter((s) => s === 'IN_PROGRESS' || s === 'REVIEW').length,
+            completed: taskStatuses.filter((s) => s === 'COMPLETED').length,
+            cancelled: taskStatuses.filter((s) => s === 'CANCELLED').length,
+          },
+        },
+      },
+    };
+  });
+
+  // Look up an existing SOW for a project + assignee (contractor or staff user).
+  // Returns null if none — used by frontend to decide between "Create SOW" / "View SOW" buttons.
+  app.get('/sow/lookup', { preHandler: requirePermission('budgeting', 'read') }, async (request) => {
+    const q = z.object({
+      projectId: z.string().uuid(),
+      contractorId: z.string().uuid().optional(),
+      staffUserId: z.string().optional(),
+    }).parse(request.query);
+
+    const where = and(
+      eq(sowDocuments.projectId, q.projectId),
+      q.contractorId ? eq(sowDocuments.contractorId, q.contractorId) : undefined,
+      q.staffUserId ? eq(sowDocuments.staffUserId, q.staffUserId) : undefined,
+    );
+
+    const sow = await app.db.query.sowDocuments.findFirst({
+      where: where as any,
+      orderBy: (s, { desc }) => [desc(s.createdAt)],
+    });
+    return { data: sow || null };
   });
 
   app.post('/sow', {
@@ -1007,6 +1271,25 @@ export async function budgetingRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const body = createSowSchema.parse(request.body);
     const userId = request.session?.user?.id;
+
+    // Enforce one SOW per (project, assignee). New tasks update the existing SOW instead of creating a new one.
+    if (body.contractorId || body.staffUserId) {
+      const existingSow = await app.db.query.sowDocuments.findFirst({
+        where: and(
+          eq(sowDocuments.projectId, body.projectId),
+          body.contractorId ? eq(sowDocuments.contractorId, body.contractorId) : undefined,
+          body.staffUserId ? eq(sowDocuments.staffUserId, body.staffUserId) : undefined,
+        ) as any,
+      });
+      if (existingSow) {
+        return reply.status(409).send({
+          error: 'Conflict',
+          message: 'A SOW already exists for this person on this project. Update the existing SOW instead.',
+          data: existingSow,
+        });
+      }
+    }
+
     const number = await nextSowNumber(app.db as any);
 
     const sowValues = {
@@ -1126,6 +1409,43 @@ export async function budgetingRoutes(app: FastifyInstance) {
       orderBy: (v, { desc }) => [desc(v.version)],
     });
     return { data: versions };
+  });
+
+  // Reopen accepted SOW for revision (change request flow)
+  app.post<{ Params: { id: string } }>('/sow/:id/reopen', {
+    preHandler: requirePermission('budgeting', 'update'),
+  }, async (request, reply) => {
+    const body = z.object({ reason: z.string().min(1).optional() }).parse(request.body ?? {});
+    const userId = request.session?.user?.id;
+
+    const existing = await app.db.query.sowDocuments.findFirst({
+      where: eq(sowDocuments.id, request.params.id),
+    });
+    if (!existing) return reply.notFound('SOW not found');
+    if (existing.status !== 'ACCEPTED') {
+      return reply.badRequest('Only ACCEPTED SOWs can be reopened for revision');
+    }
+
+    const newVersion = existing.version + 1;
+    const [updated] = await app.db.update(sowDocuments)
+      .set({
+        status: 'DRAFT',
+        version: newVersion,
+        acceptedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sowDocuments.id, request.params.id))
+      .returning();
+
+    await app.db.insert(sowDocumentVersions).values({
+      sowDocumentId: updated.id,
+      version: newVersion,
+      snapshotJson: { ...updated },
+      changedBy: userId,
+      changeNotes: body.reason || `Reopened for revision (v${newVersion})`,
+    });
+
+    return { data: updated };
   });
   // ==========================================
   // BUDGET APPROVAL WORKFLOW
@@ -1301,6 +1621,13 @@ export async function budgetingRoutes(app: FastifyInstance) {
     });
     if (!sow) return reply.notFound('SOW not found');
 
+    // For internal staff SOWs, extract staff name from scope
+    let pdfStaffName: string | undefined;
+    if (!sow.contractor) {
+      const scopeMatch = sow.scope?.match(/Statement of Work for (.+?) on project/);
+      pdfStaffName = scopeMatch?.[1] || 'Staff Member';
+    }
+
     const html = renderSowHtml({
       number: sow.number,
       version: sow.version,
@@ -1312,6 +1639,7 @@ export async function budgetingRoutes(app: FastifyInstance) {
         contactEmail: sow.contractor.contactEmail,
         address: [sow.contractor.addressLine1, sow.contractor.city, sow.contractor.province, sow.contractor.postalCode].filter(Boolean).join(', ') || undefined,
       } : undefined,
+      staffName: pdfStaffName,
       project: {
         name: sow.project.name,
         number: sow.project.number,
@@ -1383,6 +1711,14 @@ export async function budgetingRoutes(app: FastifyInstance) {
     });
     if (!sow) return reply.notFound('SOW not found');
 
+    // For internal staff SOWs, extract staff name from scope
+    let staffName: string | undefined;
+    let staffEmail: string | undefined;
+    if (!sow.contractor) {
+      const scopeMatch = sow.scope?.match(/Statement of Work for (.+?) on project/);
+      staffName = scopeMatch?.[1] || 'Staff Member';
+    }
+
     const html = renderSowHtml({
       number: sow.number,
       version: sow.version,
@@ -1393,6 +1729,8 @@ export async function budgetingRoutes(app: FastifyInstance) {
         contactName: sow.contractor.contactName,
         contactEmail: sow.contractor.contactEmail,
       } : undefined,
+      staffName,
+      staffEmail,
       project: {
         name: sow.project.name,
         number: sow.project.number,

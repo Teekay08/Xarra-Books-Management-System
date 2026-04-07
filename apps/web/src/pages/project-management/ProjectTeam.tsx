@@ -65,7 +65,11 @@ export function ProjectTeam() {
     mutationFn: () =>
       api(`/project-management/projects/${projectId}/team`, {
         method: 'POST',
-        body: JSON.stringify(assignForm),
+        body: JSON.stringify({
+          staffMemberId: assignForm.staffMemberId,
+          role: assignForm.role || null,
+          totalAllocatedHours: Number(assignForm.allocatedHours) || 0,
+        }),
         headers: { 'X-Idempotency-Key': crypto.randomUUID() },
       }),
     onSuccess: () => {
@@ -121,7 +125,7 @@ export function ProjectTeam() {
         }
       />
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -242,12 +246,20 @@ export function ProjectTeam() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Staff Member *</label>
                 <select value={assignForm.staffMemberId}
-                  onChange={(e) => setAssignForm({ ...assignForm, staffMemberId: e.target.value })}
+                  onChange={(e) => {
+                    const picked = staffData?.data?.find((s: any) => s.id === e.target.value);
+                    setAssignForm({
+                      ...assignForm,
+                      staffMemberId: e.target.value,
+                      // Auto-fill role from the staff member's default role if blank
+                      role: assignForm.role || picked?.role || '',
+                    });
+                  }}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                   <option value="">-- Select staff member --</option>
                   {staffData?.data?.map((s: any) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} — {s.role} ({s.availabilityType?.replace(/_/g, ' ')}, {s.maxHoursPerWeek}h/wk, R{Number(s.hourlyRate || 0).toFixed(0)}/hr)
+                      {s.name} — {s.role} ({s.availabilityType?.replace(/_/g, ' ')}, {s.maxHoursPerMonth}h/mo, R{Number(s.hourlyRate || 0).toFixed(0)}/hr)
                     </option>
                   ))}
                 </select>
@@ -260,7 +272,7 @@ export function ProjectTeam() {
                     <div className="mt-2 rounded-md bg-blue-50 border border-blue-200 p-3 text-xs">
                       <p className="font-medium text-blue-800 mb-1">{selected.name}</p>
                       <p className="text-blue-700">
-                        {selected.availabilityType?.replace(/_/g, ' ')} &middot; {selected.maxHoursPerWeek}h/week &middot; R{Number(selected.hourlyRate || 0).toFixed(2)}/hr
+                        {selected.availabilityType?.replace(/_/g, ' ')} &middot; {selected.maxHoursPerMonth}h/month &middot; R{Number(selected.hourlyRate || 0).toFixed(2)}/hr
                       </p>
                       {skills.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
@@ -297,8 +309,8 @@ export function ProjectTeam() {
               </button>
               <button
                 onClick={() => {
-                  if (!assignForm.staffMemberId || !assignForm.role) {
-                    setAssignError('Staff member and role are required.');
+                  if (!assignForm.staffMemberId) {
+                    setAssignError('Staff member is required.');
                     return;
                   }
                   assignMutation.mutate();

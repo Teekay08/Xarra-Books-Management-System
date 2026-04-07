@@ -53,6 +53,23 @@ const updateUserSchema = z.object({
 });
 
 export async function userRoutes(app: FastifyInstance) {
+  // List users with PM/admin role — used by Project form's "Project Manager" picker.
+  // Accessible to admin + project_manager so PMs can create projects too.
+  app.get('/managers', { preHandler: requireRole('admin', 'project_manager') }, async () => {
+    const items = await app.db.query.user.findMany({
+      where: (u, { inArray }) => inArray(u.role, ['admin', 'project_manager']),
+      orderBy: (u, { asc }) => [asc(u.name)],
+    });
+    return {
+      data: items.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: authToUiRole[u.role ?? 'staff'] ?? 'STAFF',
+      })),
+    };
+  });
+
   // List users (admin only)
   app.get('/', { preHandler: requireRole('admin') }, async (request) => {
     const query = paginationSchema.parse(request.query);

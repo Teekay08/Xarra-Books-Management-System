@@ -307,7 +307,7 @@ export function PartnerRemittanceCreate() {
               No outstanding invoices found.
             </p>
           ) : (
-            <div className="rounded-lg border border-gray-200 overflow-hidden">
+            <div className="rounded-lg border border-gray-200 overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -451,7 +451,7 @@ export function PartnerRemittanceCreate() {
             </p>
 
             {creditAllocations.length > 0 && (
-              <div className="rounded-lg border border-green-200 bg-green-50/30 overflow-hidden">
+              <div className="rounded-lg border border-green-200 bg-green-50/30 overflow-x-auto">
                 <table className="min-w-full divide-y divide-green-100">
                   <thead className="bg-green-50">
                     <tr>

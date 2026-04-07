@@ -42,7 +42,7 @@ export function PMProjectList() {
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm" />
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -87,8 +87,8 @@ export function PMProjectList() {
                 </td>
                 <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                   <ActionMenu items={[
-                    { label: 'View Project', onClick: () => navigate(`/budgeting/projects/${p.id}`) },
-                    { label: 'Edit Project', onClick: () => navigate(`/budgeting/projects/${p.id}/edit`) },
+                    { label: 'View Project', onClick: () => navigate(`/budgeting/projects/${p.id}?from=pm`) },
+                    { label: 'Edit Project', onClick: () => navigate(`/budgeting/projects/${p.id}/edit?from=pm`) },
                     { label: 'Manage Team', onClick: () => navigate(`/pm/projects/${p.id}/team`) },
                     { label: 'Manage Tasks', onClick: () => navigate(`/pm/projects/${p.id}/tasks`) },
                   ]} />

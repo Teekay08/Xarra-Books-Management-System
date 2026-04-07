@@ -73,6 +73,7 @@ const allSections: NavSection[] = [
       { name: 'Projects', href: '/pm/projects', module: 'projectManagement' },
       { name: 'Staff Members', href: '/pm/staff', module: 'projectManagement' },
       { name: 'Resource Planning', href: '/pm/capacity', module: 'projectManagement' },
+      { name: 'Task Requests', href: '/pm/task-requests', module: 'projectManagement' },
       { name: 'Timesheets', href: '/budgeting/timesheets', module: 'projectManagement' },
       { name: 'SOW Documents', href: '/budgeting/sow', module: 'projectManagement' },
     ],
@@ -81,6 +82,7 @@ const allSections: NavSection[] = [
     label: 'My Workspace',
     items: [
       { name: 'My Dashboard', href: '/employee', module: 'employeePortal' },
+      { name: 'My Planner', href: '/employee/planner', module: 'employeePortal' },
     ],
   },
   {

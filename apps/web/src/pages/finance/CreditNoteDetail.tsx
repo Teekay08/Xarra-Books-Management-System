@@ -231,7 +231,7 @@ export function CreditNoteDetail() {
 
       {/* Credit Balance */}
       {status !== 'VOIDED' && (
-        <div className="mb-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white overflow-x-auto">
           <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
             <h3 className="text-sm font-semibold text-gray-900">Credit Balance</h3>
           </div>
@@ -266,7 +266,7 @@ export function CreditNoteDetail() {
 
       {/* Line Items */}
       {cn.lines && cn.lines.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white mb-6 overflow-hidden">
+        <div className="rounded-lg border border-gray-200 bg-white mb-6 overflow-x-auto">
           <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
             <h3 className="text-sm font-semibold text-gray-900">Line Items</h3>
           </div>

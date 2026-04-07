@@ -208,6 +208,7 @@ export async function consignmentRoutes(app: FastifyInstance) {
     const dispatchDate = new Date();
 
     // Calculate SOR expiry from partner terms
+
     const sorDays = consignment.partner.sorDays ? Number(consignment.partner.sorDays) : DEFAULT_SOR_DAYS;
     const sorExpiryDate = new Date(dispatchDate);
     sorExpiryDate.setDate(sorExpiryDate.getDate() + sorDays);

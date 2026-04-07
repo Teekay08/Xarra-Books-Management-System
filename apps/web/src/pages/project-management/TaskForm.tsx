@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { AiSuggestButton } from '../../components/AiSuggestButton';
 
 interface TeamMember {
   id: string;
@@ -129,7 +130,7 @@ export function TaskForm() {
   const mutation = useMutation({
     mutationFn: () => {
       const payload = {
-        staffMemberId: form.staffMemberId || null,
+        staffMemberId: form.staffMemberId,
         milestoneId: form.milestoneId || null,
         taskCodeId: form.taskCodeId || null,
         title: form.title,
@@ -160,6 +161,18 @@ export function TaskForm() {
     setError('');
     if (!form.title) {
       setError('Task title is required.');
+      return;
+    }
+    if (!form.staffMemberId) {
+      setError('Pick a staff member to assign this task to.');
+      return;
+    }
+    if (!form.allocatedHours || form.allocatedHours <= 0) {
+      setError('Allocated hours must be greater than zero.');
+      return;
+    }
+    if (!form.hourlyRate || form.hourlyRate <= 0) {
+      setError('Hourly rate must be greater than zero. Set a default rate on the staff member to auto-fill it.');
       return;
     }
     mutation.mutate();
@@ -346,7 +359,35 @@ export function TaskForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">Description</label>
+              {form.title && form.staffMemberId && (
+                <AiSuggestButton
+                  endpoint="/ai/suggest/task"
+                  payload={{
+                    taskTitle: form.title,
+                    projectName: `Project ${projectId}`,
+                    staffRole: teamData?.data?.find((m) => m.staffMemberId === form.staffMemberId)?.role || 'Staff',
+                    allocatedHours: Number(form.allocatedHours) || 40,
+                  }}
+                  onSuggestion={(data) => {
+                    if (data.description && !form.description) {
+                      setForm((f) => ({ ...f, description: data.description }));
+                    }
+                    if (data.deliverables?.length && form.deliverables.length === 0) {
+                      setForm((f) => ({ ...f, deliverables: data.deliverables.map((d: any) => ({ description: d.description, completed: false })) }));
+                    }
+                    if (data.suggestedPriority && form.priority === 'MEDIUM') {
+                      setForm((f) => ({ ...f, priority: data.suggestedPriority }));
+                    }
+                    if (data.estimatedHours && !form.estimatedHours) {
+                      setForm((f) => ({ ...f, estimatedHours: Number(data.estimatedHours) }));
+                    }
+                  }}
+                  label="AI Suggest"
+                />
+              )}
+            </div>
             <textarea rows={3} value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"

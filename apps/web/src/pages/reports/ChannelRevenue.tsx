@@ -162,7 +162,7 @@ export function ChannelRevenue() {
           {partners.length > 0 && (
             <>
               <h3 className="text-sm font-medium text-gray-700 mb-2">Partner Revenue Breakdown (via Invoices)</h3>
-              <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>

@@ -71,6 +71,13 @@
       "when": 1775371915637,
       "tag": "0009_cheerful_felicia_hardy",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775450000000,
+      "tag": "0010_add_staff_task_planner_entries",
+      "breakpoints": true
     }
   ]
 }

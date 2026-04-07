@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { AiSuggestButton } from '../../components/AiSuggestButton';
 
 export function CreateStaffSow() {
   const { staffId } = useParams();
@@ -29,14 +30,30 @@ export function CreateStaffSow() {
     enabled: !!projectId && !!staffId,
   });
 
+  // If a SOW already exists for this project + staff user, redirect to it instead.
+  const { data: existingSow } = useQuery({
+    queryKey: ['sow-lookup', projectId, sowData?.data?.staffUserId],
+    queryFn: () =>
+      api<{ data: { id: string } | null }>(
+        `/budgeting/sow/lookup?projectId=${projectId}&staffUserId=${encodeURIComponent(sowData!.data!.staffUserId)}`,
+      ),
+    enabled: !!projectId && !!sowData?.data?.staffUserId,
+  });
+
+  useEffect(() => {
+    if (existingSow?.data?.id) {
+      navigate(`/budgeting/sow/${existingSow.data.id}`, { replace: true });
+    }
+  }, [existingSow, navigate]);
+
   // Pre-fill form when data loads
   useEffect(() => {
     if (sowData?.data) {
       const d = sowData.data;
       setScope(d.scope || '');
       setTerms(d.terms || '');
-      setDeliverables(d.deliverables || []);
-      setCostBreakdown(d.costBreakdown || []);
+      setDeliverables(d.deliverables?.length ? d.deliverables : [{ description: '', dueDate: '', acceptanceCriteria: '' }]);
+      setCostBreakdown(d.costBreakdown?.length ? d.costBreakdown : [{ description: '', hours: 0, rate: 0, total: 0 }]);
       setTimeline(d.timeline || { startDate: '', endDate: '', milestones: [] });
     }
   }, [sowData]);
@@ -44,37 +61,53 @@ export function CreateStaffSow() {
   const totalAmount = costBreakdown.reduce((s, c) => s + c.total, 0);
 
   const createMutation = useMutation({
-    mutationFn: () => api('/budgeting/sow', {
-      method: 'POST',
-      body: JSON.stringify({
-        projectId,
-        contractorId: null,
-        staffUserId: sowData?.data?.staffMemberId ? null : null, // SOW links via staffUserId if internal
-        scope,
-        deliverables: deliverables.map((d) => ({
-          description: d.description,
+    mutationFn: () => {
+      const validDeliverables = deliverables
+        .map((d) => ({
+          description: d.description?.trim() || '',
           dueDate: d.dueDate || new Date().toISOString(),
-          acceptanceCriteria: d.acceptanceCriteria || 'Completed to satisfaction',
-        })),
-        timeline,
-        costBreakdown: costBreakdown.map((c) => ({
-          description: c.description,
+          acceptanceCriteria: d.acceptanceCriteria?.trim() || 'Completed to satisfaction',
+        }))
+        .filter((d) => d.description.length > 0);
+
+      const validCosts = costBreakdown
+        .filter((c) => c.description?.trim() && c.total > 0)
+        .map((c) => ({
+          description: c.description.trim(),
           hours: c.hours,
           rate: c.rate,
           total: c.total,
-        })),
-        totalAmount,
-        terms: terms || null,
-        validUntil: validUntil || null,
-        notes: notes || null,
-      }),
-      headers: { 'X-Idempotency-Key': crypto.randomUUID() },
-    }),
+        }));
+
+      return api('/budgeting/sow', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId,
+          contractorId: null,
+          staffUserId: sowData?.data?.staffUserId || null,
+          scope: scope.trim(),
+          deliverables: validDeliverables,
+          timeline,
+          costBreakdown: validCosts,
+          totalAmount: validCosts.reduce((s, c) => s + c.total, 0),
+          terms: terms || null,
+          validUntil: validUntil || null,
+          notes: notes || null,
+        }),
+        headers: { 'X-Idempotency-Key': crypto.randomUUID() },
+      });
+    },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['sow-documents'] });
       navigate(`/budgeting/sow/${data?.data?.id || ''}`);
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      // If backend says one already exists, refetch the lookup so the auto-redirect kicks in.
+      if (/already exists/i.test(err.message)) {
+        queryClient.invalidateQueries({ queryKey: ['sow-lookup', projectId] });
+      }
+      setError(err.message);
+    },
   });
 
   if (isLoading) return <div className="p-8 text-gray-400">Loading SOW data from task assignments...</div>;
@@ -102,7 +135,30 @@ export function CreateStaffSow() {
       <div className="max-w-4xl space-y-6">
         {/* Scope */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">
-          <label className="block text-sm font-semibold text-gray-900 mb-2">Scope of Work</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-semibold text-gray-900">Scope of Work</label>
+            <AiSuggestButton
+              endpoint="/ai/suggest/sow"
+              payload={{
+                projectName: sowData?.data?.projectName || 'Project',
+                staffName: sowData?.data?.staffName || 'Staff',
+                staffRole: sowData?.data?.isInternal ? 'Internal Staff' : 'Contractor',
+                tasks: costBreakdown.filter((c) => c.description).map((c) => ({
+                  title: c.description, hours: c.hours, rate: c.rate,
+                })),
+                isInternal: sowData?.data?.isInternal ?? true,
+              }}
+              onSuggestion={(data) => {
+                if (data.scope && !scope.includes('Statement of Work')) {
+                  setScope(data.scope);
+                } else if (data.scope) {
+                  setScope(scope + '\n\n' + data.scope);
+                }
+                if (data.terms && !terms) setTerms(data.terms);
+              }}
+              label="AI Suggest Scope & Terms"
+            />
+          </div>
           <textarea rows={8} value={scope} onChange={(e) => setScope(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
         </div>
@@ -207,7 +263,15 @@ export function CreateStaffSow() {
         </div>
 
         <div className="flex gap-3">
-          <button onClick={() => createMutation.mutate()} disabled={!scope || deliverables.length === 0 || createMutation.isPending}
+          <button onClick={() => {
+            const validDeliverables = deliverables.filter((d) => d.description?.trim());
+            const validCosts = costBreakdown.filter((c) => c.description?.trim() && c.total > 0);
+            if (validDeliverables.length === 0) { setError('Add at least one deliverable description.'); return; }
+            if (validCosts.length === 0) { setError('Add at least one cost line with a description and amount.'); return; }
+            if (totalAmount <= 0) { setError('Total amount must be greater than zero.'); return; }
+            setError('');
+            createMutation.mutate();
+          }} disabled={!scope.trim() || createMutation.isPending}
             className="rounded-md bg-green-700 px-6 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
             {createMutation.isPending ? 'Creating SOW...' : 'Create SOW'}
           </button>

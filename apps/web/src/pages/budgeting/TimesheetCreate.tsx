@@ -101,6 +101,33 @@ export function TimesheetCreate() {
     },
   });
 
+  const generateMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api<{ data: { id: string }; meta: { entriesCreated: number; totalHours: number; skippedAlreadyUsed: number } }>(
+        '/budgeting/timesheets/generate',
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: { 'X-Idempotency-Key': crypto.randomUUID() },
+        },
+      ),
+    onSuccess: (result) => {
+      setIsDirty(false);
+      queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      navigate(`/budgeting/timesheets/${result.data.id}`);
+    },
+    onError: (err: Error) => setError(err.message || 'Failed to generate timesheet'),
+  });
+
+  function handleGenerate() {
+    setError('');
+    if (!projectId || !workerId || !periodFrom || !periodTo) {
+      setError('Project, worker, and date range are required to generate from task logs.');
+      return;
+    }
+    generateMutation.mutate({ projectId, userId: workerId, periodFrom, periodTo, notes: notes || null });
+  }
+
   function updateEntry(key: string, field: keyof TimeEntry, value: string) {
     setEntries((prev) =>
       prev.map((e) => (e.key === key ? { ...e, [field]: value } : e)),
@@ -167,6 +194,25 @@ export function TimesheetCreate() {
       <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <PageHeader title="New Timesheet" backTo={{ label: 'Timesheets', href: '/budgeting/timesheets' }} />
 
+      <div className="mb-4 max-w-5xl rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-medium">Generate from approved task time logs</p>
+            <p className="text-xs text-blue-700">
+              Pick a project, worker and date range above, then click Generate to pull APPROVED task hours into a timesheet automatically.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={generateMutation.isPending || !projectId || !workerId || !periodFrom || !periodTo}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {generateMutation.isPending ? 'Generating…' : 'Generate from Task Logs'}
+          </button>
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-5xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
@@ -219,7 +265,7 @@ export function TimesheetCreate() {
         {/* Time Entries */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Time Entries</label>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

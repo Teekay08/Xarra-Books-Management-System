@@ -139,7 +139,7 @@ export function SorReconciliation() {
       ) : items.length === 0 ? (
         <div className="rounded-lg border border-gray-200 p-8 text-center text-sm text-gray-400">No consignments found for this period</div>
       ) : (
-        <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <div className="rounded-lg border border-gray-200 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>

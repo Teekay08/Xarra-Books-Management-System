@@ -95,7 +95,7 @@ export function RoyaltyDueReport() {
           No pending royalty payments across all authors
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <div className="rounded-lg border border-gray-200 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>

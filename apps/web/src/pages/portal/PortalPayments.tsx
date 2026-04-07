@@ -49,7 +49,7 @@ export function PortalPayments() {
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Payment History</h1>
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

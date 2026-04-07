@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { ActionMenu } from '../../components/ActionMenu';
 
 interface Milestone {
   id: string;
@@ -92,11 +93,15 @@ const classificationColors: Record<string, string> = {
 
 export function ProjectDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromPM = searchParams.get('from') === 'pm';
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'overview' | 'budget' | 'actuals' | 'variance' | 'estimate'>('overview');
   const [showAddLine, setShowAddLine] = useState(false);
   const [showAddActual, setShowAddActual] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [emailTo, setEmailTo] = useState('');
   const [emailMsg, setEmailMsg] = useState('');
   const [error, setError] = useState('');
@@ -127,6 +132,15 @@ export function ProjectDetail() {
     onError: (err: Error) => setError(err.message),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => api(`/budgeting/projects/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgeting-projects'] });
+      navigate('/budgeting/projects');
+    },
+    onError: (err: Error) => { setShowDeleteModal(false); setError(err.message); },
+  });
+
   const project = data?.data;
   if (isLoading) return <div className="p-8 text-gray-400">Loading...</div>;
   if (!project) return <div className="p-8 text-gray-500">Project not found.</div>;
@@ -150,7 +164,7 @@ export function ProjectDetail() {
       <PageHeader
         title={project.name}
         subtitle={`${project.number} — ${project.projectType.replace(/_/g, ' ')} — ${project.contractType}`}
-        backTo={{ label: 'Projects', href: '/budgeting/projects' }}
+        backTo={{ label: 'Projects', href: fromPM ? '/pm/projects' : '/budgeting/projects' }}
         action={
           <div className="flex gap-2 flex-wrap">
             {project.status === 'PLANNING' && (
@@ -191,6 +205,12 @@ export function ProjectDetail() {
               className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
               Edit
             </Link>
+            {project.status === 'PLANNING' && (
+              <button onClick={() => setShowDeleteModal(true)}
+                className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                Delete
+              </button>
+            )}
           </div>
         }
       />
@@ -361,9 +381,32 @@ export function ProjectDetail() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Project</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              Are you sure you want to delete <strong>{project.name}</strong>?
+            </p>
+            <p className="text-sm text-red-600 mb-4">
+              This will permanently remove the project and all its milestones, budget lines, and actuals. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowDeleteModal(false)}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm">Cancel</button>
+              <button onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Variance Tab */}
       {activeTab === 'variance' && varianceData && (
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -521,7 +564,7 @@ function AiEstimationPanel({ projectId, milestones, queryClient }: {
             </div>
           </div>
 
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -594,6 +637,8 @@ function BudgetTab({ projectId, lines, milestones, showAddLine, setShowAddLine, 
   setShowAddLine: (v: boolean) => void;
   queryClient: any;
 }) {
+  const [editingLine, setEditingLine] = useState<BudgetLine | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BudgetLine | null>(null);
   const [form, setForm] = useState({
     milestoneId: '', category: 'EDITORIAL', costClassification: 'PUBLISHING',
     description: '', sourceType: 'INTERNAL', estimatedHours: '',
@@ -619,6 +664,26 @@ function BudgetTab({ projectId, lines, milestones, showAddLine, setShowAddLine, 
       setForm({ milestoneId: '', category: 'EDITORIAL', costClassification: 'PUBLISHING', description: '', sourceType: 'INTERNAL', estimatedHours: '', hourlyRate: '', estimatedAmount: '', externalQuote: '', notes: '' });
     },
     onError: (err: Error) => alert(`Failed to add budget line: ${err.message}`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (lineId: string) => api(`/budgeting/budget-lines/${lineId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgeting-project', projectId] });
+      setDeleteTarget(null);
+    },
+  });
+
+  const editMutation = useMutation({
+    mutationFn: (data: { id: string; updates: Record<string, any> }) =>
+      api(`/budgeting/budget-lines/${data.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data.updates),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgeting-project', projectId] });
+      setEditingLine(null);
+    },
   });
 
   // Auto-calc estimatedAmount from hours * rate
@@ -686,7 +751,7 @@ function BudgetTab({ projectId, lines, milestones, showAddLine, setShowAddLine, 
         </div>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -698,6 +763,7 @@ function BudgetTab({ projectId, lines, milestones, showAddLine, setShowAddLine, 
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ext. Quote</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -715,10 +781,16 @@ function BudgetTab({ projectId, lines, milestones, showAddLine, setShowAddLine, 
                 <td className="px-4 py-3 text-sm text-right text-gray-500">{l.hourlyRate ? `R ${Number(l.hourlyRate).toFixed(2)}` : '—'}</td>
                 <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">R {Number(l.estimatedAmount).toFixed(2)}</td>
                 <td className="px-4 py-3 text-sm text-right text-gray-400">{l.externalQuote ? `R ${Number(l.externalQuote).toFixed(2)}` : '—'}</td>
+                <td className="px-4 py-3 text-sm text-right">
+                  <ActionMenu items={[
+                    { label: 'Edit', onClick: () => setEditingLine(l) },
+                    { label: 'Delete', onClick: () => setDeleteTarget(l), variant: 'danger' },
+                  ]} />
+                </td>
               </tr>
             ))}
             {lines.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No budget lines yet.</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">No budget lines yet.</td></tr>
             )}
             {lines.length > 0 && (
               <tr className="bg-gray-50 font-semibold">
@@ -726,11 +798,174 @@ function BudgetTab({ projectId, lines, milestones, showAddLine, setShowAddLine, 
                 <td className="px-4 py-3 text-sm text-right text-gray-900">
                   R {lines.reduce((s, l) => s + Number(l.estimatedAmount), 0).toFixed(2)}
                 </td>
-                <td />
+                <td colSpan={2} />
               </tr>
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Delete Budget Line Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Budget Line</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              Are you sure you want to delete <strong>{deleteTarget.description}</strong>?
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              Amount: R {Number(deleteTarget.estimatedAmount).toFixed(2)}
+            </p>
+            {deleteMutation.isError && (
+              <p className="text-sm text-red-600 mb-3">{(deleteMutation.error as Error)?.message}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setDeleteTarget(null); deleteMutation.reset(); }}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm">Cancel</button>
+              <button onClick={() => deleteMutation.mutate(deleteTarget.id)} disabled={deleteMutation.isPending}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Budget Line Modal */}
+      {editingLine && (
+        <EditBudgetLineModal
+          line={editingLine}
+          milestones={milestones}
+          onClose={() => setEditingLine(null)}
+          onSave={(updates) => editMutation.mutate({ id: editingLine.id, updates })}
+          isPending={editMutation.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditBudgetLineModal({ line, milestones, onClose, onSave, isPending }: {
+  line: BudgetLine;
+  milestones: Milestone[];
+  onClose: () => void;
+  onSave: (updates: Record<string, any>) => void;
+  isPending: boolean;
+}) {
+  const [form, setForm] = useState({
+    milestoneId: line.milestoneId || '',
+    category: line.category,
+    costClassification: line.costClassification,
+    description: line.description,
+    sourceType: line.sourceType,
+    estimatedHours: line.estimatedHours || '',
+    hourlyRate: line.hourlyRate || '',
+    estimatedAmount: line.estimatedAmount,
+    externalQuote: line.externalQuote || '',
+  });
+
+  const autoCalc = () => {
+    if (form.estimatedHours && form.hourlyRate) {
+      setForm((f) => ({ ...f, estimatedAmount: String(Number(f.estimatedHours) * Number(f.hourlyRate)) }));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-lg max-h-[90vh] overflow-y-auto">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Budget Line</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+            <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Milestone</label>
+              <select value={form.milestoneId} onChange={(e) => setForm({ ...form, milestoneId: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                <option value="">— None —</option>
+                {milestones.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Classification</label>
+              <select value={form.costClassification} onChange={(e) => setForm({ ...form, costClassification: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                <option value="PUBLISHING">Publishing</option>
+                <option value="OPERATIONAL">Operational</option>
+                <option value="LAUNCH">Launch</option>
+                <option value="MARKETING">Marketing</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Category</label>
+              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                <option value="EDITORIAL">Editorial</option>
+                <option value="DESIGN">Design</option>
+                <option value="PRODUCTION">Production</option>
+                <option value="MARKETING">Marketing</option>
+                <option value="DISTRIBUTION">Distribution</option>
+                <option value="ADMIN">Admin</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Source</label>
+              <select value={form.sourceType} onChange={(e) => setForm({ ...form, sourceType: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                <option value="INTERNAL">Internal</option>
+                <option value="EXTERNAL">External</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Hours</label>
+              <input type="number" value={form.estimatedHours}
+                onChange={(e) => setForm({ ...form, estimatedHours: e.target.value })}
+                onBlur={autoCalc}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Rate (R)</label>
+              <input type="number" value={form.hourlyRate}
+                onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
+                onBlur={autoCalc}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Amount (R)</label>
+              <input type="number" value={form.estimatedAmount}
+                onChange={(e) => setForm({ ...form, estimatedAmount: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Ext. Quote</label>
+              <input type="number" value={form.externalQuote}
+                onChange={(e) => setForm({ ...form, externalQuote: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onClose} className="rounded-md border border-gray-300 px-4 py-2 text-sm">Cancel</button>
+          <button onClick={() => onSave({
+            ...form,
+            milestoneId: form.milestoneId || null,
+            estimatedHours: form.estimatedHours ? Number(form.estimatedHours) : null,
+            hourlyRate: form.hourlyRate ? Number(form.hourlyRate) : null,
+            estimatedAmount: Number(form.estimatedAmount),
+            externalQuote: form.externalQuote ? Number(form.externalQuote) : null,
+          })} disabled={!form.description || !form.estimatedAmount || isPending}
+            className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+            {isPending ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -830,7 +1065,7 @@ function ActualsTab({ projectId, actuals, milestones, budgetLines, showAddActual
         </div>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

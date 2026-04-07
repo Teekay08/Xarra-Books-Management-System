@@ -300,7 +300,7 @@ export function RoyaltiesAdmin() {
 
       {/* LEDGER TAB */}
       {tab === 'ledger' && (
-        <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <div className="rounded-lg border border-gray-200 overflow-x-auto">
           {ledgerLoading ? (
             <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
           ) : entries.length === 0 ? (
@@ -386,7 +386,7 @@ export function RoyaltiesAdmin() {
 
       {/* PAYMENTS TAB */}
       {tab === 'payments' && (
-        <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <div className="rounded-lg border border-gray-200 overflow-x-auto">
           {paymentsLoading ? (
             <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
           ) : payments.length === 0 ? (

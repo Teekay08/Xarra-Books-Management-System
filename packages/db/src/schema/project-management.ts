@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, decimal, integer, pgEnum, jsonb, index, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, decimal, integer, pgEnum, jsonb, index, uniqueIndex, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { projects, projectMilestones } from './budgeting';
 import { user } from './auth';
@@ -21,6 +21,10 @@ export const staffAvailabilityEnum = pgEnum('staff_availability_type', [
 
 export const staffPaymentStatusEnum = pgEnum('staff_payment_status', [
   'PENDING', 'APPROVED', 'PAID',
+]);
+
+export const taskRequestStatusEnum = pgEnum('task_request_status', [
+  'PENDING', 'APPROVED', 'REJECTED', 'NEEDS_INFO',
 ]);
 
 // ==========================================
@@ -54,7 +58,7 @@ export const staffMembers = pgTable('staff_members', {
   role: varchar('role', { length: 100 }).notNull(), // Editor, Typesetter, Cover Designer, etc.
   skills: jsonb('skills').notNull().default('[]').$type<string[]>(),
   availabilityType: staffAvailabilityEnum('availability_type').notNull().default('FULL_TIME'),
-  maxHoursPerWeek: integer('max_hours_per_week').notNull().default(40),
+  maxHoursPerMonth: integer('max_hours_per_month').notNull().default(160),
   hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }).notNull(),
   currency: varchar('currency', { length: 3 }).notNull().default('ZAR'),
   isInternal: boolean('is_internal').notNull().default(true), // false = external contractor
@@ -140,6 +144,28 @@ export const taskAssignments = pgTable('task_assignments', {
 ]);
 
 // ==========================================
+// STAFF TASK PLANNER ENTRIES
+// ==========================================
+
+export const staffTaskPlannerEntries = pgTable('staff_task_planner_entries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffMemberId: uuid('staff_member_id').notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
+  taskAssignmentId: uuid('task_assignment_id').notNull().references(() => taskAssignments.id, { onDelete: 'cascade' }),
+  plannedDate: timestamp('planned_date', { withTimezone: true }).notNull(), // span start date
+  endDate: timestamp('end_date', { withTimezone: true }), // span end date (null = single day)
+  slotStart: timestamp('slot_start', { withTimezone: true }),
+  slotEnd: timestamp('slot_end', { withTimezone: true }),
+  plannedHours: decimal('planned_hours', { precision: 5, scale: 2 }), // total hours across the span
+  note: text('note'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_staff_planner_staff_date').on(t.staffMemberId, t.plannedDate),
+  index('idx_staff_planner_task').on(t.taskAssignmentId),
+  uniqueIndex('ux_staff_planner_staff_task_day').on(t.staffMemberId, t.taskAssignmentId, t.plannedDate),
+]);
+
+// ==========================================
 // TASK TIME LOGS (employee enters actual hours)
 // ==========================================
 
@@ -212,6 +238,32 @@ export const staffPayments = pgTable('staff_payments', {
 ]);
 
 // ==========================================
+// TASK REQUESTS (staff/contractor asks PM to add a task)
+// ==========================================
+
+export const taskRequests = pgTable('task_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  requestedByStaffId: uuid('requested_by_staff_id').notNull().references(() => staffMembers.id),
+  linkedTaskId: uuid('linked_task_id').references(() => taskAssignments.id), // optional: the task that uncovered the need
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  justification: text('justification').notNull(),
+  estimatedHours: decimal('estimated_hours', { precision: 10, scale: 2 }).notNull(),
+  status: taskRequestStatusEnum('status').notNull().default('PENDING'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewNotes: text('review_notes'),
+  createdTaskId: uuid('created_task_id').references(() => taskAssignments.id), // set on approval
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_task_requests_project').on(t.projectId),
+  index('idx_task_requests_staff').on(t.requestedByStaffId),
+  index('idx_task_requests_status').on(t.status),
+]);
+
+// ==========================================
 // CONTRACTOR ACCESS TOKENS (magic links for external workers)
 // ==========================================
 
@@ -238,6 +290,7 @@ export const staffMembersRelations = relations(staffMembers, ({ one, many }) => 
   systemUser: one(user, { fields: [staffMembers.userId], references: [user.id] }),
   projectAssignments: many(staffProjectAssignments),
   taskAssignments: many(taskAssignments),
+  plannerEntries: many(staffTaskPlannerEntries),
   timeLogs: many(taskTimeLogs),
   extensionRequests: many(timeExtensionRequests),
   payments: many(staffPayments),
@@ -257,8 +310,14 @@ export const taskAssignmentsRelations = relations(taskAssignments, ({ one, many 
   milestone: one(projectMilestones, { fields: [taskAssignments.milestoneId], references: [projectMilestones.id] }),
   staffMember: one(staffMembers, { fields: [taskAssignments.staffMemberId], references: [staffMembers.id] }),
   taskCode: one(taskCodes, { fields: [taskAssignments.taskCodeId], references: [taskCodes.id] }),
+  plannerEntries: many(staffTaskPlannerEntries),
   timeLogs: many(taskTimeLogs),
   extensionRequests: many(timeExtensionRequests),
+}));
+
+export const staffTaskPlannerEntriesRelations = relations(staffTaskPlannerEntries, ({ one }) => ({
+  staffMember: one(staffMembers, { fields: [staffTaskPlannerEntries.staffMemberId], references: [staffMembers.id] }),
+  taskAssignment: one(taskAssignments, { fields: [staffTaskPlannerEntries.taskAssignmentId], references: [taskAssignments.id] }),
 }));
 
 export const taskTimeLogsRelations = relations(taskTimeLogs, ({ one }) => ({
@@ -269,6 +328,13 @@ export const taskTimeLogsRelations = relations(taskTimeLogs, ({ one }) => ({
 export const timeExtensionRequestsRelations = relations(timeExtensionRequests, ({ one }) => ({
   taskAssignment: one(taskAssignments, { fields: [timeExtensionRequests.taskAssignmentId], references: [taskAssignments.id] }),
   staffMember: one(staffMembers, { fields: [timeExtensionRequests.staffMemberId], references: [staffMembers.id] }),
+}));
+
+export const taskRequestsRelations = relations(taskRequests, ({ one }) => ({
+  project: one(projects, { fields: [taskRequests.projectId], references: [projects.id] }),
+  requestedBy: one(staffMembers, { fields: [taskRequests.requestedByStaffId], references: [staffMembers.id] }),
+  linkedTask: one(taskAssignments, { fields: [taskRequests.linkedTaskId], references: [taskAssignments.id], relationName: 'linkedTask' }),
+  createdTask: one(taskAssignments, { fields: [taskRequests.createdTaskId], references: [taskAssignments.id], relationName: 'createdTask' }),
 }));
 
 export const contractorAccessTokensRelations = relations(contractorAccessTokens, ({ one }) => ({

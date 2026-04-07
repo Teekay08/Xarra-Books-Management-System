@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 
@@ -66,6 +67,20 @@ const extensionStatusColors: Record<string, string> = {
 };
 
 export function EmployeeDashboard() {
+  const queryClient = useQueryClient();
+  const [requestModal, setRequestModal] = useState<{
+    projectId: string;
+    title: string;
+    description: string;
+    justification: string;
+    estimatedHours: string;
+  } | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    window.setTimeout(() => setToast(null), 2400);
+  };
+
   // Get current user info
   const { data: meData } = useQuery({
     queryKey: ['me'],
@@ -94,6 +109,43 @@ export function EmployeeDashboard() {
     retry: false,
   });
 
+  const requestTaskMutation = useMutation({
+    mutationFn: (payload: {
+      projectId: string;
+      title: string;
+      description: string;
+      justification: string;
+      estimatedHours: number;
+    }) =>
+      api('/project-management/task-requests', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      showToast('success', 'Task request sent. Your PM will review it.');
+      setRequestModal(null);
+    },
+    onError: (err: Error) => showToast('error', err.message || 'Failed to send task request.'),
+  });
+
+  const submitRequest = () => {
+    if (!requestModal) return;
+    if (!requestModal.projectId) return showToast('error', 'Pick a project.');
+    if (!requestModal.title.trim()) return showToast('error', 'Title is required.');
+    if (!requestModal.description.trim()) return showToast('error', 'Describe what you need to do.');
+    if (!requestModal.justification.trim()) return showToast('error', 'Explain why this task is needed.');
+    const hours = Number(requestModal.estimatedHours);
+    if (!hours || Number.isNaN(hours) || hours <= 0) return showToast('error', 'Estimated hours must be positive.');
+    requestTaskMutation.mutate({
+      projectId: requestModal.projectId,
+      title: requestModal.title.trim(),
+      description: requestModal.description.trim(),
+      justification: requestModal.justification.trim(),
+      estimatedHours: hours,
+    });
+  };
+
   const tasks = tasksData?.data ?? [];
   const logs = logsData?.data ?? [];
   const extensions = extensionsData?.data ?? [];
@@ -110,6 +162,43 @@ export function EmployeeDashboard() {
   return (
     <div>
       <PageHeader title={`Welcome back, ${userName}`} subtitle="Your personal workspace — tasks, time logs, and deadlines" />
+
+      {toast && (
+        <div className="mb-3">
+          <div className={`rounded border px-3 py-2 text-sm ${toast.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+            {toast.message}
+          </div>
+        </div>
+      )}
+
+      {!noStaffProfile && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Link to="/employee/planner" className="inline-flex rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100">
+            Open My Planner
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              const firstProject = tasks[0] as any;
+              const pid = firstProject?.projectId || firstProject?.project?.id;
+              if (!pid) {
+                showToast('error', 'You need at least one assigned task on a project before requesting more.');
+                return;
+              }
+              setRequestModal({
+                projectId: pid,
+                title: '',
+                description: '',
+                justification: '',
+                estimatedHours: '',
+              });
+            }}
+            className="inline-flex rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+          >
+            + Request Task
+          </button>
+        </div>
+      )}
 
       {/* No Staff Profile Warning */}
       {noStaffProfile && (
@@ -228,7 +317,7 @@ export function EmployeeDashboard() {
       <div className="mb-8">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Time Logs</h3>
 
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -298,6 +387,98 @@ export function EmployeeDashboard() {
           </div>
         )}
       </div>
+
+      {requestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-gray-900">Request Additional Task</h3>
+            <p className="mt-1 text-xs text-gray-500">Your PM will review and approve, reject, or ask for more info.</p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Project</label>
+                <select
+                  value={requestModal.projectId}
+                  onChange={(e) => setRequestModal((prev) => (prev ? { ...prev, projectId: e.target.value } : prev))}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                >
+                  {Array.from(
+                    new Map(
+                      tasks
+                        .filter((t: any) => t.projectId || t.project?.id)
+                        .map((t: any) => {
+                          const pid = t.projectId || t.project?.id;
+                          return [pid, {
+                            id: pid,
+                            number: t.projectNumber || t.project?.number || '',
+                            name: t.projectName || t.project?.name || '',
+                          }];
+                        }),
+                    ).values(),
+                  ).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.number} — {p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Task title</label>
+                <input
+                  type="text"
+                  value={requestModal.title}
+                  onChange={(e) => setRequestModal((prev) => (prev ? { ...prev, title: e.target.value } : prev))}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  placeholder="e.g. Re-edit chapter 3 after author rewrite"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">What you'd be doing</label>
+                <textarea
+                  rows={3}
+                  value={requestModal.description}
+                  onChange={(e) => setRequestModal((prev) => (prev ? { ...prev, description: e.target.value } : prev))}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Why is this needed?</label>
+                <textarea
+                  rows={2}
+                  value={requestModal.justification}
+                  onChange={(e) => setRequestModal((prev) => (prev ? { ...prev, justification: e.target.value } : prev))}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Estimated hours</label>
+                <input
+                  type="number" min={0.25} step="0.25"
+                  value={requestModal.estimatedHours}
+                  onChange={(e) => setRequestModal((prev) => (prev ? { ...prev, estimatedHours: e.target.value } : prev))}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => setRequestModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                onClick={submitRequest}
+                disabled={requestTaskMutation.isPending}
+              >
+                {requestTaskMutation.isPending ? 'Sending…' : 'Send Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
