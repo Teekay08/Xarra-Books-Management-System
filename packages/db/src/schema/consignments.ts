@@ -8,6 +8,19 @@ export const consignmentStatusEnum = pgEnum('consignment_status', [
   'DRAFT', 'DISPATCHED', 'DELIVERED', 'ACKNOWLEDGED', 'PARTIAL_RETURN', 'RECONCILED', 'CLOSED',
 ]);
 
+export const settlementStatusEnum = pgEnum('settlement_status', [
+  'SOR_ACTIVE',       // SOR dispatched, sell window running
+  'SOR_EXPIRED',      // SOR period ended, awaiting invoice generation
+  'INVOICE_PENDING',  // Invoice generated (DRAFT), not yet sent
+  'INVOICE_ISSUED',   // Invoice sent to partner
+  'AWAITING_PAYMENT', // Invoice open, within payment terms
+  'OVERDUE',          // Past due date, no payment
+  'PAYMENT_RECEIVED', // Remittance submitted, under review
+  'RECONCILING',      // Finance matching payment to invoice
+  'PARTIALLY_SETTLED',// Partially paid, balance outstanding
+  'SETTLED',          // Fully paid and closed
+]);
+
 export const consignments = pgTable('consignments', {
   id: uuid('id').primaryKey().defaultRandom(),
   partnerId: uuid('partner_id').notNull().references(() => channelPartners.id),
@@ -22,6 +35,8 @@ export const consignments = pgTable('consignments', {
   courierCompany: varchar('courier_company', { length: 100 }),
   courierWaybill: varchar('courier_waybill', { length: 100 }),
   status: consignmentStatusEnum('status').notNull().default('DRAFT'),
+  settlementStatus: settlementStatusEnum('settlement_status'),
+  invoiceId: uuid('invoice_id'), // linked invoice once generated from this SOR
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

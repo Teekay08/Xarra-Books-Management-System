@@ -8,6 +8,7 @@ import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { sql } from 'drizzle-orm';
 import databasePlugin from './plugins/database.js';
+import migrationsPlugin from './plugins/migrations.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
 import { createSorExpiryQueue, createSorExpiryWorker, scheduleSorExpiryJob } from './jobs/sor-expiry.js';
@@ -42,6 +43,7 @@ import { supplierRoutes } from './modules/suppliers/routes.js';
 import { documentRoutes } from './modules/documents/routes.js';
 import { budgetingRoutes } from './modules/budgeting/routes.js';
 import { orderTrackingRoutes } from './modules/order-tracking/routes.js';
+import { settlementRoutes } from './modules/settlement/routes.js';
 import { suspenseRoutes } from './modules/suspense/routes.js';
 import { projectManagementRoutes } from './modules/project-management/routes.js';
 import { aiRoutes } from './modules/ai/routes.js';
@@ -130,6 +132,9 @@ export async function buildApp() {
 
   // Database
   await app.register(databasePlugin);
+
+  // Auto-migrations (idempotent SQL files not tracked by drizzle-kit journal)
+  await app.register(migrationsPlugin);
 
   // Redis
   await app.register(redisPlugin);
@@ -349,6 +354,7 @@ export async function buildApp() {
     api.register(documentRoutes, { prefix: '/documents' });
     api.register(budgetingRoutes, { prefix: '/budgeting' });
     api.register(orderTrackingRoutes, { prefix: '/order-tracking' });
+    api.register(settlementRoutes, { prefix: '/settlement' });
     api.register(suspenseRoutes, { prefix: '/suspense' });
     api.register(projectManagementRoutes, { prefix: '/project-management' });
     api.register(aiRoutes, { prefix: '/ai' });

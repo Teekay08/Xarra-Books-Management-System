@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, boolean, timestamp, decimal, integer, index, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, timestamp, decimal, integer, index, pgEnum, date } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { titles } from './titles';
 import { user } from './auth';
@@ -106,7 +106,14 @@ export const partnerUsers = pgTable('partner_users', {
 // ==========================================
 
 export const partnerOrderStatusEnum = pgEnum('partner_order_status', [
-  'DRAFT', 'SUBMITTED', 'CONFIRMED', 'PROCESSING', 'DISPATCHED', 'DELIVERED', 'CANCELLED',
+  // Current canonical statuses
+  'RECEIVED', 'PROCESSING', 'DISPATCHED', 'DELIVERED', 'BACK_ORDER', 'CANCELLED',
+  // Legacy statuses (kept for DB compatibility, map to RECEIVED/PROCESSING)
+  'DRAFT', 'SUBMITTED', 'CONFIRMED',
+]);
+
+export const orderLineStatusEnum = pgEnum('order_line_status', [
+  'CONFIRMED', 'BACKORDERED', 'REMOVED', 'OUT_OF_PRINT',
 ]);
 
 export const partnerOrders = pgTable('partner_orders', {
@@ -152,6 +159,10 @@ export const partnerOrders = pgTable('partner_orders', {
   pickingStartedAt: timestamp('picking_started_at', { withTimezone: true }),
   packingStartedAt: timestamp('packing_started_at', { withTimezone: true }),
   currentPipelineStep: integer('current_pipeline_step').notNull().default(0),
+  // Backorder fields
+  backorderEta: date('backorder_eta'), // expected fulfilment date when in BACK_ORDER
+  holdReason: text('hold_reason'),     // reason order is on hold
+  backorderNotes: text('backorder_notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -172,6 +183,10 @@ export const partnerOrderLines = pgTable('partner_order_lines', {
   lineTax: decimal('line_tax', { precision: 12, scale: 2 }).notNull().default('0'),
   qtyConfirmed: integer('qty_confirmed'), // may differ from requested qty
   qtyDispatched: integer('qty_dispatched'),
+  // Backorder / line status
+  lineStatus: orderLineStatusEnum('line_status').notNull().default('CONFIRMED'),
+  backorderQty: integer('backorder_qty').notNull().default(0), // qty that cannot be filled immediately
+  backorderEta: date('backorder_eta'), // line-level ETA (may differ from order-level)
 }, (t) => [
   index('idx_partner_order_lines_order_id').on(t.orderId),
   index('idx_partner_order_lines_title_id').on(t.titleId),

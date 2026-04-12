@@ -45,6 +45,7 @@ export type Module =
   | 'royalties'
   | 'budgeting'
   | 'projectManagement'
+  | 'orderManagement'
   | 'employeePortal';
 
 export type Role = 'admin' | 'finance' | 'projectManager' | 'author' | 'staff';
@@ -83,6 +84,7 @@ export const PERMISSIONS: PermissionMatrix = {
     royalties: ['read', 'create', 'update', 'approve', 'void'],
     budgeting: ['read', 'create', 'update', 'delete', 'approve', 'void', 'export'],
     projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
+    orderManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
     employeePortal: ['read', 'create', 'update'],
   },
   finance: {
@@ -103,7 +105,6 @@ export const PERMISSIONS: PermissionMatrix = {
     statements: ['read', 'create', 'export'],
     reports: ['read', 'export'],
     auditLogs: ['read'],
-    settings: ['read'],
     sync: ['read'],
     purchaseOrders: ['read', 'create', 'update', 'export'],
     cashSales: ['read', 'create', 'void', 'export'],
@@ -113,14 +114,11 @@ export const PERMISSIONS: PermissionMatrix = {
     courierShipments: ['read'],
     royalties: ['read', 'create', 'update', 'approve', 'void'],
     budgeting: ['read', 'create', 'update', 'approve', 'void', 'export'],
+    orderManagement: ['read', 'approve'],
     employeePortal: ['read', 'create', 'update'],
   },
   projectManager: {
-    dashboard: ['read'],
-    titles: ['read'],              // view titles (for project context)
-    authors: ['read'],             // view authors (for project context)
-    reports: ['read'],             // view reports relevant to projects
-    settings: ['read'],            // view own settings
+    // PM access intentionally excludes dashboard/catalog/finance/admin-settings modules.
     budgeting: ['read', 'create', 'update', 'approve', 'export'], // manage project budgets
     projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'], // full PM access
     employeePortal: ['read', 'create', 'update'], // see own workspace too
@@ -131,11 +129,9 @@ export const PERMISSIONS: PermissionMatrix = {
     titles: ['read'],  // own titles only
     statements: ['read'],
     reports: ['read'], // own royalty reports only
-    settings: ['read'],
   },
   staff: {
     employeePortal: ['read', 'create', 'update'],
-    settings: ['read'],
   },
 };
 

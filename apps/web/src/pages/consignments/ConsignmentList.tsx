@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router';
+import { useNavigate, Link } from 'react-router';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { SearchBar } from '../../components/SearchBar';
@@ -95,18 +95,38 @@ export function ConsignmentList() {
 
   return (
     <div>
+      <div className="px-6 pt-4 pb-0">
+        <Link to="/orders/processing" className="mb-2 inline-flex items-center text-sm text-green-700 hover:underline">
+          &#8592; Processing Queue
+        </Link>
+      </div>
       <PageHeader
-        title="Consignments"
-        subtitle="Stock dispatches and SOR tracking"
+        title="Sales Purchase Orders"
+        subtitle="Sales PO dispatches and SOR tracking"
         action={
           <button
             onClick={() => navigate('/consignments/new')}
             className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
           >
-            + New Consignment
+            + New Sales PO
           </button>
         }
       />
+
+      <div className="mb-4 flex items-center gap-2">
+        <button
+          onClick={() => navigate('/consignments')}
+          className="rounded-md border border-green-700 bg-green-700 px-3 py-1.5 text-xs font-medium text-white"
+        >
+          Orders
+        </button>
+        <button
+          onClick={() => navigate('/consignments/proformas')}
+          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Agreements
+        </button>
+      </div>
 
       <div className="mb-4 flex items-center gap-4">
         <div className="flex-1">
@@ -126,7 +146,7 @@ export function ConsignmentList() {
             columns={columns}
             data={data?.data ?? []}
             onRowClick={(c) => navigate(`/consignments/${c.id}`)}
-            emptyMessage="No consignments yet"
+            emptyMessage="No sales purchase orders yet"
           />
           {data?.pagination && (
             <Pagination
@@ -142,7 +162,7 @@ export function ConsignmentList() {
         open={exportConsignModalOpen}
         onClose={() => setExportConsignModalOpen(false)}
         onExport={(from, to) => downloadFromApi(exportUrl('/export/consignments', from, to), 'consignments-export.csv')}
-        title="Export Consignments"
+        title="Export Sales Purchase Orders"
       />
       <DateRangeExportModal
         open={exportLinesModalOpen}

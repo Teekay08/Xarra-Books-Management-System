@@ -18,13 +18,18 @@ const allSections: NavSection[] = [
     ],
   },
   {
+    label: 'Order Management',
+    items: [
+      { name: 'Order Hub',          href: '/orders',            module: 'orderManagement' },
+      { name: 'Processing Queue',   href: '/orders/processing', module: 'orderManagement' },
+      { name: 'Account Settlement', href: '/settlement',        module: 'orderManagement' },
+    ],
+  },
+  {
     label: 'Operations',
     items: [
-      { name: 'Channel Partners', href: '/partners', module: 'partners' },
+      { name: 'Retail Partners', href: '/partners', module: 'partners' },
       { name: 'Inventory', href: '/inventory', module: 'inventory' },
-      { name: 'SOR Consignments', href: '/consignments', module: 'consignments' },
-      { name: 'SOR Agreements', href: '/consignments/proformas', module: 'consignments' },
-      { name: 'Returns', href: '/returns', module: 'returns' },
       { name: 'Sync', href: '/sync', module: 'sync' },
     ],
   },
@@ -32,10 +37,6 @@ const allSections: NavSection[] = [
     label: 'Partner Portal',
     items: [
       { name: 'Portal Users', href: '/partners/portal-users', module: 'partnerPortal' },
-      { name: 'Partner Book Orders', href: '/partners/portal-orders', module: 'partnerPortal' },
-      { name: 'Return Requests', href: '/partners/return-requests', module: 'partnerPortal' },
-      { name: 'Create Partner Order', href: '/partners/create-order', module: 'partnerPortal' },
-      { name: 'Courier Shipments', href: '/partners/courier-shipments', module: 'courierShipments' },
     ],
   },
   {

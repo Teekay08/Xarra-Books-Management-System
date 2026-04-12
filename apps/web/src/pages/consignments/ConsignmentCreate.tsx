@@ -111,7 +111,7 @@ export function ConsignmentCreate() {
   return (
     <div>
       <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
-      <PageHeader title="New Consignment" />
+      <PageHeader title="New Sales Purchase Order" />
 
       <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-3xl space-y-6">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -155,7 +155,7 @@ export function ConsignmentCreate() {
         </div>
 
         <fieldset className="rounded-md border border-gray-200 p-4">
-          <legend className="px-2 text-sm font-medium text-gray-600">Titles to Consign</legend>
+          <legend className="px-2 text-sm font-medium text-gray-600">Titles to Include</legend>
           <div className="space-y-3">
             {lines.map((line, i) => (
               <div key={i} className="grid grid-cols-12 gap-2 items-end">
@@ -206,9 +206,9 @@ export function ConsignmentCreate() {
 
         <div className="flex gap-3">
           <button type="submit" disabled={mutation.isPending} className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
-            {mutation.isPending ? 'Creating...' : 'Create Consignment'}
+            {mutation.isPending ? 'Creating...' : 'Create Sales PO'}
           </button>
-          <button type="button" onClick={() => navigate('/consignments')} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+          <button type="button" onClick={() => navigate(-1)} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
             Cancel
           </button>
         </div>

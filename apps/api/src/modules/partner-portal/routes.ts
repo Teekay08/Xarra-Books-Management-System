@@ -1660,15 +1660,113 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
   // ORDER MANAGEMENT (Xarra staff processing partner orders)
   // ==========================================
 
+  // Hub stat card counts for the Order Management dashboard
+  app.get('/orders/hub-stats', { preHandler: requireRole('admin', 'operations', 'finance') }, async () => {
+    const rows = await app.db
+      .select({
+        status: partnerOrders.status,
+        count: sql<number>`cast(count(*) as int)`,
+      })
+      .from(partnerOrders)
+      .where(
+        inArray(partnerOrders.status, [
+          'RECEIVED', 'SUBMITTED', 'CONFIRMED',
+          'PROCESSING', 'DISPATCHED', 'BACK_ORDER',
+        ])
+      )
+      .groupBy(partnerOrders.status);
+
+    const byStatus: Record<string, number> = {};
+    for (const r of rows) byStatus[r.status] = Number(r.count);
+
+    return {
+      data: {
+        received:   (byStatus['RECEIVED'] ?? 0) + (byStatus['SUBMITTED'] ?? 0),
+        processing: (byStatus['PROCESSING'] ?? 0) + (byStatus['CONFIRMED'] ?? 0),
+        inTransit:  byStatus['DISPATCHED'] ?? 0,
+        backOrders: byStatus['BACK_ORDER'] ?? 0,
+      },
+    };
+  });
+
+  // Stock availability check for a list of title+quantity pairs
+  // POST /partner-admin/orders/stock-check
+  // Body: { lines: [{ titleId, quantity }] }
+  // Returns each line with warehouseStock, isAvailable, shortfall
+  app.post('/orders/stock-check', { preHandler: requireRole('admin', 'operations', 'finance') }, async (request, reply) => {
+    const { lines } = request.body as { lines: { titleId: string; quantity: number }[] };
+    if (!Array.isArray(lines) || lines.length === 0) {
+      return reply.badRequest('lines array is required');
+    }
+
+    const titleIds = [...new Set(lines.map((l) => l.titleId))];
+
+    // Compute XARRA_WAREHOUSE stock for each title
+    const stockRows = await app.db.execute<{ titleId: string; available: number }>(sql`
+      SELECT
+        t.id AS "titleId",
+        COALESCE(SUM(
+          CASE
+            WHEN im.movement_type IN ('IN', 'RETURN') AND im.to_location = 'XARRA_WAREHOUSE' THEN im.quantity
+            WHEN im.movement_type = 'ADJUST'         AND im.to_location = 'XARRA_WAREHOUSE' THEN im.quantity
+            WHEN im.movement_type = 'ADJUST'         AND im.from_location = 'XARRA_WAREHOUSE' THEN -im.quantity
+            WHEN im.movement_type IN ('CONSIGN', 'SELL', 'WRITEOFF') AND im.from_location = 'XARRA_WAREHOUSE' THEN -im.quantity
+            ELSE 0
+          END
+        ), 0)::int AS available
+      FROM ${titles} t
+      LEFT JOIN ${inventoryMovements} im ON im.title_id = t.id
+      WHERE t.id IN (${sql.join(titleIds.map((id) => sql`${id}::uuid`), sql`, `)})
+      GROUP BY t.id
+    `);
+
+    const stockMap = new Map<string, number>(
+      stockRows.map((r) => [r.titleId, Number(r.available)]),
+    );
+
+    // Fetch title names for the response
+    const titleRows = await app.db
+      .select({ id: titles.id, title: titles.title, isbn13: titles.isbn13 })
+      .from(titles)
+      .where(inArray(titles.id, titleIds));
+    const titleMap = new Map(titleRows.map((t) => [t.id, t]));
+
+    const result = lines.map((line) => {
+      const warehouseStock = stockMap.get(line.titleId) ?? 0;
+      const shortfall = Math.max(0, line.quantity - warehouseStock);
+      return {
+        titleId: line.titleId,
+        title: titleMap.get(line.titleId)?.title ?? 'Unknown',
+        isbn13: titleMap.get(line.titleId)?.isbn13 ?? null,
+        quantityOrdered: line.quantity,
+        warehouseStock,
+        isAvailable: shortfall === 0,
+        shortfall,
+      };
+    });
+
+    const allAvailable = result.every((r) => r.isAvailable);
+    return { data: { lines: result, allAvailable } };
+  });
+
   // List all partner orders (admin view)
   app.get('/orders', { preHandler: requireRole('admin', 'operations', 'finance') }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search } = query;
+    const { status } = request.query as { status?: string };
     const offset = (page - 1) * limit;
 
-    const where = search
-      ? sql`${partnerOrders.number} ILIKE ${'%' + search + '%'}`
-      : undefined;
+    const conditions: ReturnType<typeof eq>[] = [];
+    if (search) conditions.push(sql`${partnerOrders.number} ILIKE ${'%' + search + '%'}` as any);
+    if (status) {
+      const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+      if (statuses.length === 1) {
+        conditions.push(eq(partnerOrders.status, statuses[0] as any));
+      } else if (statuses.length > 1) {
+        conditions.push(inArray(partnerOrders.status, statuses as any[]) as any);
+      }
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [items, countResult] = await Promise.all([
       app.db.query.partnerOrders.findMany({

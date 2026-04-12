@@ -4,7 +4,7 @@ import {
   partnerOrders, partnerOrderLines, channelPartners,
   partnerUsers, titles, orderStatusHistory, partnerMagicLinks,
   partnerDocumentDeliveries, partnerUploadedDocuments, partnerOnboardingFunnel,
-  notificationEmailPreferences,
+  notificationEmailPreferences, companySettings,
 } from '@xarra/db';
 import {
   ORDER_PIPELINE_STEPS, paginationSchema,
@@ -13,8 +13,14 @@ import {
 } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { nextPartnerOrderNumber } from '../finance/invoice-number.js';
+import { generatePdf } from '../../services/pdf.js';
+import { renderPickingSlipHtml } from '../../services/templates/picking-slip.js';
+import { renderPackingListHtml } from '../../services/templates/packing-list.js';
+import { renderDeliveryNoteHtml } from '../../services/templates/delivery-note.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
+import { sendEmail, isEmailConfigured } from '../../services/email.js';
+import { config } from '../../config.js';
 
 // Pipeline step -> order status mapping
 const STEP_TO_STATUS: Record<string, string> = {
@@ -215,8 +221,9 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
     let subtotal = 0;
     const orderLines = body.lines.map((line) => {
       const title = titleMap.get(line.titleId);
-      const unitPrice = Number(title?.rrpZar || 0);
-      const lineTotal = line.quantity * unitPrice * (1 - discount / 100);
+      // Use provided unitPrice if given (manual capture allows custom pricing), else derive from RRP
+      const unitPrice = line.unitPrice ?? (Number(title?.rrpZar || 0) * (1 - discount / 100));
+      const lineTotal = line.quantity * unitPrice;
       subtotal += lineTotal;
       return {
         titleId: line.titleId,
@@ -239,13 +246,15 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
       placedById: systemUser.id,
       customerPoNumber: body.customerPoNumber || null,
       deliveryAddress: body.deliveryAddress || null,
+      expectedDeliveryDate: body.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : null,
       subtotal: String(subtotal),
       vatAmount: String(vatAmount),
       total: String(total),
       status: 'SUBMITTED',
-      source: 'ADMIN_ENTRY',
+      source: body.source === 'PORTAL' ? 'PORTAL' : 'ADMIN_ENTRY',
       enteredById: userId,
       notes: body.notes || null,
+      internalNotes: body.internalNotes || null,
       currentPipelineStep: 0,
     } as any).returning();
 
@@ -262,6 +271,121 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
       source: 'MANUAL',
       notes: 'Order created on behalf of partner',
     });
+
+    // Send intake confirmation email if requested
+    if (body.sendIntakeEmail && isEmailConfigured()) {
+      const recipientEmail = body.notifyEmail || partner.contactEmail;
+      if (recipientEmail) {
+        // Generate a magic link so the partner can view their order in the portal
+        const magicToken = crypto.randomBytes(32).toString('hex');
+        const magicExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        await app.db.insert(partnerMagicLinks).values({
+          token: magicToken,
+          partnerId: partner.id,
+          purpose: 'VIEW_ORDER',
+          referenceType: 'PARTNER_ORDER',
+          referenceId: order.id,
+          expiresAt: magicExpiresAt,
+        });
+        const portalBase = (config.cors.origins[0] ?? 'http://localhost:5173').replace(/\/$/, '');
+        const magicUrl = `${portalBase}/partner/magic/${magicToken}`;
+
+        const isPortalUser = partner.portalMode === 'SELF_SERVICE';
+        const sourceLabel: Record<string, string> = {
+          EMAIL: 'email', PHONE: 'phone call', FAX: 'fax', MANUAL: 'walk-in / manual entry',
+        };
+        const totalUnits = body.lines.reduce((s, l) => s + l.quantity, 0);
+        const formattedTotal = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(total);
+
+        // Portal CTA block — casual for existing portal users, inviting for others
+        const portalCtaBlock = isPortalUser
+          ? `
+    <div style="margin-top:24px;padding:20px 24px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">
+      <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#166534">View your order on the Xarra Partner Portal</p>
+      <p style="margin:0 0 14px;font-size:13px;color:#15803d;line-height:1.6">
+        Track the status of ${order.number}, view your invoices, and manage your account — all in one place.
+      </p>
+      <a href="${magicUrl}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:10px 20px;border-radius:6px">
+        View Order →
+      </a>
+      <p style="margin:10px 0 0;font-size:11px;color:#6b7280">This link is unique to you and valid for 30 days.</p>
+    </div>`
+          : `
+    <div style="margin-top:24px;padding:20px 24px;background:#fef9f0;border:1px solid #fde68a;border-radius:8px">
+      <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#92400e">Did you know? You can manage your orders online.</p>
+      <p style="margin:0 0 14px;font-size:13px;color:#78350f;line-height:1.6">
+        The Xarra Partner Portal lets you place orders, track deliveries, view invoices, and submit returns — without needing to call or email us.
+        Click below to view this order and explore the portal.
+      </p>
+      <a href="${magicUrl}" style="display:inline-block;background:#8B1A1A;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:10px 20px;border-radius:6px">
+        View Order &amp; Explore Portal →
+      </a>
+      <p style="margin:10px 0 0;font-size:11px;color:#6b7280">No password needed — this link signs you in automatically. Valid for 30 days.</p>
+    </div>`;
+
+        const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif">
+  <div style="max-width:560px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb">
+    <div style="background:#8B1A1A;padding:24px 32px">
+      <h1 style="margin:0;color:#fff;font-size:18px;font-weight:700;letter-spacing:-0.3px">Xarra Books</h1>
+      <p style="margin:4px 0 0;color:#f5c6c6;font-size:13px">Order Acknowledgement</p>
+    </div>
+    <div style="padding:28px 32px">
+      <p style="margin:0 0 16px;font-size:15px;color:#111827">Dear ${partner.name},</p>
+      <p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.6">
+        We have received and logged your order, submitted via ${sourceLabel[body.source ?? 'MANUAL'] ?? body.source?.toLowerCase() ?? 'manual entry'}.
+        Our team will review and confirm it shortly.
+      </p>
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:20px;margin-bottom:24px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <tr>
+            <td style="padding:4px 0;color:#6b7280;width:140px">Order Reference</td>
+            <td style="padding:4px 0;color:#111827;font-weight:700;font-family:monospace">${order.number}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;color:#6b7280">Order Date</td>
+            <td style="padding:4px 0;color:#111827">${new Date().toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</td>
+          </tr>
+          ${body.customerPoNumber ? `<tr>
+            <td style="padding:4px 0;color:#6b7280">Your PO Number</td>
+            <td style="padding:4px 0;color:#111827;font-family:monospace">${body.customerPoNumber}</td>
+          </tr>` : ''}
+          <tr>
+            <td style="padding:4px 0;color:#6b7280">Total Units</td>
+            <td style="padding:4px 0;color:#111827">${totalUnits} unit${totalUnits !== 1 ? 's' : ''}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;color:#6b7280">Order Total</td>
+            <td style="padding:4px 0;color:#111827;font-weight:700">${formattedTotal} (incl. VAT)</td>
+          </tr>
+        </table>
+      </div>
+      ${body.notes ? `<p style="margin:0 0 20px;font-size:13px;color:#374151;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:12px 16px"><strong>Note from Xarra:</strong> ${body.notes}</p>` : ''}
+      <p style="margin:0 0 8px;font-size:13px;color:#6b7280;line-height:1.6">
+        Once confirmed, you will receive a follow-up notification. If you have any questions, please reply to this email or contact your account manager.
+      </p>
+      ${portalCtaBlock}
+    </div>
+    <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center">
+      <p style="margin:0;font-size:11px;color:#9ca3af">
+        Xarra Books · Midrand, South Africa<br>
+        This is an automated message — please do not reply to confirm receipt of your order.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+        sendEmail({
+          to: recipientEmail,
+          subject: `Order Acknowledgement — ${order.number} | Xarra Books`,
+          html,
+        }).catch((err: Error) => app.log.warn({ err, orderId: order.id }, 'Intake email failed to send'));
+      }
+    }
 
     return reply.status(201).send({ data: order });
   });
@@ -350,7 +474,42 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
       });
     }
 
-    return { data: { purpose: link.purpose, referenceType: link.referenceType, referenceId: link.referenceId } };
+    // Load partner info so we can issue a guest session token
+    const partner = await app.db.query.channelPartners.findFirst({
+      where: eq(channelPartners.id, link.partnerId),
+    });
+
+    // Build a guest partner session (no real user — magic-link visitor)
+    const session = {
+      userId: `magic:${link.id}`,
+      partnerId: link.partnerId,
+      branchId: null as string | null,
+      role: 'viewer',
+      email: partner?.contactEmail ?? '',
+      name: partner?.name ?? 'Partner',
+    };
+    const sessionToken = Buffer.from(JSON.stringify(session)).toString('base64url');
+
+    const partnerUser = {
+      id: session.userId,
+      name: session.name,
+      email: session.email,
+      role: session.role,
+      partnerId: link.partnerId,
+      partnerName: partner?.name ?? '',
+      branchId: null,
+      branchName: null,
+    };
+
+    return {
+      data: {
+        purpose: link.purpose,
+        referenceType: link.referenceType,
+        referenceId: link.referenceId,
+        sessionToken,
+        partnerUser,
+      },
+    };
   });
 
   // ==========================================
@@ -580,5 +739,218 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
     }).returning();
 
     return { data: created };
+  });
+
+  // ==========================================
+  // ORDER PROCESSING DOCUMENTS
+  // ==========================================
+
+  // Picking slip — available once order reaches PICKING step
+  app.get<{ Params: { id: string } }>('/orders/:id/picking-slip', {
+    preHandler: requireRole('admin', 'operations'),
+  }, async (request, reply) => {
+    const order = await app.db.query.partnerOrders.findFirst({
+      where: eq(partnerOrders.id, request.params.id),
+      with: {
+        partner: true,
+        branch: true,
+        lines: { with: { title: true } },
+      },
+    });
+    if (!order) return reply.notFound('Order not found');
+    if (!['PROCESSING', 'DISPATCHED', 'DELIVERED'].includes(order.status)) return reply.badRequest('Order has not reached picking stage');
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    const html = renderPickingSlipHtml({
+      orderNumber: order.number,
+      orderDate: order.orderDate.toISOString(),
+      partnerName: order.partner.name,
+      branchName: order.branch?.name ?? null,
+      lines: order.lines.map(l => ({
+        titleId: l.titleId,
+        title: l.title.title,
+        isbn13: l.title.isbn13 ?? null,
+        shelfLocation: null, // populated by inventory system in future
+        quantity: l.quantity,
+      })),
+      notes: order.internalNotes ?? null,
+      company: settings ? { name: settings.companyName ?? 'Xarra Books', logoUrl: settings.logoUrl, addressLine1: settings.addressLine1 } : null,
+    });
+
+    const pdf = await generatePdf(html);
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `inline; filename="PICKING-${order.number}.pdf"`)
+      .send(pdf);
+  });
+
+  // Packing list — available once order reaches PACKING step
+  app.get<{ Params: { id: string } }>('/orders/:id/packing-list', {
+    preHandler: requireRole('admin', 'operations'),
+  }, async (request, reply) => {
+    const order = await app.db.query.partnerOrders.findFirst({
+      where: eq(partnerOrders.id, request.params.id),
+      with: {
+        partner: true,
+        branch: true,
+        lines: { with: { title: true } },
+      },
+    });
+    if (!order) return reply.notFound('Order not found');
+    if (!['PROCESSING', 'DISPATCHED', 'DELIVERED'].includes(order.status)) return reply.badRequest('Order has not reached packing stage');
+
+    // Resolve SOR/consignment number if linked
+    let sorNumber: string | null = null;
+    if (order.consignmentId) {
+      const { consignments } = await import('@xarra/db');
+      const consignment = await app.db.query.consignments.findFirst({
+        where: eq(consignments.id, order.consignmentId),
+      });
+      sorNumber = consignment?.proformaNumber ?? null;
+    }
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    const html = renderPackingListHtml({
+      orderNumber: order.number,
+      sorNumber,
+      partnerPoNumber: order.customerPoNumber ?? null,
+      orderDate: order.orderDate.toISOString(),
+      packedDate: new Date().toISOString(),
+      partnerName: order.partner.name,
+      branchName: order.branch?.name ?? null,
+      lines: order.lines.map(l => ({
+        title: l.title.title,
+        isbn13: l.title.isbn13 ?? null,
+        qtyPacked: l.qtyConfirmed ?? l.quantity,
+      })),
+      notes: order.internalNotes ?? null,
+      company: settings ? { name: settings.companyName ?? 'Xarra Books', logoUrl: settings.logoUrl, addressLine1: settings.addressLine1 } : null,
+    });
+
+    const pdf = await generatePdf(html);
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `inline; filename="PACKING-${order.number}.pdf"`)
+      .send(pdf);
+  });
+
+  // Delivery note — available at DISPATCHED and beyond; assigns DN number
+  app.get<{ Params: { id: string } }>('/orders/:id/delivery-note', {
+    preHandler: requireRole('admin', 'operations', 'finance'),
+  }, async (request, reply) => {
+    const order = await app.db.query.partnerOrders.findFirst({
+      where: eq(partnerOrders.id, request.params.id),
+      with: {
+        partner: true,
+        branch: true,
+        lines: { with: { title: true } },
+      },
+    });
+    if (!order) return reply.notFound('Order not found');
+    if (!['DISPATCHED', 'DELIVERED'].includes(order.status)) return reply.badRequest('Order has not been dispatched yet');
+
+    // Resolve SOR/consignment number and invoice number if linked
+    let sorNumber: string | null = null;
+    let invoiceNumber: string | null = null;
+
+    if (order.consignmentId) {
+      const { consignments } = await import('@xarra/db');
+      const consignment = await app.db.query.consignments.findFirst({
+        where: eq(consignments.id, order.consignmentId),
+      });
+      sorNumber = consignment?.proformaNumber ?? null;
+    }
+
+    if (order.invoiceId) {
+      const { invoices } = await import('@xarra/db');
+      const invoice = await app.db.query.invoices.findFirst({
+        where: eq(invoices.id, order.invoiceId),
+      });
+      invoiceNumber = invoice?.number ?? null;
+    }
+
+    // Use order number as DN number (DN- prefix variant) if no dedicated sequence exists
+    const dnNumber = `DN-${order.number.replace('POR-', '')}`;
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    const html = renderDeliveryNoteHtml({
+      deliveryNoteNumber: dnNumber,
+      orderNumber: order.number,
+      sorNumber,
+      invoiceNumber,
+      partnerPoNumber: order.customerPoNumber ?? null,
+      dispatchDate: (order.dispatchedAt ?? new Date()).toISOString(),
+      expectedDelivery: order.expectedDeliveryDate?.toISOString() ?? null,
+      partnerName: order.partner.name,
+      branchName: order.branch?.name ?? null,
+      deliveryAddress: order.deliveryAddress ?? null,
+      courierCompany: order.courierCompany ?? null,
+      courierWaybill: order.courierWaybill ?? null,
+      courierTrackingUrl: order.courierTrackingUrl ?? null,
+      items: order.lines.map(l => ({
+        title: l.title.title,
+        isbn13: l.title.isbn13 ?? null,
+        quantity: l.qtyDispatched ?? l.qtyConfirmed ?? l.quantity,
+      })),
+      notes: order.notes ?? null,
+      company: settings ? {
+        name: settings.companyName ?? 'Xarra Books',
+        logoUrl: settings.logoUrl,
+        addressLine1: settings.addressLine1,
+        phone: settings.phone,
+        email: settings.email,
+        vatNumber: settings.vatNumber,
+      } : undefined,
+    });
+
+    const pdf = await generatePdf(html);
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `inline; filename="${dnNumber}.pdf"`)
+      .send(pdf);
+  });
+
+  // Mark order as back-order
+  app.patch<{ Params: { id: string } }>('/orders/:id/backorder', {
+    preHandler: requireRole('admin', 'operations'),
+  }, async (request, reply) => {
+    const { backorderEta, holdReason, backorderNotes, lineUpdates } = z.object({
+      backorderEta: z.string().optional(),
+      holdReason: z.string().optional(),
+      backorderNotes: z.string().optional(),
+      lineUpdates: z.array(z.object({
+        lineId: z.string(),
+        backorderQty: z.number().int().min(0),
+        backorderEta: z.string().optional(),
+      })).optional(),
+    }).parse(request.body);
+
+    const order = await app.db.query.partnerOrders.findFirst({
+      where: eq(partnerOrders.id, request.params.id),
+    });
+    if (!order) return reply.notFound('Order not found');
+
+    const [updated] = await app.db.update(partnerOrders).set({
+      status: 'BACK_ORDER',
+      backorderEta: backorderEta ?? null,
+      holdReason: holdReason ?? null,
+      backorderNotes: backorderNotes ?? null,
+      updatedAt: new Date(),
+    }).where(eq(partnerOrders.id, request.params.id)).returning();
+
+    if (lineUpdates?.length) {
+      for (const lu of lineUpdates) {
+        await app.db.update(partnerOrderLines).set({
+          lineStatus: 'BACKORDERED',
+          backorderQty: lu.backorderQty,
+          backorderEta: lu.backorderEta ?? null,
+        }).where(eq(partnerOrderLines.id, lu.lineId));
+      }
+    }
+
+    return { data: updated };
   });
 }

@@ -135,8 +135,52 @@ export type RequisitionStatus = (typeof REQUISITION_STATUSES)[number];
 export const PARTNER_USER_ROLES = ['ADMIN', 'BRANCH_MANAGER', 'STAFF'] as const;
 export type PartnerUserRole = (typeof PARTNER_USER_ROLES)[number];
 
-export const PARTNER_ORDER_STATUSES = ['DRAFT', 'SUBMITTED', 'CONFIRMED', 'PROCESSING', 'DISPATCHED', 'DELIVERED', 'CANCELLED'] as const;
+export const PARTNER_ORDER_STATUSES = [
+  // Canonical statuses
+  'RECEIVED', 'PROCESSING', 'DISPATCHED', 'DELIVERED', 'BACK_ORDER', 'CANCELLED',
+  // Legacy (kept for DB compatibility)
+  'DRAFT', 'SUBMITTED', 'CONFIRMED',
+] as const;
 export type PartnerOrderStatus = (typeof PARTNER_ORDER_STATUSES)[number];
+
+export const ORDER_LINE_STATUSES = ['CONFIRMED', 'BACKORDERED', 'REMOVED', 'OUT_OF_PRINT'] as const;
+export type OrderLineStatus = (typeof ORDER_LINE_STATUSES)[number];
+
+export const ORDER_MANAGEMENT_STAGES = [
+  { key: 'ORDER_HUB',          name: 'Order Hub',           description: 'Order intake, confirmation, tracking and delivery' },
+  { key: 'PROCESSING_QUEUE',   name: 'Processing Queue',    description: 'Picking, packing, SOR proforma, dispatch, returns receiving' },
+  { key: 'ACCOUNT_SETTLEMENT', name: 'Account Settlement',  description: 'SOR expiry, invoicing, credits, statements, remittances, payment' },
+] as const;
+export type OrderManagementStageKey = (typeof ORDER_MANAGEMENT_STAGES)[number]['key'];
+
+export const SETTLEMENT_STATUSES = [
+  'SOR_ACTIVE', 'SOR_EXPIRED', 'INVOICE_PENDING', 'INVOICE_ISSUED',
+  'AWAITING_PAYMENT', 'OVERDUE', 'PAYMENT_RECEIVED', 'RECONCILING',
+  'PARTIALLY_SETTLED', 'SETTLED',
+] as const;
+export type SettlementStatus = (typeof SETTLEMENT_STATUSES)[number];
+
+export const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
+  SOR_ACTIVE:          'SOR Active',
+  SOR_EXPIRED:         'SOR Expired',
+  INVOICE_PENDING:     'Invoice Pending',
+  INVOICE_ISSUED:      'Invoice Issued',
+  AWAITING_PAYMENT:    'Awaiting Payment',
+  OVERDUE:             'Overdue',
+  PAYMENT_RECEIVED:    'Payment Received',
+  RECONCILING:         'Reconciling',
+  PARTIALLY_SETTLED:   'Partially Settled',
+  SETTLED:             'Settled',
+} as const;
+
+/** Display labels for invoice payment status shown in the Staff UI (no DB change). */
+export const INVOICE_BILLING_STATUS_LABELS: Record<string, string> = {
+  ISSUED:   'Invoice Sent',
+  PARTIAL:  'Partially Paid',
+  PAID:     'Paid',
+  OVERDUE:  'Overdue',
+  VOIDED:   'Voided',
+} as const;
 
 export const PARTNER_RETURN_REQUEST_STATUSES = [
   'DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'AUTHORIZED', 'REJECTED',
@@ -387,6 +431,19 @@ export type PredictionConfidenceLevel = (typeof PREDICTION_CONFIDENCE_LEVELS)[nu
 export const PREDICTION_RISK_LEVELS = ['LOW', 'MEDIUM', 'HIGH'] as const;
 
 // === Project Management ===
+
+export const WORKFLOW_STAGES = [
+  { key: 'PROJECT_SETUP',   name: 'Create Project',       description: 'Project created with title and dates' },
+  { key: 'BUDGET_PLANNING', name: 'Define Budget',         description: 'Milestones and budget lines added' },
+  { key: 'BUDGET_APPROVAL', name: 'Approve Budget',        description: 'Budget submitted and approved by Finance' },
+  { key: 'TEAM_ASSEMBLY',   name: 'Assign Team',           description: 'Staff members assigned to the project' },
+  { key: 'SOW_CREATION',    name: 'Create & Accept SOW',   description: 'Statements of Work created and accepted' },
+  { key: 'TASK_CREATION',   name: 'Create Tasks',          description: 'Task assignments created for all staff' },
+  { key: 'EXECUTION',       name: 'Execute & Review',      description: 'Staff log time, PM reviews and completes tasks' },
+  { key: 'COMPLETION',      name: 'Close Project',         description: 'All tasks completed, project archived' },
+] as const;
+export type WorkflowStageKey = (typeof WORKFLOW_STAGES)[number]['key'];
+export type WorkflowStageStatus = 'COMPLETED' | 'CURRENT' | 'BLOCKED' | 'UPCOMING';
 
 export const TASK_ASSIGNMENT_STATUSES = ['DRAFT', 'ASSIGNED', 'IN_PROGRESS', 'REVIEW', 'COMPLETED', 'CANCELLED'] as const;
 export type TaskAssignmentStatus = (typeof TASK_ASSIGNMENT_STATUSES)[number];

@@ -106,6 +106,7 @@ import { NotFound } from './pages/NotFound';
 // Partner Portal (public-facing for channel partners)
 import { PartnerPortalLayout } from './components/PartnerPortalLayout';
 import { PartnerLogin } from './pages/partner-portal/PartnerLogin';
+import { PartnerMagicLinkLogin } from './pages/partner-portal/PartnerMagicLinkLogin';
 import { PartnerDashboard } from './pages/partner-portal/PartnerDashboard';
 import { PartnerCatalog } from './pages/partner-portal/PartnerCatalog';
 import { PartnerOrders } from './pages/partner-portal/PartnerOrders';
@@ -132,12 +133,24 @@ import { CourierShipmentsAdmin } from './pages/partners/CourierShipmentsAdmin';
 import { NotificationList } from './pages/notifications/NotificationList';
 import { RoyaltiesAdmin } from './pages/royalties/RoyaltiesAdmin';
 import { DocumentsSearch } from './pages/documents/DocumentsSearch';
+// Order Management
+import { AccountSettlement } from './pages/settlement/AccountSettlement';
+import { OrderManagementHub } from './pages/orders/OrderManagementHub';
+import { OrderManualCapture } from './pages/orders/OrderManualCapture';
+import { OrderProcessingQueue } from './pages/orders/OrderProcessingQueue';
+import { OrderDeliveryTracking } from './pages/orders/OrderDeliveryTracking';
+import { BackorderList } from './pages/orders/BackorderList';
+import { ReturnsList as OrderReturnsList } from './pages/orders/ReturnsList';
+import { ReturnDetail as OrderReturnDetail } from './pages/orders/ReturnDetail';
+import { ReturnCapture } from './pages/orders/ReturnCapture';
+import { OrderDetail } from './pages/orders/OrderDetail';
 // Order Tracking + Partner Management
 import { CreateOrderOnBehalf } from './pages/partners/CreateOrderOnBehalf';
 import { NotificationEmailSettings } from './pages/settings/NotificationEmailSettings';
 // Project Management + Employee Portal
 import { PMDashboard } from './pages/project-management/PMDashboard';
 import { PMProjectList } from './pages/project-management/PMProjectList';
+import { ProjectOverview } from './pages/project-management/ProjectOverview';
 import { StaffList } from './pages/project-management/StaffList';
 import { StaffDetail } from './pages/project-management/StaffDetail';
 import { CreateStaffSow } from './pages/project-management/CreateStaffSow';
@@ -280,7 +293,21 @@ const router = createBrowserRouter([
       { path: 'consignments/proformas', element: <SorProformaList /> },
       { path: 'consignments/:id', element: <ConsignmentDetail /> },
 
-      // Returns
+      // Account Settlement
+      { path: 'settlement', element: <AccountSettlement /> },
+
+      // Order Management
+      { path: 'orders', element: <OrderManagementHub /> },
+      { path: 'orders/new', element: <OrderManualCapture /> },
+      { path: 'orders/processing', element: <OrderProcessingQueue /> },
+      { path: 'orders/delivery', element: <OrderDeliveryTracking /> },
+      { path: 'orders/backorders', element: <BackorderList /> },
+      { path: 'orders/returns', element: <OrderReturnsList /> },
+      { path: 'orders/returns/new', element: <ReturnCapture /> },
+      { path: 'orders/returns/:id', element: <OrderReturnDetail /> },
+      { path: 'orders/:id', element: <OrderDetail /> },
+
+      // Legacy Returns (kept for backwards-compat with existing links)
       { path: 'returns', element: <ReturnsList /> },
       { path: 'returns/new', element: <ReturnsCreate /> },
       { path: 'returns/:id', element: <ReturnsDetail /> },
@@ -293,6 +320,7 @@ const router = createBrowserRouter([
       { path: 'pm/staff/:id', element: <StaffDetail /> },
       { path: 'pm/staff/:id/edit', element: <StaffForm /> },
       { path: 'pm/staff/:staffId/sow', element: <CreateStaffSow /> },
+      { path: 'pm/projects/:projectId', element: <ProjectOverview /> },
       { path: 'pm/projects/:projectId/team', element: <ProjectTeam /> },
       { path: 'pm/projects/:projectId/tasks', element: <TaskList /> },
       { path: 'pm/projects/:projectId/tasks/new', element: <TaskForm /> },
@@ -357,29 +385,29 @@ const router = createBrowserRouter([
       { path: 'sync', element: <SyncDashboard /> },
 
       // Settings (admin)
-      { path: 'settings', element: <CompanySettings /> },
+      { path: 'settings', element: <ProtectedRoute allowedRoles={['admin']}><CompanySettings /></ProtectedRoute> },
       { path: 'settings/profile', element: <UserProfile /> },
-      { path: 'settings/users', element: <UserManagement /> },
-      { path: 'settings/reminders', element: <InvoiceReminders /> },
-      { path: 'settings/scheduling', element: <AutomationScheduling /> },
-      { path: 'settings/export', element: <DataExport /> },
-      { path: 'settings/system', element: <SystemConfiguration /> },
-      { path: 'settings/email', element: <EmailSettings /> },
-      { path: 'settings/document-series', element: <DocumentSeries /> },
-      { path: 'settings/contract-templates', element: <ContractTemplates /> },
-      { path: 'settings/notification-emails', element: <NotificationEmailSettings /> },
+      { path: 'settings/users', element: <ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute> },
+      { path: 'settings/reminders', element: <ProtectedRoute allowedRoles={['admin']}><InvoiceReminders /></ProtectedRoute> },
+      { path: 'settings/scheduling', element: <ProtectedRoute allowedRoles={['admin']}><AutomationScheduling /></ProtectedRoute> },
+      { path: 'settings/export', element: <ProtectedRoute allowedRoles={['admin']}><DataExport /></ProtectedRoute> },
+      { path: 'settings/system', element: <ProtectedRoute allowedRoles={['admin']}><SystemConfiguration /></ProtectedRoute> },
+      { path: 'settings/email', element: <ProtectedRoute allowedRoles={['admin']}><EmailSettings /></ProtectedRoute> },
+      { path: 'settings/document-series', element: <ProtectedRoute allowedRoles={['admin']}><DocumentSeries /></ProtectedRoute> },
+      { path: 'settings/contract-templates', element: <ProtectedRoute allowedRoles={['admin']}><ContractTemplates /></ProtectedRoute> },
+      { path: 'settings/notification-emails', element: <ProtectedRoute allowedRoles={['admin']}><NotificationEmailSettings /></ProtectedRoute> },
 
       // Partner Portal Management (admin)
-      { path: 'partners/portal-users', element: <PartnerPortalUsers /> },
-      { path: 'partners/portal-orders', element: <PartnerOrdersAdmin /> },
-      { path: 'partners/create-order', element: <CreateOrderOnBehalf /> },
-      { path: 'partners/return-requests', element: <PartnerReturnRequestsAdmin /> },
-      { path: 'partners/courier-shipments', element: <CourierShipmentsAdmin /> },
+      { path: 'partners/portal-users', element: <ProtectedRoute allowedRoles={['admin']}><PartnerPortalUsers /></ProtectedRoute> },
+      { path: 'partners/portal-orders', element: <ProtectedRoute allowedRoles={['admin']}><PartnerOrdersAdmin /></ProtectedRoute> },
+      { path: 'partners/create-order', element: <ProtectedRoute allowedRoles={['admin']}><CreateOrderOnBehalf /></ProtectedRoute> },
+      { path: 'partners/return-requests', element: <ProtectedRoute allowedRoles={['admin']}><PartnerReturnRequestsAdmin /></ProtectedRoute> },
+      { path: 'partners/courier-shipments', element: <ProtectedRoute allowedRoles={['admin']}><CourierShipmentsAdmin /></ProtectedRoute> },
 
       // Admin — Audit & Deletion
-      { path: 'admin/audit-log', element: <AuditLog /> },
-      { path: 'admin/system-health', element: <SystemHealth /> },
-      { path: 'admin/deletion-requests', element: <DeletionRequests /> },
+      { path: 'admin/audit-log', element: <ProtectedRoute allowedRoles={['admin']}><AuditLog /></ProtectedRoute> },
+      { path: 'admin/system-health', element: <ProtectedRoute allowedRoles={['admin']}><SystemHealth /></ProtectedRoute> },
+      { path: 'admin/deletion-requests', element: <ProtectedRoute allowedRoles={['admin']}><DeletionRequests /></ProtectedRoute> },
 
       // 404
       { path: '*', element: <NotFound /> },
@@ -391,6 +419,7 @@ const router = createBrowserRouter([
 
   // Partner Portal (channel partners login separately)
   { path: 'partner/login', element: <PartnerLogin /> },
+  { path: 'partner/magic/:token', element: <PartnerMagicLinkLogin /> },
   {
     element: <PartnerPortalLayout />,
     children: [
