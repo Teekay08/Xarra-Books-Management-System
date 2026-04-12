@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useLocation } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
@@ -27,6 +27,8 @@ export function ProjectForm() {
   const { id } = useParams();
   const isEdit = !!id;
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromPM = location.state?.from === 'pm';
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
@@ -115,7 +117,10 @@ export function ProjectForm() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['budgeting-projects'] });
       queryClient.invalidateQueries({ queryKey: ['budgeting-dashboard'] });
-      navigate(`/budgeting/projects/${data?.data?.id || id}`);
+      queryClient.invalidateQueries({ queryKey: ['pm-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['pm-all-projects'] });
+      const projectId = data?.data?.id || id;
+      navigate(fromPM ? `/pm/projects/${projectId}` : `/budgeting/projects/${projectId}`);
     },
     onError: (err: Error) => setError(err.message),
   });
@@ -362,7 +367,7 @@ export function ProjectForm() {
             className="rounded-md bg-green-700 px-6 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
             {mutation.isPending ? 'Saving...' : isEdit ? 'Update Project' : 'Create Project'}
           </button>
-          <button type="button" onClick={() => navigate('/budgeting/projects')}
+          <button type="button" onClick={() => navigate(fromPM ? '/pm/projects' : '/budgeting/projects')}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
             Cancel
           </button>

@@ -5,6 +5,19 @@ import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { ActionMenu } from '../../components/ActionMenu';
 
+type WorkflowGuide = {
+  projectId: string;
+  stage: string;
+  blockers: string[];
+  progressPercent: number;
+  stages?: Array<{ key: string; name: string; status: string; blockers: string[]; action?: { label: string; href: string } }>;
+  nextAction: {
+    code: string;
+    label: string;
+    href: string;
+  };
+};
+
 const statusColors: Record<string, string> = {
   PLANNING: 'bg-gray-100 text-gray-700',
   BUDGETED: 'bg-blue-100 text-blue-700',
@@ -23,6 +36,19 @@ export function PMProjectList() {
     queryFn: () => api<{ data: any[]; pagination: any }>(`/budgeting/projects?page=${page}&limit=20&search=${search}`),
   });
 
+  const projectIds = (data?.data || []).map((p: any) => p.id).join(',');
+
+  const { data: workflowData } = useQuery({
+    queryKey: ['pm-workflow-guide', projectIds],
+    queryFn: () =>
+      api<{ data: WorkflowGuide[] }>(
+        `/project-management/projects/workflow-guide?projectIds=${encodeURIComponent(projectIds)}`,
+      ),
+    enabled: !!projectIds,
+  });
+
+  const workflowByProjectId = new Map((workflowData?.data || []).map((w) => [w.projectId, w]));
+
   return (
     <div>
       <PageHeader
@@ -30,7 +56,7 @@ export function PMProjectList() {
         subtitle="All book projects — manage teams, tasks, and progress"
         backTo={{ label: 'PM Dashboard', href: '/pm' }}
         action={
-          <Link to="/budgeting/projects/new" className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800">
+          <Link to="/budgeting/projects/new" state={{ from: 'pm' }} className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800">
             New Project
           </Link>
         }
@@ -50,16 +76,21 @@ export function PMProjectList() {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Author</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Workflow</th>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Quick Actions</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {isLoading && <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>}
-            {data?.data?.map((p: any) => (
+            {isLoading && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>}
+            {data?.data?.map((p: any) => {
+              const workflow = workflowByProjectId.get(p.id);
+              return (
               <tr key={p.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
-                  <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                  <Link to={`/pm/projects/${p.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-700 hover:underline">
+                    {p.name}
+                  </Link>
                   <p className="text-xs text-gray-500">{p.number}</p>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">{p.author?.penName || p.author?.legalName || '—'}</td>
@@ -69,8 +100,57 @@ export function PMProjectList() {
                     {p.status?.replace(/_/g, ' ')}
                   </span>
                 </td>
+                <td className="px-4 py-3 min-w-[180px]">
+                  {!workflow ? (
+                    <p className="text-xs text-gray-400">Loading...</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {/* Stage pill + progress */}
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const currentStage = workflow.stages?.find(
+                            (s) => s.status === 'CURRENT' || s.status === 'BLOCKED',
+                          ) ?? workflow.stages?.[0];
+                          const idx = workflow.stages ? workflow.stages.findIndex((s) => s === currentStage) + 1 : null;
+                          const isBlocked = currentStage?.status === 'BLOCKED';
+                          return (
+                            <span className={[
+                              'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+                              isBlocked ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800',
+                            ].join(' ')}>
+                              {idx !== null ? `${idx}/8 · ` : ''}{currentStage?.name ?? workflow.stage}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      {/* Mini progress bar */}
+                      <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-green-500"
+                          style={{ width: `${workflow.progressPercent}%` }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-400">{workflow.progressPercent}% complete</p>
+                      {workflow.blockers.length > 0 && (
+                        <p className="text-[11px] text-amber-700 flex items-center gap-1">
+                          <span>⚠</span> {workflow.blockers[0]}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3">
-                  <div className="flex justify-center gap-2">
+                  <div className="flex justify-center gap-2 flex-wrap">
+                    {workflow?.nextAction?.href && (
+                      <Link to={workflow.nextAction.href}
+                        className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100">
+                        → {workflow.nextAction.label}
+                      </Link>
+                    )}
+                    <Link to={`/pm/projects/${p.id}`}
+                      className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                      Overview
+                    </Link>
                     <Link to={`/pm/projects/${p.id}/team`}
                       className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
                       Team
@@ -79,24 +159,20 @@ export function PMProjectList() {
                       className="rounded-md border border-green-300 bg-green-50 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-100">
                       Tasks
                     </Link>
-                    <Link to={`/budgeting/projects/${p.id}`}
-                      className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                      Budget
-                    </Link>
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                   <ActionMenu items={[
-                    { label: 'View Project', onClick: () => navigate(`/budgeting/projects/${p.id}?from=pm`) },
-                    { label: 'Edit Project', onClick: () => navigate(`/budgeting/projects/${p.id}/edit?from=pm`) },
+                    { label: 'Project Overview', onClick: () => navigate(`/pm/projects/${p.id}`) },
                     { label: 'Manage Team', onClick: () => navigate(`/pm/projects/${p.id}/team`) },
                     { label: 'Manage Tasks', onClick: () => navigate(`/pm/projects/${p.id}/tasks`) },
                   ]} />
                 </td>
               </tr>
-            ))}
+            );
+            })}
             {!isLoading && (!data?.data || data.data.length === 0) && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">No projects yet.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No projects yet.</td></tr>
             )}
           </tbody>
         </table>
