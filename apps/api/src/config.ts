@@ -22,10 +22,10 @@ const envSchema = z.object({
   WOOCOMMERCE_CONSUMER_KEY: z.string().default(''),
   WOOCOMMERCE_CONSUMER_SECRET: z.string().default(''),
   WOOCOMMERCE_WEBHOOK_SECRET: z.string().default(''),
-  GEMINI_API_KEY: z.string().default(''),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
-  GEMINI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(700),
-  GEMINI_TEMPERATURE: z.coerce.number().min(0).max(1).default(0.4),
+  GROQ_API_KEY: z.string().default(''),
+  GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  GROQ_MAX_TOKENS: z.coerce.number().int().positive().default(700),
+  GROQ_TEMPERATURE: z.coerce.number().min(0).max(1).default(0.4),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -82,9 +82,9 @@ export const config = {
   },
 
   ai: {
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL,
-    maxOutputTokens: env.GEMINI_MAX_OUTPUT_TOKENS,
-    temperature: env.GEMINI_TEMPERATURE,
+    apiKey: env.GROQ_API_KEY,
+    model: env.GROQ_MODEL,
+    maxTokens: env.GROQ_MAX_TOKENS,
+    temperature: env.GROQ_TEMPERATURE,
   },
 } as const;

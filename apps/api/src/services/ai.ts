@@ -1,15 +1,15 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 import { config } from '../config.js';
 
-let genAI: GoogleGenerativeAI | null = null;
+let groqClient: Groq | null = null;
 
-function getClient(): GoogleGenerativeAI {
-  if (!genAI) {
+function getClient(): Groq {
+  if (!groqClient) {
     const apiKey = config.ai.apiKey;
-    if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
-    genAI = new GoogleGenerativeAI(apiKey);
+    if (!apiKey) throw new Error('GROQ_API_KEY is not configured');
+    groqClient = new Groq({ apiKey });
   }
-  return genAI;
+  return groqClient;
 }
 
 export function isAiConfigured(): boolean {
@@ -23,18 +23,17 @@ interface AiSuggestionOptions {
 }
 
 async function getAiSuggestion(options: AiSuggestionOptions): Promise<string> {
-  const ai = getClient();
-  const model = ai.getGenerativeModel({
+  const client = getClient();
+  const completion = await client.chat.completions.create({
     model: config.ai.model,
-    systemInstruction: options.systemPrompt,
-    generationConfig: {
-      maxOutputTokens: Math.min(options.maxTokens ?? config.ai.maxOutputTokens, config.ai.maxOutputTokens),
-      temperature: config.ai.temperature,
-    },
+    messages: [
+      { role: 'system', content: options.systemPrompt },
+      { role: 'user', content: options.userPrompt },
+    ],
+    max_tokens: Math.min(options.maxTokens ?? config.ai.maxTokens, config.ai.maxTokens),
+    temperature: config.ai.temperature,
   });
-
-  const result = await model.generateContent(options.userPrompt);
-  return result.response.text();
+  return completion.choices[0]?.message?.content ?? '';
 }
 
 async function getAiJsonSuggestion<T = any>(options: AiSuggestionOptions): Promise<T> {
