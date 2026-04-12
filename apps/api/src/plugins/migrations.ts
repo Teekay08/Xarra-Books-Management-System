@@ -29,6 +29,7 @@ const PENDING_MIGRATIONS = [
   '0016_order_management_statuses.sql',
   '0017_consignment_settlement_status.sql',
   '0018_woocommerce_product_id.sql',
+  '0019_notification_type_pm_values.sql',
 ];
 
 export default fp(async (app) => {
