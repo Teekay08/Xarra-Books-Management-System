@@ -202,7 +202,7 @@ function InvoicingTab() {
   const [sub, setSub] = useState<'DRAFT' | 'ISSUED,PARTIAL' | 'OVERDUE'>('DRAFT');
   const navigate = useNavigate();
 
-  const statusParam = sub === 'ISSUED,PARTIAL' ? 'ISSUED' : sub;
+  const statusParam = sub; // comma-separated values are supported by the backend
 
   const { data, isLoading } = useQuery({
     queryKey: ['settlement-invoices', sub],
@@ -789,10 +789,10 @@ function StatsBanner() {
 
   const cards = [
     { label: 'Active SORs', value: stats?.activeSors ?? '—', color: 'text-blue-600' },
-    { label: 'Expired — Awaiting Invoice', value: stats?.expiredSors ?? '—', color: stats?.expiredSors > 0 ? 'text-red-600' : 'text-gray-700' },
+    { label: 'Expired — Awaiting Invoice', value: stats?.expiredSors ?? '—', color: (stats?.expiredSors ?? 0) > 0 ? 'text-red-600' : 'text-gray-700' },
     { label: 'Draft Invoices', value: stats?.invoicePending ?? '—', color: 'text-yellow-600' },
     { label: 'Issued / Awaiting', value: stats?.invoiceIssued ?? '—', color: 'text-indigo-600' },
-    { label: 'Overdue', value: stats?.overdue ?? '—', color: stats?.overdue > 0 ? 'text-red-600 font-bold' : 'text-gray-700' },
+    { label: 'Overdue', value: stats?.overdue ?? '—', color: (stats?.overdue ?? 0) > 0 ? 'text-red-600 font-bold' : 'text-gray-700' },
     { label: 'Remittances Pending', value: stats?.paymentReceived ?? '—', color: 'text-purple-600' },
     { label: 'Settled (this year)', value: stats?.settled ?? '—', color: 'text-green-600' },
   ];

@@ -13,6 +13,7 @@ import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
 import { createSorExpiryQueue, createSorExpiryWorker, scheduleSorExpiryJob } from './jobs/sor-expiry.js';
 import { createTakealotSyncQueue, createTakealotSyncWorker, scheduleTakealotSyncJob } from './jobs/takealot-sync.js';
+import { createWoocommerceSyncQueue, createWoocommerceSyncWorker, scheduleWoocommerceSyncJob } from './jobs/woocommerce-sync.js';
 import { createInvoiceReminderQueue, createInvoiceReminderWorker, scheduleInvoiceReminderJob } from './jobs/invoice-reminders.js';
 import { createSorInvoiceQueue, createSorInvoiceWorker, scheduleSorInvoiceJob } from './jobs/sor-invoice.js';
 import { createMonthlyStatementQueue, createMonthlyStatementWorker, scheduleMonthlyStatementJob } from './jobs/monthly-statements.js';
@@ -156,6 +157,8 @@ export async function buildApp() {
   let stmtWorker: ReturnType<typeof createMonthlyStatementWorker> | null = null;
   let takealotQueue: ReturnType<typeof createTakealotSyncQueue> | null = null;
   let takealotWorker: ReturnType<typeof createTakealotSyncWorker> | null = null;
+  let woocommerceQueue: ReturnType<typeof createWoocommerceSyncQueue> | null = null;
+  let woocommerceWorker: ReturnType<typeof createWoocommerceSyncWorker> | null = null;
   let plannerReminderQueue: ReturnType<typeof createTaskPlannerReminderQueue> | null = null;
   let plannerReminderWorker: ReturnType<typeof createTaskPlannerReminderWorker> | null = null;
 
@@ -175,6 +178,14 @@ export async function buildApp() {
       scheduleTakealotSyncJob(takealotQueue)
         .then(() => app.log.info('Takealot sync job scheduled (daily 6:00 AM SAST)'))
         .catch((err) => app.log.warn({ err }, 'Failed to schedule Takealot sync job'));
+    }
+
+    if (config.woocommerce.url && config.woocommerce.consumerKey) {
+      woocommerceQueue = createWoocommerceSyncQueue(config.redis.url);
+      woocommerceWorker = createWoocommerceSyncWorker(config.redis.url);
+      scheduleWoocommerceSyncJob(woocommerceQueue)
+        .then(() => app.log.info('WooCommerce sync job scheduled (every 15 minutes)'))
+        .catch((err) => app.log.warn({ err }, 'Failed to schedule WooCommerce sync job'));
     }
 
     reminderQueue = createInvoiceReminderQueue(config.redis.url);
@@ -215,6 +226,8 @@ export async function buildApp() {
     if (stmtQueue) await stmtQueue.close();
     if (takealotWorker) await takealotWorker.close();
     if (takealotQueue) await takealotQueue.close();
+    if (woocommerceWorker) await woocommerceWorker.close();
+    if (woocommerceQueue) await woocommerceQueue.close();
     if (plannerReminderWorker) await plannerReminderWorker.close();
     if (plannerReminderQueue) await plannerReminderQueue.close();
   });
@@ -301,6 +314,7 @@ export async function buildApp() {
         { name: 'SOR Auto-Invoice', status: sorInvoiceQueue ? 'active' : 'disabled', schedule: 'Daily 8:00 SAST' },
         { name: 'Monthly Statements', status: stmtQueue ? 'active' : 'disabled', schedule: '1st of month 6:00 SAST' },
         { name: 'Takealot Sync', status: takealotQueue ? 'active' : 'disabled', schedule: 'Daily 6:00 SAST' },
+        { name: 'WooCommerce Sync', status: woocommerceQueue ? 'active' : 'disabled', schedule: 'Every 15 minutes' },
         { name: 'Task Planner Reminders', status: plannerReminderQueue ? 'active' : 'disabled', schedule: 'Daily 7:30 SAST' },
       ],
       recentEmails,

@@ -28,6 +28,25 @@ export class WooCommerceAdapter implements PlatformAdapter {
 
   constructor(private config: WooCommerceConfig) {}
 
+  private get authHeader() {
+    return 'Basic ' + btoa(`${this.config.consumerKey}:${this.config.consumerSecret}`);
+  }
+
+  async pushInventoryStock(productId: number, stockQty: number): Promise<void> {
+    const url = `${this.config.baseUrl}/wp-json/wc/v3/products/${productId}`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: this.authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ stock_quantity: stockQty, manage_stock: true }),
+    });
+    if (!response.ok) {
+      throw new Error(`WooCommerce stock push failed for product ${productId}: ${response.status} ${response.statusText}`);
+    }
+  }
+
   async fetchSales(since: Date, until?: Date): Promise<NormalizedSale[]> {
     const sales: NormalizedSale[] = [];
     let page = 1;
@@ -46,9 +65,7 @@ export class WooCommerceAdapter implements PlatformAdapter {
 
       const url = `${this.config.baseUrl}/wp-json/wc/v3/orders?${params}`;
       const response = await fetch(url, {
-        headers: {
-          Authorization: 'Basic ' + btoa(`${this.config.consumerKey}:${this.config.consumerSecret}`),
-        },
+        headers: { Authorization: this.authHeader },
       });
 
       if (!response.ok) {

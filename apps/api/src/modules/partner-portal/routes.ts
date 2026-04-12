@@ -36,6 +36,7 @@ import {
   DEFAULT_SOR_DAYS,
   DEFAULT_PAYMENT_TERMS_DAYS,
   PARTNER_ACTIVITY_LOOKBACK_DAYS,
+  ORDER_PIPELINE_STEPS,
 } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { nextPartnerOrderNumber, nextPartnerReturnRequestNumber, nextCreditNoteNumber, nextReturnNumber } from '../finance/invoice-number.js';
@@ -1753,17 +1754,21 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
   app.get('/orders', { preHandler: requireRole('admin', 'operations', 'finance') }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search } = query;
-    const { status } = request.query as { status?: string };
+    const { status, pipelineStep } = request.query as { status?: string; pipelineStep?: string };
     const offset = (page - 1) * limit;
 
     const conditions: ReturnType<typeof eq>[] = [];
     if (search) conditions.push(sql`${partnerOrders.number} ILIKE ${'%' + search + '%'}` as any);
     if (status) {
       const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
-      if (statuses.length === 1) {
-        conditions.push(eq(partnerOrders.status, statuses[0] as any));
-      } else if (statuses.length > 1) {
+      if (statuses.length > 0) {
         conditions.push(inArray(partnerOrders.status, statuses as any[]) as any);
+      }
+    }
+    if (pipelineStep) {
+      const stepIndex = ORDER_PIPELINE_STEPS.indexOf(pipelineStep as any);
+      if (stepIndex >= 0) {
+        conditions.push(eq(partnerOrders.currentPipelineStep, stepIndex) as any);
       }
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined;

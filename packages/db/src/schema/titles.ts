@@ -12,6 +12,7 @@ export const titles = pgTable('titles', {
   asin: varchar('asin', { length: 20 }),
   takealotSku: varchar('takealot_sku', { length: 50 }),
   takealotOfferId: varchar('takealot_offer_id', { length: 50 }),
+  woocommerceProductId: integer('woocommerce_product_id'),
   primaryAuthorId: uuid('primary_author_id').references(() => authors.id),
   rrpZar: decimal('rrp_zar', { precision: 10, scale: 2 }).notNull(),
   costPriceZar: decimal('cost_price_zar', { precision: 10, scale: 2 }),
@@ -30,6 +31,7 @@ export const titles = pgTable('titles', {
   index('idx_titles_primary_author').on(t.primaryAuthorId),
   index('idx_titles_asin').on(t.asin),
   index('idx_titles_takealot_sku').on(t.takealotSku),
+  index('idx_titles_woocommerce_product_id').on(t.woocommerceProductId),
 ]);
 
 export const titleProductionCosts = pgTable('title_production_costs', {

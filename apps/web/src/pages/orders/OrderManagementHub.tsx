@@ -115,7 +115,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ stats }: { stats?: HubStats }) {
+function OverviewTab({ stats, onSwitchTab }: { stats?: HubStats; onSwitchTab: (tab: Tab) => void }) {
   const { data: recentData } = useQuery({
     queryKey: ['orders-recent-activity'],
     queryFn: () => api<PaginatedResponse<OrderSummary>>('/partner-admin/orders?limit=15&page=1'),
@@ -124,12 +124,12 @@ function OverviewTab({ stats }: { stats?: HubStats }) {
   const recent = recentData?.data ?? [];
 
   const alerts = useMemo(() => {
-    const list: { type: 'warn' | 'error'; message: string; link: string; linkLabel: string }[] = [];
+    const list: { type: 'warn' | 'error'; message: string; tab: Tab; linkLabel: string }[] = [];
     if ((stats?.received ?? 0) > 0) {
-      list.push({ type: 'warn', message: `${stats!.received} order(s) received and awaiting confirmation`, link: '#incoming', linkLabel: 'Review Incoming' });
+      list.push({ type: 'warn', message: `${stats!.received} order(s) received and awaiting confirmation`, tab: 'incoming', linkLabel: 'Review Incoming' });
     }
     if ((stats?.backOrders ?? 0) > 0) {
-      list.push({ type: 'warn', message: `${stats!.backOrders} order(s) on back order`, link: '#backorders', linkLabel: 'View Back Orders' });
+      list.push({ type: 'warn', message: `${stats!.backOrders} order(s) on back order`, tab: 'backorders', linkLabel: 'View Back Orders' });
     }
     return list;
   }, [stats]);
@@ -159,7 +159,7 @@ function OverviewTab({ stats }: { stats?: HubStats }) {
               a.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'
             }`}>
               <span>⚠ {a.message}</span>
-              <Link to={a.link} className="font-semibold underline ml-4 whitespace-nowrap">{a.linkLabel}</Link>
+              <button onClick={() => onSwitchTab(a.tab)} className="font-semibold underline ml-4 whitespace-nowrap">{a.linkLabel}</button>
             </div>
           ))}
         </div>
@@ -798,7 +798,7 @@ export function OrderManagementHub() {
 
       {/* Tab content */}
       <div className="bg-gray-50 min-h-[calc(100vh-220px)]">
-        {activeTab === 'overview'  && <OverviewTab stats={stats} />}
+        {activeTab === 'overview'  && <OverviewTab stats={stats} onSwitchTab={setActiveTab} />}
         {activeTab === 'incoming'  && <IncomingTab />}
         {activeTab === 'confirmed' && <ConfirmedTab />}
         {activeTab === 'backorders'&& <BackOrdersTab />}

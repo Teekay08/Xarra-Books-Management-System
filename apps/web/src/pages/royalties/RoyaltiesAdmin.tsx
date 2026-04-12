@@ -13,6 +13,7 @@ interface RoyaltyEntry {
   authorId: string;
   titleId: string;
   contractId: string;
+  authorPaymentId: string | null;
   triggerType: string;
   periodFrom: string;
   periodTo: string;
@@ -39,7 +40,7 @@ interface AuthorPayment {
   totalAdvanceDeducted: string;
   totalNetPayable: string;
   amountDue: string;
-  amountPaid: string | null;
+  amountPaid: string;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'REVERSED';
   paymentMethod: string | null;
   bankReference: string | null;
@@ -372,7 +373,7 @@ export function RoyaltiesAdmin() {
                           label: 'Void',
                           onClick: () => setVoidEntry(entry),
                           variant: 'danger',
-                          hidden: entry.status === 'PAID' || entry.status === 'VOIDED',
+                          hidden: entry.status === 'PAID' || entry.status === 'VOIDED' || !!entry.authorPaymentId,
                         },
                       ]} />
                     </td>
@@ -415,7 +416,7 @@ export function RoyaltiesAdmin() {
                     <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">{formatR(pmt.totalGrossRoyalty)}</td>
                     <td className="px-4 py-3 text-sm text-right font-mono font-semibold text-gray-900">{formatR(pmt.amountDue)}</td>
                     <td className="px-4 py-3 text-sm text-right font-mono text-green-700">
-                      {pmt.amountPaid ? formatR(pmt.amountPaid) : '—'}
+                      {Number(pmt.amountPaid) > 0 ? formatR(pmt.amountPaid) : '—'}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[pmt.status]}`}>
@@ -518,30 +519,23 @@ function CalculateModal({ authors, onClose, onSuccess }: {
   onSuccess: () => void;
 }) {
   const [authorId, setAuthorId] = useState('');
-  const [contracts, setContracts] = useState<Contract[]>([]);
   const [contractId, setContractId] = useState('');
   const [periodFrom, setPeriodFrom] = useState('');
   const [periodTo, setPeriodTo] = useState('');
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
 
-  const { refetch: fetchContracts, isFetching } = useQuery({
+  const { data: contractsData, isFetching } = useQuery({
     queryKey: ['author-contracts', authorId],
     queryFn: () => api<{ data: Contract[] }>(`/authors/${authorId}/contracts`),
-    enabled: false,
+    enabled: !!authorId,
   });
 
-  async function handleAuthorChange(id: string) {
+  const contracts = contractsData?.data ?? [];
+
+  function handleAuthorChange(id: string) {
     setAuthorId(id);
     setContractId('');
-    setContracts([]);
-    if (!id) return;
-    try {
-      const res = await fetchContracts();
-      setContracts(res.data?.data ?? []);
-    } catch {
-      setContracts([]);
-    }
   }
 
   const calcMut = useMutation({

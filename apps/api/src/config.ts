@@ -18,6 +18,10 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().default(''),
   FROM_EMAIL: z.string().email().default('onboarding@resend.dev'),
   TAKEALOT_API_KEY: z.string().default(''),
+  WOOCOMMERCE_URL: z.string().url().optional(),
+  WOOCOMMERCE_CONSUMER_KEY: z.string().default(''),
+  WOOCOMMERCE_CONSUMER_SECRET: z.string().default(''),
+  WOOCOMMERCE_WEBHOOK_SECRET: z.string().default(''),
   GEMINI_API_KEY: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
   GEMINI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(700),
@@ -68,6 +72,13 @@ export const config = {
 
   takealot: {
     apiKey: env.TAKEALOT_API_KEY,
+  },
+
+  woocommerce: {
+    url: env.WOOCOMMERCE_URL ?? '',
+    consumerKey: env.WOOCOMMERCE_CONSUMER_KEY,
+    consumerSecret: env.WOOCOMMERCE_CONSUMER_SECRET,
+    webhookSecret: env.WOOCOMMERCE_WEBHOOK_SECRET,
   },
 
   ai: {

@@ -132,6 +132,7 @@ import { PartnerReturnRequestsAdmin } from './pages/partners/PartnerReturnReques
 import { CourierShipmentsAdmin } from './pages/partners/CourierShipmentsAdmin';
 import { NotificationList } from './pages/notifications/NotificationList';
 import { RoyaltiesAdmin } from './pages/royalties/RoyaltiesAdmin';
+import { RoyaltiesPaymentDetail } from './pages/royalties/RoyaltiesPaymentDetail';
 import { DocumentsSearch } from './pages/documents/DocumentsSearch';
 // Order Management
 import { AccountSettlement } from './pages/settlement/AccountSettlement';
@@ -262,6 +263,7 @@ const router = createBrowserRouter([
 
       // Royalties
       { path: 'royalties', element: <RoyaltiesAdmin /> },
+      { path: 'royalties/payments/:id', element: <RoyaltiesPaymentDetail /> },
 
       // Documents search
       { path: 'documents', element: <DocumentsSearch /> },

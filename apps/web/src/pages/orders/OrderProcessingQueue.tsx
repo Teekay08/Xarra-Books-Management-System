@@ -360,7 +360,7 @@ function SorProformaTab() {
   const { data: pendingData, isLoading: pendingLoading } = useQuery({
     queryKey: ['pq-sor-pending', search],
     queryFn: () => api<PaginatedResponse<ProcessingOrder>>(
-      `/partner-admin/orders?status=PROCESSING&pipelineStep=DISPATCHED&search=${encodeURIComponent(search)}&limit=50`
+      `/partner-admin/orders?status=PROCESSING&pipelineStep=PACKING&search=${encodeURIComponent(search)}&limit=50`
     ),
     enabled: subTab === 'pending',
   });
@@ -380,7 +380,7 @@ function SorProformaTab() {
     ? activeSors.filter((s: ConsignmentSummary) => s.daysUntilExpiry !== null && s.daysUntilExpiry !== undefined && s.daysUntilExpiry <= 14)
     : activeSors;
 
-  const isLoading = pendingLoading || sorLoading;
+  const isLoading = subTab === 'pending' ? pendingLoading : sorLoading;
 
   return (
     <div className="space-y-4 p-4">
@@ -498,7 +498,7 @@ function DispatchTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['pq-dispatch', search],
     queryFn: () => api<PaginatedResponse<ProcessingOrder>>(
-      `/partner-admin/orders?status=PROCESSING&pipelineStep=DISPATCHED&search=${encodeURIComponent(search)}&limit=50`
+      `/partner-admin/orders?status=PROCESSING&pipelineStep=PACKING&search=${encodeURIComponent(search)}&limit=50`
     ),
   });
 

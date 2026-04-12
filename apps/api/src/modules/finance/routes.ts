@@ -24,7 +24,7 @@ import { renderReceiptHtml } from '../../services/templates/receipt.js';
 import { renderPurchaseOrderHtml } from '../../services/templates/purchase-order.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { sendDocumentEmail } from '../../services/document-email.js';
-import { reconcileInvoiceSales, reconcileRemittanceInvoices } from '../../services/reconciliation.js';
+import { reconcileInvoiceSales, reconcileRemittanceInvoices, sendPaidInvoiceEmail } from '../../services/reconciliation.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
 
 /**
@@ -185,7 +185,12 @@ export async function financeRoutes(app: FastifyInstance) {
     const { partnerId } = request.query as { partnerId?: string };
     const conditions: ReturnType<typeof sql>[] = [];
     if (search) conditions.push(sql`(${invoices.number} ILIKE ${'%' + search + '%'})`);
-    if (status) conditions.push(sql`${invoices.status} = ${status}`);
+    if (status) {
+      const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+      if (statuses.length > 0) {
+        conditions.push(inArray(invoices.status, statuses as any[]) as any);
+      }
+    }
     if (partnerId) conditions.push(sql`${invoices.partnerId} = ${partnerId}`);
     const where = conditions.length > 0
       ? sql.join(conditions, sql` AND `)
@@ -751,6 +756,35 @@ export async function financeRoutes(app: FastifyInstance) {
       .send(pdf);
   });
 
+  // Generate receipt PDF for a PAID invoice
+  app.get<{ Params: { id: string } }>('/invoices/:id/receipt', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const invoice = await app.db.query.invoices.findFirst({
+      where: eq(invoices.id, request.params.id),
+      with: { partner: true, lines: true },
+    });
+    if (!invoice) return reply.notFound('Invoice not found');
+    if (invoice.status !== 'PAID') return reply.badRequest('Receipt is only available for paid invoices');
+
+    const { renderReceiptHtml } = await import('../../services/templates/receipt.js');
+    const receiptNumber = `RCP-${invoice.number.replace('INV-', '')}`;
+    const html = renderReceiptHtml({
+      paymentDate: new Date().toISOString(),
+      amount: invoice.total,
+      paymentMethod: 'EFT',
+      bankReference: invoice.number,
+      partnerName: invoice.partner?.name ?? invoice.recipientName ?? 'Partner',
+      invoiceAllocations: [{ invoiceNumber: invoice.number, amount: invoice.total }],
+    });
+
+    const pdf = await generatePdf(html);
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `inline; filename="${receiptNumber}.pdf"`)
+      .send(pdf);
+  });
+
   // ==========================================
   // CREDIT NOTES
   // ==========================================
@@ -990,11 +1024,13 @@ export async function financeRoutes(app: FastifyInstance) {
     // Reconcile any invoices that are now PAID (fire-and-forget)
     if (body.invoiceAllocations?.length) {
       Promise.all(
-        body.invoiceAllocations.map((a) =>
-          reconcileInvoiceSales(app, a.invoiceId, userId).catch((err) =>
+        body.invoiceAllocations.map(async (a) => {
+          await reconcileInvoiceSales(app, a.invoiceId, userId).catch((err) =>
             app.log.error({ err, invoiceId: a.invoiceId }, 'Failed to reconcile invoice sales'),
-          ),
-        ),
+          );
+          // Auto-send receipt + paid-stamp invoice email
+          sendPaidInvoiceEmail(app, a.invoiceId);
+        }),
       ).catch(() => {});
     }
 
@@ -1135,8 +1171,12 @@ export async function financeRoutes(app: FastifyInstance) {
       referenceId: remittance.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create remittance notification'));
 
-    // Reconcile sales for all linked invoices that are now PAID
-    reconcileRemittanceInvoices(app, request.params.id, userId).catch((err) =>
+    // Reconcile sales for all linked invoices that are now PAID + send receipt emails
+    reconcileRemittanceInvoices(app, request.params.id, userId).then(async (results) => {
+      for (const r of results) {
+        sendPaidInvoiceEmail(app, r.invoiceId, request.params.id);
+      }
+    }).catch((err) =>
       app.log.error({ err }, 'Failed to reconcile remittance invoices'),
     );
 
