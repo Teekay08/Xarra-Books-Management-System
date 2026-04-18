@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { ActionMenu } from '../../components/ActionMenu';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface StaffMember {
   id: string;
@@ -34,6 +35,8 @@ const statusColors: Record<string, string> = {
 
 export function StaffList() {
   const navigate = useNavigate();
+  const { isAdmin, isFinance } = usePermissions();
+  const showFinancialData = isAdmin || isFinance;
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
 
@@ -76,14 +79,14 @@ export function StaffList() {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Skills</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Availability</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
+              {showFinancialData && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>}
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {isLoading && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={showFinancialData ? 8 : 7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {data?.data?.map((s) => (
               <tr key={s.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/pm/staff/${s.id}`)}>
@@ -106,7 +109,7 @@ export function StaffList() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">{availabilityLabels[s.availabilityType] || s.availabilityType}</td>
-                <td className="px-4 py-3 text-sm text-right font-medium">R {Number(s.hourlyRate).toFixed(2)}/hr</td>
+                {showFinancialData && <td className="px-4 py-3 text-sm text-right font-medium">R {Number(s.hourlyRate).toFixed(2)}/hr</td>}
                 <td className="px-4 py-3 text-sm">
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${s.isActive ? statusColors['ACTIVE'] : statusColors['INACTIVE']}`}>
                     {s.isActive ? 'ACTIVE' : 'INACTIVE'}
@@ -122,7 +125,7 @@ export function StaffList() {
               </tr>
             ))}
             {!isLoading && data?.data?.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No staff members found. Add your first team member.</td></tr>
+              <tr><td colSpan={showFinancialData ? 8 : 7} className="px-4 py-8 text-center text-gray-500">No staff members found. Add your first team member.</td></tr>
             )}
           </tbody>
         </table>

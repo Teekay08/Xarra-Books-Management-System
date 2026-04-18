@@ -287,7 +287,7 @@ export async function orderTrackingRoutes(app: FastifyInstance) {
           referenceId: order.id,
           expiresAt: magicExpiresAt,
         });
-        const portalBase = (config.cors.origins[0] ?? 'http://localhost:5173').replace(/\/$/, '');
+        const portalBase = config.web.url;
         const magicUrl = `${portalBase}/partner/magic/${magicToken}`;
 
         const isPortalUser = partner.portalMode === 'SELF_SERVICE';

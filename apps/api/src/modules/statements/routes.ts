@@ -434,6 +434,7 @@ export async function statementRoutes(app: FastifyInstance) {
               postalCode: settings.postalCode,
               phone: settings.phone,
               email: settings.email,
+              logoUrl: settings.logoUrl,
             } : undefined,
             recipient: {
               name: item.partner_name,
@@ -607,6 +608,7 @@ export async function statementRoutes(app: FastifyInstance) {
         postalCode: settings.postalCode,
         phone: settings.phone,
         email: settings.email,
+        logoUrl: settings.logoUrl,
       } : undefined,
       recipient: {
         name: partner.name,

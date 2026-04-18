@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { documentEmails } from '@xarra/db';
-import { sendEmail, isEmailConfigured } from './email.js';
+import { sendEmailWithAttachment, isEmailConfigured } from './email.js';
 import { generatePdf } from './pdf.js';
 
 interface SendDocumentOptions {
@@ -9,24 +9,29 @@ interface SendDocumentOptions {
   documentId: string;
   recipientEmail: string;
   subject: string;
-  message?: string;
+  /** Pre-built email body HTML — replaces the generic stub when provided */
+  emailHtml?: string;
+  /** HTML used to render the PDF attachment */
   html: string;
   documentNumber: string;
   sentBy?: string;
+  /** Filename for the PDF attachment (without .pdf extension) */
+  attachmentName?: string;
 }
 
 export async function sendDocumentEmail(options: SendDocumentOptions): Promise<{ success: boolean; error?: string }> {
-  const { app, documentType, documentId, recipientEmail, subject, message, html, documentNumber, sentBy } = options;
+  const {
+    app, documentType, documentId, recipientEmail,
+    subject, emailHtml, html, documentNumber, sentBy, attachmentName,
+  } = options;
 
   if (!isEmailConfigured()) {
-    // Log as failed
     await app.db.insert(documentEmails).values({
       documentType,
       documentId,
       sentTo: recipientEmail,
       sentBy,
       subject,
-      message,
       status: 'FAILED',
       errorMessage: 'Email service not configured (RESEND_API_KEY missing)',
     });
@@ -34,46 +39,46 @@ export async function sendDocumentEmail(options: SendDocumentOptions): Promise<{
   }
 
   try {
-    // Generate PDF
+    // Generate PDF attachment
     const pdfBuffer = await generatePdf(html);
 
-    // Build email HTML with optional message
-    const emailHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    // Use caller-supplied email body, or fall back to a generic stub
+    const body = emailHtml ?? `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
         <h2 style="color: #166534;">${subject}</h2>
-        ${message ? `<p>${message}</p>` : ''}
-        <p>Please find attached ${documentType.toLowerCase().replace('_', ' ')} <strong>${documentNumber}</strong>.</p>
-        <p style="color: #666; font-size: 12px; margin-top: 30px;">This email was sent from Xarra Books Management System.</p>
+        <p>Please find the attached ${documentType.toLowerCase().replace(/_/g, ' ')} <strong>${documentNumber}</strong>.</p>
+        <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">This email was sent from Xarra Books Management System.</p>
       </div>
     `;
 
-    await sendEmail({
+    await sendEmailWithAttachment({
       to: recipientEmail,
       subject,
-      html: emailHtml,
+      html: body,
+      attachments: [{
+        filename: `${attachmentName ?? documentNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      }],
     });
 
-    // Log success
     await app.db.insert(documentEmails).values({
       documentType,
       documentId,
       sentTo: recipientEmail,
       sentBy,
       subject,
-      message,
       status: 'SENT',
     });
 
     return { success: true };
   } catch (err: any) {
-    // Log failure
     await app.db.insert(documentEmails).values({
       documentType,
       documentId,
       sentTo: recipientEmail,
       sentBy,
       subject,
-      message,
       status: 'FAILED',
       errorMessage: err.message,
     });

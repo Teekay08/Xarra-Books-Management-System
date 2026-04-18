@@ -4,18 +4,19 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { ActionMenu } from '../../components/ActionMenu';
+import { WorkflowBanner } from './components/WorkflowBanner';
 
 interface Task {
   id: string;
-  taskNumber: string;
+  number: string;
   title: string;
-  assignedTo: { id: string; name: string } | null;
+  staffMember: { id: string; name: string } | null;
   milestone: { id: string; name: string } | null;
   priority: string;
   status: string;
-  allocatedHours: number;
-  loggedHours: number;
-  remainingHours: number;
+  allocatedHours: string;
+  loggedHours: string;
+  remainingHours: string;
   dueDate: string | null;
 }
 
@@ -84,6 +85,8 @@ export function TaskList() {
         }
       />
 
+      <WorkflowBanner projectId={projectId!} />
+
       <div className="mb-4">
         <select value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
@@ -121,9 +124,9 @@ export function TaskList() {
                 className="cursor-pointer hover:bg-gray-50"
                 onClick={() => navigate(`/pm/tasks/${t.id}`)}
               >
-                <td className="px-4 py-3 text-sm font-mono text-gray-500">{t.taskNumber}</td>
+                <td className="px-4 py-3 text-sm font-mono text-gray-500">{t.number}</td>
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.title}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{t.assignedTo?.name || '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700">{t.staffMember?.name || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-600">{t.milestone?.name || '—'}</td>
                 <td className="px-4 py-3 text-sm">
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[t.priority] || ''}`}>
@@ -135,10 +138,10 @@ export function TaskList() {
                     {t.status.replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono">{t.allocatedHours}h</td>
-                <td className="px-4 py-3 text-sm text-right font-mono">{t.loggedHours}h</td>
-                <td className={`px-4 py-3 text-sm text-right font-mono ${t.remainingHours < 0 ? 'text-red-600' : ''}`}>
-                  {t.remainingHours}h
+                <td className="px-4 py-3 text-sm text-right font-mono">{Number(t.allocatedHours).toFixed(1)}h</td>
+                <td className="px-4 py-3 text-sm text-right font-mono">{Number(t.loggedHours).toFixed(1)}h</td>
+                <td className={`px-4 py-3 text-sm text-right font-mono ${Number(t.remainingHours) < 0 ? 'text-red-600' : ''}`}>
+                  {Number(t.remainingHours).toFixed(1)}h
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">
                   {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '—'}

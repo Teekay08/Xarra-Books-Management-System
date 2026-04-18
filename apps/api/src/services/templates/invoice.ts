@@ -50,6 +50,12 @@ interface InvoiceData {
   purchaseOrderNumber?: string | null;
   customerReference?: string | null;
   amountPaid?: string | number | null;
+  /** Cross-references — displayed in a "References" bar below the header */
+  orderNumber?: string | null;    // POR-YYYY-NNNN
+  sorNumber?: string | null;      // SOR-YYYY-NNNN
+  /** Set to true to render a PAID watermark stamp */
+  paid?: boolean;
+  paidDate?: string | null;
   company?: CompanyInfo;
   recipient: RecipientInfo;
   lines: InvoiceLine[];
@@ -135,9 +141,13 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     .totals .grand-total td { border-top: 2px solid #166534; font-weight: bold; font-size: 16px; }
     .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 11px; color: #888; }
     .notes { margin-top: 20px; padding: 12px; background: #f9f9f9; border-radius: 4px; font-size: 12px; }
+    .refs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .refs span { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .paid-stamp { position: fixed; top: 80px; right: 60px; transform: rotate(-25deg); border: 4px solid #16a34a; color: #16a34a; font-size: 48px; font-weight: 900; opacity: 0.18; padding: 8px 16px; border-radius: 8px; pointer-events: none; }
   </style>
 </head>
 <body>
+  ${data.paid ? `<div class="paid-stamp">PAID</div>` : ''}
   <div class="header">
     <div>
       ${logoHtml}
@@ -176,6 +186,14 @@ export function renderInvoiceHtml(data: InvoiceData): string {
       ${data.recipient.contactEmail ? `<p>${data.recipient.contactEmail}</p>` : ''}
     </div>
   </div>
+
+  ${(data.orderNumber || data.sorNumber) ? `
+  <div class="refs">
+    ${data.orderNumber ? `<span style="background:#e0f2fe;color:#0369a1">Order: ${data.orderNumber}</span>` : ''}
+    ${data.sorNumber ? `<span style="background:#fef3c7;color:#92400e">SOR: ${data.sorNumber}</span>` : ''}
+    ${data.purchaseOrderNumber ? `<span style="background:#f3f4f6;color:#374151">Partner PO: ${data.purchaseOrderNumber}</span>` : ''}
+  </div>
+  ` : ''}
 
   <table>
     <thead>

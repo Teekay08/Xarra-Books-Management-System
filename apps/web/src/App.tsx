@@ -163,6 +163,7 @@ import { TaskList } from './pages/project-management/TaskList';
 import { TaskRequestsInbox } from './pages/project-management/TaskRequestsInbox';
 import { TaskForm } from './pages/project-management/TaskForm';
 import { TaskDetail } from './pages/project-management/TaskDetail';
+import { DeliverableReviewQueue } from './pages/project-management/DeliverableReviewQueue';
 import { ResourcePlanning } from './pages/project-management/ResourcePlanning';
 import { EmployeeDashboard } from './pages/employee/EmployeeDashboard';
 import { EmployeePlanner } from './pages/employee/EmployeePlanner';
@@ -182,13 +183,34 @@ import { TimesheetList } from './pages/budgeting/TimesheetList';
 import { SowList } from './pages/budgeting/SowList';
 import { SowCreate } from './pages/budgeting/SowCreate';
 import { SowDetail } from './pages/budgeting/SowDetail';
+import { SowReview } from './pages/budgeting/SowReview';
 import { TimesheetCreate } from './pages/budgeting/TimesheetCreate';
 import { TimesheetDetail } from './pages/budgeting/TimesheetDetail';
+// Multi-company
+import { LandingPage } from './pages/LandingPage';
+import { CompanySelector } from './pages/CompanySelector';
+// Billetterie Software
+import { BilletterieHub } from './pages/billetterie/BilletterieHub';
+import { BilletterieProjectList } from './pages/billetterie/BilletterieProjectList';
+import { BilletterieProjectCreate } from './pages/billetterie/BilletterieProjectCreate';
+import { BilletterieProjectDetail } from './pages/billetterie/BilletterieProjectDetail';
 
 const router = createBrowserRouter([
+  // Unauthenticated public pages
+  { path: '/landing', element: <LandingPage /> },
   { path: '/login', element: <Login /> },
   { path: '/forgot-password', element: <ForgotPassword /> },
   { path: '/reset-password', element: <ResetPassword /> },
+
+  // Company selector — requires auth, no company context needed yet
+  {
+    path: '/select-company',
+    element: (
+      <ProtectedRoute>
+        <CompanySelector />
+      </ProtectedRoute>
+    ),
+  },
 
   // Admin / Staff layout
   {
@@ -327,6 +349,7 @@ const router = createBrowserRouter([
       { path: 'pm/projects/:projectId/tasks', element: <TaskList /> },
       { path: 'pm/projects/:projectId/tasks/new', element: <TaskForm /> },
       { path: 'pm/tasks/:id', element: <TaskDetail /> },
+      { path: 'pm/deliverables/review', element: <DeliverableReviewQueue /> },
       { path: 'pm/capacity', element: <ResourcePlanning /> },
       { path: 'pm/task-requests', element: <TaskRequestsInbox /> },
 
@@ -411,6 +434,13 @@ const router = createBrowserRouter([
       { path: 'admin/system-health', element: <ProtectedRoute allowedRoles={['admin']}><SystemHealth /></ProtectedRoute> },
       { path: 'admin/deletion-requests', element: <ProtectedRoute allowedRoles={['admin']}><DeletionRequests /></ProtectedRoute> },
 
+      // Billetterie Software
+      { path: 'billetterie', element: <BilletterieHub /> },
+      { path: 'billetterie/projects', element: <BilletterieProjectList /> },
+      { path: 'billetterie/projects/new', element: <BilletterieProjectCreate /> },
+      { path: 'billetterie/projects/:id', element: <BilletterieProjectDetail /> },
+      { path: 'billetterie/projects/:id/edit', element: <BilletterieProjectCreate /> },
+
       // 404
       { path: '*', element: <NotFound /> },
     ],
@@ -418,6 +448,9 @@ const router = createBrowserRouter([
 
   // Contractor Portal (magic link access, no login)
   { path: 'contractor/:token', element: <ContractorPortal /> },
+
+  // Public SOW review — for external contractors who don't have system accounts
+  { path: 'sow-review/:id', element: <SowReview /> },
 
   // Partner Portal (channel partners login separately)
   { path: 'partner/login', element: <PartnerLogin /> },

@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { usePermissions } from '../../hooks/usePermissions';
 
 const taskStatusColors: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-600',
@@ -21,6 +22,8 @@ const priorityColors: Record<string, string> = {
 
 export function StaffDetail() {
   const { id } = useParams();
+  const { isAdmin, isFinance } = usePermissions();
+  const showFinancialData = isAdmin || isFinance;
 
   const { data: staffData, isLoading } = useQuery({
     queryKey: ['pm-staff-member', id],
@@ -87,10 +90,12 @@ export function StaffDetail() {
 
       {/* Profile + Availability Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs text-gray-500 uppercase">Hourly Rate</p>
-          <p className="mt-1 text-xl font-bold text-gray-900">R {Number(staff.hourlyRate || 0).toFixed(2)}/hr</p>
-        </div>
+        {showFinancialData && (
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500 uppercase">Hourly Rate</p>
+            <p className="mt-1 text-xl font-bold text-gray-900">R {Number(staff.hourlyRate || 0).toFixed(2)}/hr</p>
+          </div>
+        )}
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-xs text-gray-500 uppercase">Max Hours/Month</p>
           <p className="mt-1 text-xl font-bold text-gray-900">{staff.maxHoursPerMonth || 160}h</p>

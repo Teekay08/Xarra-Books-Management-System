@@ -4,7 +4,7 @@ import { z } from 'zod';
 import {
   projects, projectMilestones, budgetLineItems, actualCostEntries,
   rateCards, timesheets, timesheetEntries, sowDocuments, sowDocumentVersions,
-  costEstimationHistory, taskAssignments, taskTimeLogs, staffMembers,
+  costEstimationHistory, taskAssignments, taskTimeLogs, staffMembers, companySettings,
 } from '@xarra/db';
 import {
   createProjectSchema, updateProjectSchema,
@@ -21,13 +21,15 @@ import {
   applyMilestoneTemplateSchema,
 } from '@xarra/shared';
 import { MILESTONE_TEMPLATES } from '@xarra/shared';
-import { requirePermission } from '../../middleware/require-auth.js';
+import { requirePermission, requireAuth } from '../../middleware/require-auth.js';
+import { hasPermission } from '@xarra/shared';
 import { requireIdempotencyKey, getIdempotencyKey } from '../../middleware/idempotency.js';
 import {
   nextProjectNumber, nextTimesheetNumber, nextSowNumber,
 } from '../finance/invoice-number.js';
 import { generatePdf } from '../../services/pdf.js';
 import { sendDocumentEmail } from '../../services/document-email.js';
+import { config } from '../../config.js';
 import { renderSowHtml as _renderSowHtml } from '../../services/templates/sow.js';
 import { renderTimesheetHtml as _renderTimesheetHtml } from '../../services/templates/timesheet.js';
 import { renderBudgetReportHtml as _renderBudgetReportHtml } from '../../services/templates/budget-report.js';
@@ -1211,13 +1213,19 @@ export async function budgetingRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Params: { id: string } }>('/sow/:id', {
-    preHandler: requirePermission('budgeting', 'read'),
+    preHandler: requireAuth,
   }, async (request, reply) => {
+    const user = request.session!.user;
     const sow = await app.db.query.sowDocuments.findFirst({
       where: eq(sowDocuments.id, request.params.id),
       with: { project: { with: { title: true, author: true } }, contractor: true, staffUser: true, versions: true },
     });
     if (!sow) return reply.notFound('SOW not found');
+
+    // Allow access if: user has budgeting.read permission (admin/finance)
+    // OR the SOW is assigned to this user (they are the staff member)
+    const canRead = hasPermission(user.role ?? '', 'budgeting', 'read') || sow.staffUserId === user.id;
+    if (!canRead) return reply.forbidden('You do not have access to this SOW');
 
     const tasks = await app.db.query.taskAssignments.findMany({
       where: eq(taskAssignments.projectId, sow.projectId),
@@ -1382,14 +1390,19 @@ export async function budgetingRoutes(app: FastifyInstance) {
     return { data: updated };
   });
 
-  // Mark SOW as accepted
+  // Mark SOW as accepted — accessible by admin/finance (budgeting.approve) OR the assigned staff member
   app.post<{ Params: { id: string } }>('/sow/:id/accept', {
-    preHandler: requirePermission('budgeting', 'approve'),
+    preHandler: requireAuth,
   }, async (request, reply) => {
+    const user = request.session!.user;
     const sow = await app.db.query.sowDocuments.findFirst({
       where: eq(sowDocuments.id, request.params.id),
     });
     if (!sow) return reply.notFound('SOW not found');
+
+    const canAccept = hasPermission(user.role ?? '', 'budgeting', 'approve') || sow.staffUserId === user.id;
+    if (!canAccept) return reply.forbidden('You do not have permission to accept this SOW');
+
     if (sow.status !== 'SENT') {
       return reply.badRequest('Only SENT SOWs can be accepted');
     }
@@ -1575,7 +1588,20 @@ export async function budgetingRoutes(app: FastifyInstance) {
       classMap.set(cls, entry);
     }
 
+    const settings = await app.db.query.companySettings.findFirst();
+    const companyInfo = settings ? {
+      name: settings.companyName ?? 'Xarra Books',
+      tradingAs: settings.tradingAs,
+      logoUrl: settings.logoUrl,
+      city: settings.city,
+      province: settings.province,
+      vatNumber: settings.vatNumber,
+      phone: settings.phone,
+      email: settings.email,
+    } : undefined;
+
     const html = renderBudgetReportHtml({
+      company: companyInfo,
 
       project: {
         name: project.name,
@@ -1628,11 +1654,14 @@ export async function budgetingRoutes(app: FastifyInstance) {
       pdfStaffName = scopeMatch?.[1] || 'Staff Member';
     }
 
+    const sowSettings1 = await app.db.query.companySettings.findFirst();
+
     const html = renderSowHtml({
       number: sow.number,
       version: sow.version,
       date: new Date(sow.createdAt).toISOString(),
       validUntil: sow.validUntil ? new Date(sow.validUntil).toISOString() : undefined,
+      company: sowSettings1 ? { name: sowSettings1.companyName ?? 'Xarra Books', tradingAs: sowSettings1.tradingAs, logoUrl: sowSettings1.logoUrl, city: sowSettings1.city, province: sowSettings1.province, vatNumber: sowSettings1.vatNumber, phone: sowSettings1.phone, email: sowSettings1.email } : undefined,
       contractor: sow.contractor ? {
         name: sow.contractor.name,
         contactName: sow.contractor.contactName,
@@ -1661,6 +1690,60 @@ export async function budgetingRoutes(app: FastifyInstance) {
       .send(pdf);
   });
 
+  // Public SOW view — no auth required; uses UUID as access token for external contractors
+  app.get<{ Params: { id: string } }>('/sow/:id/public-view', async (request, reply) => {
+    const sow = await app.db.query.sowDocuments.findFirst({
+      where: eq(sowDocuments.id, request.params.id),
+      with: { project: { with: { title: true, author: true } }, contractor: true },
+    });
+    if (!sow) return reply.notFound('SOW not found');
+
+    // Only expose contractor SOWs publicly (staff SOWs require login)
+    if (!sow.contractorId) return reply.forbidden('This SOW requires login to view');
+
+    return {
+      data: {
+        id: sow.id,
+        number: sow.number,
+        status: sow.status,
+        version: sow.version,
+        totalAmount: sow.totalAmount,
+        scope: sow.scope,
+        terms: sow.terms,
+        validUntil: sow.validUntil,
+        startDate: sow.startDate,
+        endDate: sow.endDate,
+        acceptedAt: sow.acceptedAt,
+        createdAt: sow.createdAt,
+        project: { name: sow.project.name, number: sow.project.number },
+        contractor: sow.contractor ? {
+          name: sow.contractor.name,
+          contactName: sow.contractor.contactName,
+          contactEmail: sow.contractor.contactEmail,
+        } : null,
+        deliverables: sow.deliverables,
+        timeline: sow.timeline,
+        costBreakdown: sow.costBreakdown,
+      },
+    };
+  });
+
+  // Public SOW accept — no auth required; only for contractor SOWs
+  app.post<{ Params: { id: string } }>('/sow/:id/accept-public', async (request, reply) => {
+    const sow = await app.db.query.sowDocuments.findFirst({
+      where: eq(sowDocuments.id, request.params.id),
+    });
+    if (!sow) return reply.notFound('SOW not found');
+    if (!sow.contractorId) return reply.forbidden('This SOW requires login to accept');
+    if (sow.status !== 'SENT') return reply.badRequest('Only SENT SOWs can be accepted');
+
+    const [updated] = await app.db.update(sowDocuments)
+      .set({ status: 'ACCEPTED', acceptedAt: new Date(), updatedAt: new Date() })
+      .where(eq(sowDocuments.id, request.params.id))
+      .returning();
+    return { data: updated };
+  });
+
   // Timesheet PDF
   app.get<{ Params: { id: string } }>('/timesheets/:id/pdf', {
     preHandler: requirePermission('budgeting', 'export'),
@@ -1671,8 +1754,11 @@ export async function budgetingRoutes(app: FastifyInstance) {
     });
     if (!ts) return reply.notFound('Timesheet not found');
 
+    const tsSettings = await app.db.query.companySettings.findFirst();
+
     const html = renderTimesheetHtml({
       number: ts.number,
+      company: tsSettings ? { name: tsSettings.companyName ?? 'Xarra Books', tradingAs: tsSettings.tradingAs, logoUrl: tsSettings.logoUrl, city: tsSettings.city, province: tsSettings.province, vatNumber: tsSettings.vatNumber, phone: tsSettings.phone, email: tsSettings.email } : undefined,
       periodFrom: new Date(ts.periodFrom).toISOString(),
       periodTo: new Date(ts.periodTo).toISOString(),
       worker: { name: ts.worker?.name || 'Unknown', role: '' },
@@ -1719,11 +1805,14 @@ export async function budgetingRoutes(app: FastifyInstance) {
       staffName = scopeMatch?.[1] || 'Staff Member';
     }
 
+    const sowSettings2 = await app.db.query.companySettings.findFirst();
+
     const html = renderSowHtml({
       number: sow.number,
       version: sow.version,
       date: new Date(sow.createdAt).toISOString(),
       validUntil: sow.validUntil ? new Date(sow.validUntil).toISOString() : undefined,
+      company: sowSettings2 ? { name: sowSettings2.companyName ?? 'Xarra Books', tradingAs: sowSettings2.tradingAs, logoUrl: sowSettings2.logoUrl, city: sowSettings2.city, province: sowSettings2.province, vatNumber: sowSettings2.vatNumber, phone: sowSettings2.phone, email: sowSettings2.email } : undefined,
       contractor: sow.contractor ? {
         name: sow.contractor.name,
         contactName: sow.contractor.contactName,
@@ -1745,15 +1834,95 @@ export async function budgetingRoutes(app: FastifyInstance) {
       terms: sow.terms || undefined,
     });
 
+    // Build the portal link from the canonical frontend URL config.
+    const appUrl = config.web.url;
+    // External contractors (no system account) use the public review page.
+    // Internal staff users (staffUserId is set) can log in and view the admin SOW page.
+    const sowLink = sow.contractorId
+      ? `${appUrl}/sow-review/${sow.id}`
+      : `${appUrl}/budgeting/sow/${sow.id}`;
+
+    const recipientName = sow.contractor?.contactName || sow.contractor?.name || staffName || 'Team Member';
+    const projectTitle = sow.project.title?.title ? ` — ${sow.project.title.title}` : '';
+    const totalFormatted = sow.totalAmount
+      ? `R ${Number(sow.totalAmount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : null;
+
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #166534; padding: 24px 32px; border-radius: 8px 8px 0 0;">
+          <h1 style="color: #fff; margin: 0; font-size: 20px;">Statement of Work</h1>
+          <p style="color: #bbf7d0; margin: 4px 0 0; font-size: 14px;">${sow.number} · ${sow.project.number}${projectTitle}</p>
+        </div>
+
+        <div style="background: #fff; border: 1px solid #e5e7eb; border-top: none; padding: 32px; border-radius: 0 0 8px 8px;">
+          <p style="margin: 0 0 16px;">Dear ${recipientName},</p>
+
+          <p style="margin: 0 0 16px;">
+            ${message || `Please find attached your Statement of Work for <strong>${sow.project.name}</strong>. Kindly review the scope, deliverables, and terms, then confirm your acceptance.`}
+          </p>
+
+          <!-- Summary card -->
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 16px 20px; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr>
+                <td style="color: #6b7280; padding: 4px 0; width: 140px;">SOW Reference</td>
+                <td style="font-weight: 600; color: #111827;">${sow.number}</td>
+              </tr>
+              <tr>
+                <td style="color: #6b7280; padding: 4px 0;">Project</td>
+                <td style="font-weight: 600; color: #111827;">${sow.project.number} — ${sow.project.name}</td>
+              </tr>
+              ${totalFormatted ? `
+              <tr>
+                <td style="color: #6b7280; padding: 4px 0;">Contract Value</td>
+                <td style="font-weight: 600; color: #166534;">${totalFormatted}</td>
+              </tr>` : ''}
+              ${sow.validUntil ? `
+              <tr>
+                <td style="color: #6b7280; padding: 4px 0;">Valid Until</td>
+                <td style="font-weight: 600; color: #111827;">${new Date(sow.validUntil).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })}</td>
+              </tr>` : ''}
+            </table>
+          </div>
+
+          <p style="margin: 0 0 8px; font-size: 14px; color: #374151;">
+            The full SOW document is attached to this email as a PDF. You can also view and accept it online using the button below:
+          </p>
+
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${sowLink}"
+               style="background: #166534; color: #fff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-size: 15px; font-weight: 600; display: inline-block;">
+              Review &amp; Accept SOW →
+            </a>
+          </div>
+
+          <p style="margin: 0 0 8px; font-size: 13px; color: #6b7280;">
+            After you accept, your tasks will become visible and you can begin logging your work through the same portal.
+          </p>
+
+          <p style="margin: 24px 0 0; font-size: 13px; color: #6b7280;">
+            If you have any questions, please reply to this email or contact your project manager directly.
+          </p>
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+          <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+            Xarra Books Management System · This email was sent on behalf of the Xarra Books project team.
+          </p>
+        </div>
+      </div>
+    `;
+
     const result = await sendDocumentEmail({
       app,
       documentType: 'SOW',
       documentId: sow.id,
       recipientEmail,
       subject: `Statement of Work ${sow.number} — ${sow.project.name}`,
-      message,
+      emailHtml,
       html,
       documentNumber: sow.number,
+      attachmentName: `SOW-${sow.number}`,
       sentBy: request.session?.user?.id,
     });
 
@@ -1778,8 +1947,10 @@ export async function budgetingRoutes(app: FastifyInstance) {
     });
     if (!project) return reply.notFound('Project not found');
 
-    const html = renderBudgetReportHtml({
+    const brSettings = await app.db.query.companySettings.findFirst();
 
+    const html = renderBudgetReportHtml({
+      company: brSettings ? { name: brSettings.companyName ?? 'Xarra Books', tradingAs: brSettings.tradingAs, logoUrl: brSettings.logoUrl, city: brSettings.city, province: brSettings.province, vatNumber: brSettings.vatNumber, phone: brSettings.phone, email: brSettings.email } : undefined,
       project: {
         name: project.name,
         number: project.number,
@@ -1808,7 +1979,6 @@ export async function budgetingRoutes(app: FastifyInstance) {
       documentId: project.id,
       recipientEmail,
       subject: `Budget Report — ${project.name} (${project.number})`,
-      message,
       html,
       documentNumber: project.number,
       sentBy: request.session?.user?.id,

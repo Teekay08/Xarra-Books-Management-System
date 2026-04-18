@@ -141,7 +141,7 @@ export function TaskForm() {
         hourlyRate: form.hourlyRate,
         startDate: form.startDate || null,
         dueDate: form.dueDate || null,
-        deliverables: form.deliverables.filter((d) => d.trim()).map((d) => ({ description: d, completed: false })),
+        deliverables: form.deliverables.filter((d) => d.trim()).map((d) => ({ title: d })),
       };
       return api(`/project-management/projects/${projectId}/tasks`, {
         method: 'POST',
@@ -374,8 +374,8 @@ export function TaskForm() {
                     if (data.description && !form.description) {
                       setForm((f) => ({ ...f, description: data.description }));
                     }
-                    if (data.deliverables?.length && form.deliverables.length === 0) {
-                      setForm((f) => ({ ...f, deliverables: data.deliverables.map((d: any) => ({ description: d.description, completed: false })) }));
+                    if (data.deliverables?.length && form.deliverables.every((d) => !d.trim())) {
+                      setForm((f) => ({ ...f, deliverables: data.deliverables.map((d: any) => d.description || d.title || d) }));
                     }
                     if (data.suggestedPriority && form.priority === 'MEDIUM') {
                       setForm((f) => ({ ...f, priority: data.suggestedPriority }));

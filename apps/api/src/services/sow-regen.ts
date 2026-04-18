@@ -61,26 +61,12 @@ export async function regenerateSowFromTasks(
   }));
   const totalAmount = costBreakdown.reduce((sum, l) => sum + l.total, 0);
 
-  // Build deliverables from each task's deliverables array (or fall back to task title)
-  const deliverables: Array<{ description: string; dueDate: string; acceptanceCriteria: string }> = [];
-  for (const t of activeTasks) {
-    const taskDeliverables = (t.deliverables as Array<{ description: string }> | null) || [];
-    if (taskDeliverables.length > 0) {
-      for (const d of taskDeliverables) {
-        deliverables.push({
-          description: `[${t.title}] ${d.description}`,
-          dueDate: t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : '',
-          acceptanceCriteria: '',
-        });
-      }
-    } else {
-      deliverables.push({
-        description: t.title,
-        dueDate: t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : '',
-        acceptanceCriteria: t.description || '',
-      });
-    }
-  }
+  // Build deliverables from task titles (detailed deliverables now tracked in task_deliverables table)
+  const deliverables: Array<{ description: string; dueDate: string; acceptanceCriteria: string }> = activeTasks.map((t) => ({
+    description: t.title,
+    dueDate: t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : '',
+    acceptanceCriteria: t.description || 'Completed to satisfaction',
+  }));
 
   // Build timeline from earliest start to latest due
   const startDates = activeTasks.map((t) => t.startDate).filter(Boolean) as Date[];

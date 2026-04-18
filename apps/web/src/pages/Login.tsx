@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { signIn, signOut } from '../lib/auth-client';
+import { PLATFORM_NAME } from '../stores/companyStore';
 
 const roles = [
   { value: 'ADMIN', label: 'Admin' },
@@ -45,7 +46,8 @@ export function Login() {
         return;
       }
 
-      navigate(userRole === 'author' ? '/portal' : '/');
+      // Always go to company selector — it will route based on role + active company
+      navigate('/select-company');
     } catch {
       setError('An unexpected error occurred');
     } finally {
@@ -56,12 +58,15 @@ export function Login() {
   const inputCls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-600 focus:outline-none focus:ring-1 focus:ring-green-600';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-xarra-red via-xarra-red-dark to-xarra-red">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-xl shadow-2xl p-8">
           <div className="text-center mb-8">
-            <img src="/XarraBooks-logo.png" alt="Xarra Books" className="mx-auto h-20 mb-4" />
-            <p className="text-sm text-gray-500 mt-1">Management System</p>
+            <div className="mx-auto h-12 w-12 rounded-xl bg-gray-900 flex items-center justify-center mb-4">
+              <span className="text-white font-bold text-lg">XG</span>
+            </div>
+            <h1 className="text-lg font-bold text-gray-900">{PLATFORM_NAME}</h1>
+            <p className="text-sm text-gray-500 mt-1">Sign in to your account</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -134,10 +139,20 @@ export function Login() {
           </form>
 
           <p className="mt-6 text-center text-xs text-gray-400">
-            Credentials are provided by your Xarra Books administrator
+            Credentials are provided by your administrator
           </p>
         </div>
-        <p className="text-center text-xs text-white/40 mt-6">We mainstream the African book</p>
+        <div className="text-center mt-6 space-y-1">
+          <p className="text-xs text-white/30">
+            <Link to="/" className="hover:text-white/60 transition-colors">← Back to platform</Link>
+          </p>
+          <p className="text-xs text-white/25">
+            Powered by{' '}
+            <a href="https://tsedemeko.africa" target="_blank" rel="noopener noreferrer" className="hover:text-white/50 transition-colors font-medium">
+              Tsedemeko
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );

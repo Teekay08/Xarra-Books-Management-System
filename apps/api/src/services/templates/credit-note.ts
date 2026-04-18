@@ -38,6 +38,9 @@ interface CreditNoteData {
   createdAt: string;
   reason: string;
   invoiceNumber?: string | null;
+  /** Cross-references */
+  raNumber?: string | null;   // RA-YYYY-NNNN
+  sorNumber?: string | null;  // SOR-YYYY-NNNN
   company?: CompanyInfo;
   recipient: RecipientInfo;
   lines: CreditNoteLine[];
@@ -104,6 +107,8 @@ export function renderCreditNoteHtml(data: CreditNoteData): string {
     .totals tr td { padding: 6px 8px; }
     .totals .grand-total td { border-top: 2px solid #166534; font-weight: bold; font-size: 16px; }
     .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 11px; color: #888; }
+    .refs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .refs span { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -142,6 +147,14 @@ export function renderCreditNoteHtml(data: CreditNoteData): string {
       ${data.recipient.contactEmail ? `<p>${data.recipient.contactEmail}</p>` : ''}
     </div>
   </div>
+
+  ${(data.invoiceNumber || data.raNumber || data.sorNumber) ? `
+  <div class="refs">
+    ${data.invoiceNumber ? `<span style="background:#f0fdf4;color:#166534">Invoice: ${data.invoiceNumber}</span>` : ''}
+    ${data.raNumber ? `<span style="background:#fef2f2;color:#991b1b">RA: ${data.raNumber}</span>` : ''}
+    ${data.sorNumber ? `<span style="background:#fef3c7;color:#92400e">SOR: ${data.sorNumber}</span>` : ''}
+  </div>
+  ` : ''}
 
   <div class="reason">
     <strong>Reason:</strong> ${data.reason}

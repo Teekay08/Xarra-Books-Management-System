@@ -1,8 +1,22 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+
+async function downloadSowPdf(id: string, number: string) {
+  const res = await fetch(`/api/v1/budgeting/sow/${id}/pdf`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to download PDF');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${number}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 interface SowDeliverable {
   id: string;
@@ -65,11 +79,11 @@ const statusColors: Record<string, string> = {
 
 export function SowDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendEmail, setSendEmail] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['sow-document', id],
@@ -133,20 +147,34 @@ export function SowDetail() {
         subtitle={sow.project?.name || 'Statement of Work'}
         backTo={{ label: 'Back to Statements of Work', href: '/budgeting/sow' }}
         action={
-          <div className="flex gap-2">
-            {sow.status === 'DRAFT' && (
-              <>
-                <button
-                  onClick={() => {
-                    setSendEmail(sow.contractor?.contactEmail || '');
-                    setShowSendModal(true);
-                  }}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  Send
-                </button>
-              </>
-            )}
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={async () => {
+                setPdfLoading(true);
+                try { await downloadSowPdf(sow.id, sow.number); }
+                catch { alert('Failed to download PDF'); }
+                finally { setPdfLoading(false); }
+              }}
+              disabled={pdfLoading}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {pdfLoading ? 'Downloading...' : 'Download PDF'}
+            </button>
+            <button
+              onClick={() => window.open(`/api/v1/budgeting/sow/${sow.id}/pdf`, '_blank')}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Print
+            </button>
+            <button
+              onClick={() => {
+                setSendEmail(sow.contractor?.contactEmail || '');
+                setShowSendModal(true);
+              }}
+              className="rounded-md border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50"
+            >
+              {sow.status === 'DRAFT' ? 'Send' : 'Resend'}
+            </button>
             {sow.status === 'SENT' && (
               <button
                 onClick={() => acceptMutation.mutate()}
@@ -359,7 +387,7 @@ export function SowDetail() {
       {showSendModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Send SOW</h3>
+            <h3 className="text-lg font-semibold text-gray-900">{sow.status === 'DRAFT' ? 'Send SOW' : 'Resend SOW'}</h3>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
               <input
@@ -383,7 +411,7 @@ export function SowDetail() {
                 disabled={!sendEmail || sendMutation.isPending}
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {sendMutation.isPending ? 'Sending...' : 'Send'}
+                {sendMutation.isPending ? 'Sending...' : sow.status === 'DRAFT' ? 'Send' : 'Resend'}
               </button>
             </div>
           </div>

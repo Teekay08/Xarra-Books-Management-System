@@ -23,6 +23,18 @@ interface ExtensionRequest {
   createdAt: string;
 }
 
+interface Deliverable {
+  id: string;
+  taskAssignmentId: string;
+  title: string;
+  description: string | null;
+  estimatedHours: string | null;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+  sortOrder: number;
+  rejectionReason: string | null;
+  submittedAt: string | null;
+}
+
 interface Task {
   id: string;
   number: string;  // TA-YYYY-NNNN
@@ -37,7 +49,6 @@ interface Task {
   timeExhausted: boolean;
   startDate: string | null;
   dueDate: string | null;
-  deliverables: Array<{ description: string; completed: boolean }> | null;
   staffMember: { id: string; name: string; email: string } | null;
   project: { id: string; name: string; number: string } | null;
   milestone: { id: string; name: string } | null;
@@ -73,6 +84,14 @@ const extensionStatusColors: Record<string, string> = {
   DECLINED: 'bg-red-100 text-red-700',
 };
 
+const deliverableStatusColors: Record<string, string> = {
+  NOT_STARTED: 'bg-gray-100 text-gray-600',
+  IN_PROGRESS: 'bg-yellow-100 text-yellow-700',
+  SUBMITTED: 'bg-purple-100 text-purple-700',
+  APPROVED: 'bg-green-100 text-green-700',
+  REJECTED: 'bg-red-100 text-red-700',
+};
+
 export function TaskDetail() {
   const { id } = useParams();
   const queryClient = useQueryClient();
@@ -96,6 +115,14 @@ export function TaskDetail() {
   const [sendBackReason, setSendBackReason] = useState('');
   const [rejectModal, setRejectModal] = useState<{ logId: string; staffName: string; hours: string; description: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+
+  // Deliverable state
+  const [newDelivForm, setNewDelivForm] = useState({ title: '', description: '', estimatedHours: '' });
+  const [showNewDeliv, setShowNewDeliv] = useState(false);
+  const [delivLogForm, setDelivLogForm] = useState<{ deliverableId: string; date: string; hours: string; description: string } | null>(null);
+  const [delivRejectModal, setDelivRejectModal] = useState<{ deliverableId: string; title: string } | null>(null);
+  const [delivRejectReason, setDelivRejectReason] = useState('');
+  const [delivError, setDelivError] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['pm-task', id],
@@ -186,6 +213,83 @@ export function TaskDetail() {
       setExtensionError('');
     },
     onError: (err: Error) => setExtensionError(err.message),
+  });
+
+  // Deliverable queries & mutations
+  const { data: delivData, isLoading: delivLoading } = useQuery({
+    queryKey: ['task-deliverables', id],
+    queryFn: () => api<{ data: Deliverable[] }>(`/project-management/tasks/${id}/deliverables`),
+    enabled: !!id,
+  });
+  const deliverables = delivData?.data ?? [];
+
+  const invalidateDeliverables = () => {
+    queryClient.invalidateQueries({ queryKey: ['task-deliverables', id] });
+    queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
+  };
+
+  const addDeliverableMutation = useMutation({
+    mutationFn: () =>
+      api(`/project-management/tasks/${id}/deliverables`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: newDelivForm.title,
+          description: newDelivForm.description || undefined,
+          estimatedHours: newDelivForm.estimatedHours ? Number(newDelivForm.estimatedHours) : undefined,
+        }),
+      }),
+    onSuccess: () => {
+      invalidateDeliverables();
+      setNewDelivForm({ title: '', description: '', estimatedHours: '' });
+      setShowNewDeliv(false);
+      setDelivError('');
+    },
+    onError: (err: Error) => setDelivError(err.message),
+  });
+
+  const logDeliverableMutation = useMutation({
+    mutationFn: ({ deliverableId, date, hours, description }: { deliverableId: string; date: string; hours: number; description: string }) =>
+      api(`/project-management/tasks/${id}/deliverables/${deliverableId}/log`, {
+        method: 'POST',
+        body: JSON.stringify({ workDate: date, hours, description }),
+      }),
+    onSuccess: () => {
+      invalidateDeliverables();
+      setDelivLogForm(null);
+      setDelivError('');
+    },
+    onError: (err: Error) => setDelivError(err.message),
+  });
+
+  const submitDeliverableMutation = useMutation({
+    mutationFn: (deliverableId: string) =>
+      api(`/project-management/tasks/${id}/deliverables/${deliverableId}/submit`, { method: 'POST' }),
+    onSuccess: () => invalidateDeliverables(),
+    onError: (err: Error) => alert(err.message),
+  });
+
+  const approveDeliverableMutation = useMutation({
+    mutationFn: (deliverableId: string) =>
+      api(`/project-management/tasks/${id}/deliverables/${deliverableId}/approve`, { method: 'POST' }),
+    onSuccess: () => {
+      invalidateDeliverables();
+      queryClient.invalidateQueries({ queryKey: ['pm-task', id] });
+    },
+    onError: (err: Error) => alert(err.message),
+  });
+
+  const rejectDeliverableMutation = useMutation({
+    mutationFn: ({ deliverableId, reason }: { deliverableId: string; reason: string }) =>
+      api(`/project-management/tasks/${id}/deliverables/${deliverableId}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ rejectionReason: reason }),
+      }),
+    onSuccess: () => {
+      invalidateDeliverables();
+      setDelivRejectModal(null);
+      setDelivRejectReason('');
+    },
+    onError: (err: Error) => alert(err.message),
   });
 
   if (isLoading) {
@@ -444,18 +548,205 @@ export function TaskDetail() {
         </div>
       )}
 
-      {/* Deliverables Checklist */}
-      {(task.deliverables ?? []).length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">Deliverables</h3>
-          <ul className="space-y-2">
-            {(task.deliverables ?? []).map((d, i) => (
-              <li key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={d.completed} className="rounded border-gray-300 text-green-700" readOnly />
-                {d.description}
-              </li>
-            ))}
-          </ul>
+      {/* Deliverables Panel */}
+      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Deliverables
+            {deliverables.length > 0 && (
+              <span className="ml-2 text-xs text-gray-500">
+                ({deliverables.filter((d) => d.status === 'APPROVED').length}/{deliverables.length} approved)
+              </span>
+            )}
+          </h3>
+          {isPM && task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && (
+            <button onClick={() => setShowNewDeliv(!showNewDeliv)}
+              className="text-xs rounded-md bg-green-700 px-3 py-1.5 font-medium text-white hover:bg-green-800">
+              + Add Deliverable
+            </button>
+          )}
+        </div>
+
+        {delivError && <p className="mb-3 text-xs text-red-600">{delivError}</p>}
+
+        {/* Add deliverable inline form */}
+        {showNewDeliv && isPM && (
+          <div className="mb-4 rounded-md border border-green-200 bg-green-50 p-4 space-y-3">
+            <h4 className="text-xs font-semibold text-gray-800">New Deliverable</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-gray-500 mb-1">Title *</label>
+                <input type="text" value={newDelivForm.title}
+                  onChange={(e) => setNewDelivForm({ ...newDelivForm, title: e.target.value })}
+                  placeholder="e.g. Draft manuscript chapter 1"
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Est. Hours</label>
+                <input type="number" min={0.5} step={0.5} value={newDelivForm.estimatedHours}
+                  onChange={(e) => setNewDelivForm({ ...newDelivForm, estimatedHours: e.target.value })}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Description</label>
+              <input type="text" value={newDelivForm.description}
+                onChange={(e) => setNewDelivForm({ ...newDelivForm, description: e.target.value })}
+                placeholder="Optional acceptance criteria or notes..."
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => {
+                  if (!newDelivForm.title.trim()) { setDelivError('Title is required'); return; }
+                  addDeliverableMutation.mutate();
+                }}
+                disabled={addDeliverableMutation.isPending}
+                className="rounded-md bg-green-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                {addDeliverableMutation.isPending ? 'Saving...' : 'Save Deliverable'}
+              </button>
+              <button onClick={() => { setShowNewDeliv(false); setDelivError(''); }}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {delivLoading && <p className="text-sm text-gray-400">Loading deliverables...</p>}
+
+        {!delivLoading && deliverables.length === 0 && (
+          <p className="text-sm text-gray-400">
+            {isPM ? 'No deliverables defined yet. Add deliverables to track staff work.' : 'No deliverables assigned yet.'}
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {deliverables.map((d) => (
+            <div key={d.id} className={`rounded-md border p-4 ${d.status === 'APPROVED' ? 'border-green-200 bg-green-50' : d.status === 'SUBMITTED' ? 'border-purple-200 bg-purple-50' : 'border-gray-200 bg-white'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-gray-900">{d.title}</p>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${deliverableStatusColors[d.status]}`}>
+                      {d.status.replace(/_/g, ' ')}
+                    </span>
+                    {d.estimatedHours && (
+                      <span className="text-xs text-gray-400">est. {Number(d.estimatedHours).toFixed(1)}h</span>
+                    )}
+                  </div>
+                  {d.description && <p className="text-xs text-gray-500 mt-0.5">{d.description}</p>}
+                  {d.rejectionReason && d.status === 'IN_PROGRESS' && (
+                    <p className="text-xs text-red-600 mt-1">Returned: {d.rejectionReason}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Staff: log work on deliverable */}
+                  {isAssignedStaff && d.status !== 'APPROVED' && task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && (
+                    <button onClick={() => setDelivLogForm({ deliverableId: d.id, date: '', hours: '', description: '' })}
+                      className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200">
+                      Log Work
+                    </button>
+                  )}
+                  {/* Staff: submit for review */}
+                  {isAssignedStaff && (d.status === 'IN_PROGRESS') && (
+                    <button onClick={() => submitDeliverableMutation.mutate(d.id)}
+                      disabled={submitDeliverableMutation.isPending}
+                      className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-200 disabled:opacity-50">
+                      Submit for Review
+                    </button>
+                  )}
+                  {/* PM: approve / reject submitted */}
+                  {isPM && d.status === 'SUBMITTED' && (
+                    <>
+                      <button onClick={() => approveDeliverableMutation.mutate(d.id)}
+                        disabled={approveDeliverableMutation.isPending}
+                        className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-200 disabled:opacity-50">
+                        Approve
+                      </button>
+                      <button onClick={() => { setDelivRejectModal({ deliverableId: d.id, title: d.title }); setDelivRejectReason(''); }}
+                        className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200">
+                        Return
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Inline log work form for this deliverable */}
+              {delivLogForm?.deliverableId === d.id && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <h5 className="text-xs font-semibold text-gray-700 mb-2">Log Work on: {d.title}</h5>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Date *</label>
+                      <input type="date" value={delivLogForm.date}
+                        onChange={(e) => setDelivLogForm({ ...delivLogForm, date: e.target.value })}
+                        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Hours *</label>
+                      <input type="number" step="0.25" min="0.25" value={delivLogForm.hours}
+                        onChange={(e) => setDelivLogForm({ ...delivLogForm, hours: e.target.value })}
+                        className="w-20 rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+                    </div>
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="block text-xs text-gray-500 mb-1">Description *</label>
+                      <input type="text" value={delivLogForm.description}
+                        onChange={(e) => setDelivLogForm({ ...delivLogForm, description: e.target.value })}
+                        placeholder="What did you work on..."
+                        className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (!delivLogForm.date || !delivLogForm.hours || !delivLogForm.description) {
+                            setDelivError('Date, hours, and description are required');
+                            return;
+                          }
+                          logDeliverableMutation.mutate({
+                            deliverableId: d.id,
+                            date: delivLogForm.date,
+                            hours: Number(delivLogForm.hours),
+                            description: delivLogForm.description,
+                          });
+                        }}
+                        disabled={logDeliverableMutation.isPending}
+                        className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                        {logDeliverableMutation.isPending ? 'Logging...' : 'Log'}
+                      </button>
+                      <button onClick={() => { setDelivLogForm(null); setDelivError(''); }}
+                        className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700">Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Deliverable Rejection Modal */}
+      {delivRejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Return Deliverable for Rework</h3>
+            <p className="text-sm text-gray-600 mb-1">Deliverable: <span className="font-medium">{delivRejectModal.title}</span></p>
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
+              <textarea value={delivRejectReason} onChange={(e) => setDelivRejectReason(e.target.value)}
+                placeholder="Explain what needs to be fixed or improved..."
+                rows={3}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" autoFocus />
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => { setDelivRejectModal(null); setDelivRejectReason(''); }}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm">Cancel</button>
+              <button
+                onClick={() => rejectDeliverableMutation.mutate({ deliverableId: delivRejectModal.deliverableId, reason: delivRejectReason })}
+                disabled={!delivRejectReason.trim() || rejectDeliverableMutation.isPending}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                {rejectDeliverableMutation.isPending ? 'Returning...' : 'Return for Rework'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

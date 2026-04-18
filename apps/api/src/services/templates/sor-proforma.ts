@@ -40,6 +40,8 @@ interface RecipientInfo {
 interface SorProformaData {
   proformaNumber: string;
   partnerPoNumber?: string | null;
+  /** Linked order ref (POR-YYYY-NNNN) if this SOR originated from an order */
+  orderNumber?: string | null;
   dispatchDate: string;
   sorExpiryDate?: string | null;
   sorDays?: number;
@@ -142,6 +144,13 @@ export function renderSorProformaHtml(data: SorProformaData): string {
       </div>
     </div>
   </div>
+
+  ${(data.orderNumber || data.partnerPoNumber) ? `
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+    ${data.orderNumber ? `<span style="background:#e0f2fe;color:#0369a1;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">Order: ${data.orderNumber}</span>` : ''}
+    ${data.partnerPoNumber ? `<span style="background:#f3f4f6;color:#374151;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">Partner PO: ${data.partnerPoNumber}</span>` : ''}
+  </div>
+  ` : ''}
 
   <div class="sor-banner">
     <strong>Sale or Return (SOR) Terms</strong><br>

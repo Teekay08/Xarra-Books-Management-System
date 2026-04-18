@@ -18,3 +18,4 @@ export * from './budgeting';
 export * from './order-tracking';
 export * from './suspense';
 export * from './project-management';
+export * from './billetterie';

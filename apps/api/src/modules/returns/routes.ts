@@ -3,13 +3,16 @@ import { eq, sql } from 'drizzle-orm';
 import {
   returnsAuthorizations, returnsAuthorizationLines,
   returnInspectionLines, inventoryMovements, consignmentLines,
-  invoices, creditNotes, creditNoteLines, titles, channelPartners,
+  invoices, creditNotes, creditNoteLines, titles, channelPartners, consignments,
 } from '@xarra/db';
 import { paginationSchema, VAT_RATE, roundAmount } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
 import { nextCreditNoteNumber, nextReturnNumber } from '../finance/invoice-number.js';
+import { generatePdf } from '../../services/pdf.js';
+import { renderReturnAuthorisationHtml } from '../../services/templates/return-authorisation.js';
+import { sendDocumentEmail } from '../../services/document-email.js';
 import { z } from 'zod';
 
 const createReturnSchema = z.object({
@@ -621,5 +624,202 @@ export async function returnRoutes(app: FastifyInstance) {
     }).catch((err) => app.log.error({ err }, 'Failed to create credit note regen notification'));
 
     return { data: { message: 'Credit note regenerated with line items', creditNote: updated } };
+  });
+
+  // ==========================================
+  // RETURN AUTHORISATION WORKFLOW
+  // ==========================================
+
+  // Authorise a return (DRAFT → AUTHORIZED) and optionally send RA PDF to partner
+  app.post<{ Params: { id: string } }>('/:id/authorise', {
+    preHandler: requireRole('admin', 'operations'),
+  }, async (request, reply) => {
+    const ra = await app.db.query.returnsAuthorizations.findFirst({
+      where: eq(returnsAuthorizations.id, request.params.id),
+      with: {
+        partner: true,
+        lines: { with: { title: true } },
+        consignment: true,
+      },
+    });
+    if (!ra) return reply.notFound('Return authorization not found');
+    if (!['DRAFT', 'SUBMITTED'].includes(ra.status)) {
+      return reply.badRequest('Return must be in DRAFT or SUBMITTED state to authorise');
+    }
+
+    const { sendEmail: sendRaEmail, notes, validUntilDays } = z.object({
+      sendEmail: z.boolean().default(true),
+      notes: z.string().optional(),
+      validUntilDays: z.number().int().min(1).max(90).default(30),
+    }).parse(request.body ?? {});
+
+    const userId = request.session?.user?.id;
+
+    // Compute valid-until date
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + validUntilDays);
+
+    const [updated] = await app.db.update(returnsAuthorizations).set({
+      status: 'AUTHORIZED',
+      authorisedBy: userId,
+      authorisedAt: new Date(),
+      notes: notes ?? ra.notes,
+    }).where(eq(returnsAuthorizations.id, ra.id)).returning();
+
+    // Resolve linked invoice and SOR numbers for cross-references
+    let invoiceNumber: string | null = null;
+    let sorNumber: string | null = null;
+
+    if (ra.consignment?.number) sorNumber = ra.consignment.number;
+    if (ra.invoiceId) {
+      const inv = await app.db.query.invoices.findFirst({ where: eq(invoices.id, ra.invoiceId) });
+      invoiceNumber = inv?.number ?? null;
+    }
+
+    // Fetch company settings for sender details
+    const settings = await app.db.query.companySettings.findFirst().catch(() => null);
+    const authorisedByUser = userId
+      ? await app.db.query.user.findFirst({ where: (u: any) => eq(u.id, userId) }).catch(() => null)
+      : null;
+
+    // Build RA PDF HTML
+    const raHtml = renderReturnAuthorisationHtml({
+      raNumber: ra.number,
+      raDate: new Date().toISOString(),
+      sorNumber,
+      invoiceNumber,
+      partnerPoNumber: null,
+      partnerName: ra.partner.name,
+      returnReason: ra.reason,
+      lines: ra.lines.map(l => ({
+        title: l.title?.title ?? 'Unknown',
+        isbn13: l.title?.isbn13 ?? null,
+        quantity: l.quantity,
+        reason: l.notes ?? null,
+      })),
+      authorisedByName: (authorisedByUser as any)?.name ?? 'Xarra Books',
+      validUntil: validUntil.toISOString(),
+      company: settings ? {
+        name: settings.companyName,
+        addressLine1: settings.addressLine1,
+        city: settings.city,
+        province: settings.province,
+        postalCode: settings.postalCode,
+        phone: settings.phone,
+        email: settings.email,
+        vatNumber: settings.vatNumber,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+    });
+
+    // Send RA PDF to partner if requested
+    if (sendRaEmail) {
+      const recipientEmail = ra.partner.orderContactEmail || ra.partner.contactEmail;
+      if (recipientEmail) {
+        sendDocumentEmail({
+          app,
+          documentType: 'RETURN_AUTHORISATION',
+          documentId: ra.id,
+          recipientEmail,
+          subject: `Return Authorised — ${ra.number} | Xarra Books`,
+          message: `Your return request has been authorised. Please see the attached Return Authorisation document and follow the instructions to send the goods back to us. Reference <strong>${ra.number}</strong> on all correspondence and packaging.`,
+          html: raHtml,
+          documentNumber: ra.number,
+          sentBy: userId,
+        }).catch((err) => app.log.error({ err }, 'Failed to send RA email'));
+      }
+    }
+
+    createBroadcastNotification(app, {
+      type: 'RETURN_PROCESSED',
+      priority: 'NORMAL',
+      title: `Return ${ra.number} authorised`,
+      message: `Return from ${ra.partner.name} has been authorised`,
+      actionUrl: `/returns/${ra.id}`,
+      referenceType: 'RETURN',
+      referenceId: ra.id,
+    }).catch((err) => app.log.error({ err }, 'Failed to create return notification'));
+
+    return { data: updated };
+  });
+
+  // Download Return Authorisation PDF
+  app.get<{ Params: { id: string } }>('/:id/pdf', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const ra = await app.db.query.returnsAuthorizations.findFirst({
+      where: eq(returnsAuthorizations.id, request.params.id),
+      with: {
+        partner: true,
+        lines: { with: { title: true } },
+        consignment: true,
+      },
+    });
+    if (!ra) return reply.notFound('Return authorization not found');
+
+    let invoiceNumber: string | null = null;
+    let sorNumber: string | null = null;
+    if (ra.consignment?.number) sorNumber = ra.consignment.number;
+    if (ra.invoiceId) {
+      const inv = await app.db.query.invoices.findFirst({ where: eq(invoices.id, ra.invoiceId) });
+      invoiceNumber = inv?.number ?? null;
+    }
+
+    const settings = await app.db.query.companySettings.findFirst().catch(() => null);
+
+    const html = renderReturnAuthorisationHtml({
+      raNumber: ra.number,
+      raDate: (ra.authorisedAt ?? ra.createdAt).toISOString(),
+      sorNumber,
+      invoiceNumber,
+      partnerPoNumber: null,
+      partnerName: ra.partner.name,
+      returnReason: ra.reason,
+      lines: ra.lines.map(l => ({
+        title: l.title?.title ?? 'Unknown',
+        isbn13: l.title?.isbn13 ?? null,
+        quantity: l.quantity,
+        reason: l.notes ?? null,
+      })),
+      company: settings ? {
+        name: settings.companyName,
+        addressLine1: settings.addressLine1,
+        city: settings.city,
+        province: settings.province,
+        postalCode: settings.postalCode,
+        phone: settings.phone,
+        email: settings.email,
+        vatNumber: settings.vatNumber,
+        logoUrl: settings.logoUrl,
+      } : undefined,
+    });
+
+    const pdf = await generatePdf(html);
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `inline; filename="${ra.number}.pdf"`)
+      .send(pdf);
+  });
+
+  // Reject a return
+  app.post<{ Params: { id: string } }>('/:id/reject', {
+    preHandler: requireRole('admin', 'operations'),
+  }, async (request, reply) => {
+    const ra = await app.db.query.returnsAuthorizations.findFirst({
+      where: eq(returnsAuthorizations.id, request.params.id),
+    });
+    if (!ra) return reply.notFound('Return authorization not found');
+    if (!['DRAFT', 'SUBMITTED'].includes(ra.status)) {
+      return reply.badRequest('Return must be in DRAFT or SUBMITTED state to reject');
+    }
+
+    const { reason } = z.object({ reason: z.string().min(1) }).parse(request.body);
+
+    const [updated] = await app.db.update(returnsAuthorizations).set({
+      status: 'REJECTED',
+      rejectionReason: reason,
+    }).where(eq(returnsAuthorizations.id, ra.id)).returning();
+
+    return { data: updated };
   });
 }

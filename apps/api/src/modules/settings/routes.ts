@@ -2,15 +2,16 @@ import type { FastifyInstance } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import { companySettings, userInvitations } from '@xarra/db';
 import { companySettingsSchema } from '@xarra/shared';
-import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { requireRole } from '../../middleware/require-auth.js';
 import { sendEmail } from '../../services/email.js';
+import { config } from '../../config.js';
 import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 
 export async function settingsRoutes(app: FastifyInstance) {
   // Get company settings
-  app.get('/', { preHandler: requireAuth }, async () => {
+  app.get('/', { preHandler: requireRole('admin') }, async () => {
     const settings = await app.db.query.companySettings.findFirst();
     return { data: settings || null };
   });
@@ -118,7 +119,7 @@ export async function settingsRoutes(app: FastifyInstance) {
   });
 
   // Get scheduling settings
-  app.get('/scheduling', { preHandler: requireAuth }, async () => {
+  app.get('/scheduling', { preHandler: requireRole('admin') }, async () => {
     const settings = await app.db.query.companySettings.findFirst();
     const defaults = {
       statementGeneration: { enabled: true, dayOfMonth: 1, timeHour: 6 },
@@ -418,7 +419,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     const companyName = settings?.companyName || 'Xarra Books';
 
     // Send invitation email
-    const inviteUrl = `${process.env.WEB_URL || 'http://localhost:5173'}/accept-invitation/${token}`;
+    const inviteUrl = `${config.web.url}/accept-invitation/${token}`;
     try {
       await sendEmail({
         to: body.email,
@@ -533,7 +534,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     const companyName = settings?.companyName || 'Xarra Books';
 
     // Resend invitation email
-    const inviteUrl = `${process.env.WEB_URL || 'http://localhost:5173'}/accept-invitation/${invitation.token}`;
+    const inviteUrl = `${config.web.url}/accept-invitation/${invitation.token}`;
     await sendEmail({
       to: invitation.email,
       subject: `Reminder: You've been invited to join ${companyName}`,

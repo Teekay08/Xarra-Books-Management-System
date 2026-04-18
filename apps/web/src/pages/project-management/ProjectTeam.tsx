@@ -4,6 +4,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { ActionMenu } from '../../components/ActionMenu';
+import { WorkflowBanner } from './components/WorkflowBanner';
+
+interface Sow {
+  id: string;
+  number: string;
+  status: string;
+}
 
 interface TeamMember {
   id: string;
@@ -12,7 +19,8 @@ interface TeamMember {
   totalAllocatedHours: string;
   totalLoggedHours: string;
   isActive: boolean;
-  staffMember?: { id: string; name: string; email: string; role: string; hourlyRate: string } | null;
+  staffMember?: { id: string; name: string; email: string; role: string; hourlyRate: string; isInternal?: boolean } | null;
+  sow: Sow | null;
 }
 
 interface StaffOption {
@@ -41,7 +49,7 @@ export function ProjectTeam() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignForm, setAssignForm] = useState({ staffMemberId: '', role: '', allocatedHours: 0 });
   const [assignError, setAssignError] = useState('');
-  const [sendLinkModal, setSendLinkModal] = useState<{ staffMemberId: string; staffName: string } | null>(null);
+  const [sendLinkModal, setSendLinkModal] = useState<{ staffMemberId: string; staffName: string; isInternal: boolean } | null>(null);
   const [sendLinkResult, setSendLinkResult] = useState<string | null>(null);
 
   const { data: projectData } = useQuery({
@@ -97,7 +105,11 @@ export function ProjectTeam() {
       api(`/project-management/projects/${projectId}/staff/${staffMemberId}/send-access-link`, { method: 'POST' }),
     onSuccess: (data: any) => {
       setSendLinkModal(null);
-      setSendLinkResult(`Access link sent to ${data?.data?.email || 'contractor'}`);
+      if (data?.data?.type === 'internal') {
+        setSendLinkResult(`Internal access email sent to ${data?.data?.email || 'staff member'}`);
+      } else {
+        setSendLinkResult(`Contractor portal link sent to ${data?.data?.email || 'contractor'}`);
+      }
       setTimeout(() => setSendLinkResult(null), 5000);
     },
     onError: (err: Error) => {
@@ -125,6 +137,8 @@ export function ProjectTeam() {
         }
       />
 
+      <WorkflowBanner projectId={projectId!} projectName={projectName} />
+
       <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -135,12 +149,13 @@ export function ProjectTeam() {
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Logged Hours</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Utilization %</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SOW</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {isLoading && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
             )}
             {teamData?.data?.map((m) => {
               const staffName = m.staffMember?.name || '—';
@@ -150,6 +165,14 @@ export function ProjectTeam() {
               const utilization = allocated > 0 ? (logged / allocated) * 100 : 0;
               const utilizationColor = utilization > 100 ? 'text-red-600' : utilization >= 80 ? 'text-yellow-600' : 'text-green-700';
               const status = m.isActive ? 'ACTIVE' : 'INACTIVE';
+              const sow = m.sow;
+              const sowStatusColors: Record<string, string> = {
+                DRAFT:    'bg-gray-100 text-gray-600',
+                SENT:     'bg-blue-100 text-blue-700',
+                ACCEPTED: 'bg-green-100 text-green-700',
+                EXPIRED:  'bg-orange-100 text-orange-700',
+                CANCELLED:'bg-red-100 text-red-600',
+              };
               return (
                 <tr key={m.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm">
@@ -167,6 +190,15 @@ export function ProjectTeam() {
                       {status}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-sm">
+                    {sow ? (
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${sowStatusColors[sow.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {sow.status === 'ACCEPTED' ? '✓ ' : ''}{sow.status}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">No SOW</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm text-right">
                     <ActionMenu items={[
                       {
@@ -177,13 +209,23 @@ export function ProjectTeam() {
                         label: 'View Tasks',
                         onClick: () => navigate(`/pm/projects/${projectId}/tasks`),
                       },
-                      {
-                        label: 'Create SOW',
-                        onClick: () => navigate(`/pm/staff/${m.staffMemberId}/sow?projectId=${projectId}`),
-                      },
+                      // SOW action: context-aware based on whether a SOW exists
+                      sow
+                        ? {
+                            label: sow.status === 'ACCEPTED' ? 'View SOW' : `Edit SOW (${sow.status})`,
+                            onClick: () => navigate(`/budgeting/sow/${sow.id}`),
+                          }
+                        : {
+                            label: 'Create SOW',
+                            onClick: () => navigate(`/pm/staff/${m.staffMemberId}/sow?projectId=${projectId}`),
+                          },
                       {
                         label: 'Send Access Link',
-                        onClick: () => setSendLinkModal({ staffMemberId: m.staffMemberId, staffName }),
+                        onClick: () => setSendLinkModal({
+                          staffMemberId: m.staffMemberId,
+                          staffName,
+                          isInternal: !!m.staffMember?.isInternal,
+                        }),
                       },
                       {
                         label: 'Remove',
@@ -196,7 +238,7 @@ export function ProjectTeam() {
               );
             })}
             {!isLoading && teamData?.data?.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No team members assigned yet.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No team members assigned yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -215,7 +257,17 @@ export function ProjectTeam() {
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Send Portal Access Link</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Send a portal access link to <strong>{sendLinkModal.staffName}</strong>? They will receive an email with a link to view their tasks and log working hours.
+              {sendLinkModal.isInternal
+                ? (
+                  <>
+                    Send an internal access email to <strong>{sendLinkModal.staffName}</strong>? They will be asked to sign in to the internal app to view their SOW and tasks.
+                  </>
+                )
+                : (
+                  <>
+                    Send a contractor portal link to <strong>{sendLinkModal.staffName}</strong>? They will receive an email with a link to view tasks and log hours.
+                  </>
+                )}
             </p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setSendLinkModal(null)}

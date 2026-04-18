@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, sql, and, desc, asc, ilike, or, gte, lte, notInArray } from 'drizzle-orm';
+import { eq, sql, and, desc, asc, ilike, or, gte, lte, notInArray, inArray } from 'drizzle-orm';
 import {
   staffMembers, staffProjectAssignments, taskAssignments, taskTimeLogs,
-  timeExtensionRequests, staffPayments, projects, projectMilestones,
+  timeExtensionRequests, staffPayments, projects, projectMilestones, budgetLineItems,
   contractorAccessTokens, taskCodes, sowDocuments, staffTaskPlannerEntries, taskRequests,
+  taskDeliverables, deliverableLogs,
   user as authUsers,
 } from '@xarra/db';
 import { paginationSchema } from '@xarra/shared';
@@ -69,7 +70,8 @@ const createTaskAssignmentSchema = z.object({
   hourlyRate: z.coerce.number().positive(),
   startDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
-  deliverables: z.array(z.object({ description: z.string(), completed: z.boolean() })).nullable().optional(),
+  // deliverables are managed separately via /tasks/:id/deliverables endpoints
+  deliverables: z.array(z.object({ title: z.string(), description: z.string().optional(), estimatedHours: z.number().optional() })).nullable().optional(),
 });
 
 const updateTaskAssignmentSchema = z.object({
@@ -79,7 +81,6 @@ const updateTaskAssignmentSchema = z.object({
   milestoneId: z.string().uuid().nullable().optional(),
   startDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
-  deliverables: z.array(z.object({ description: z.string(), completed: z.boolean() })).optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -121,6 +122,10 @@ const plannerWeekQuerySchema = z.object({
 const plannerMonthQuerySchema = z.object({
   year: z.coerce.number().int().min(2000).max(2100).optional(),
   month: z.coerce.number().int().min(1).max(12).optional(),
+});
+
+const workflowGuideQuerySchema = z.object({
+  projectIds: z.string().min(1), // comma-separated UUIDs
 });
 
 // plannedHours is now the TOTAL hours across the span (start..end inclusive),
@@ -203,6 +208,30 @@ function safeDate(value?: string | Date | null): Date | null {
   const parsed = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return startOfDay(parsed);
+}
+
+async function triggerPasswordSetupEmail(app: FastifyInstance, email: string, frontendUrl: string) {
+  try {
+    const resetRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/request-password-reset',
+      payload: { email, redirectTo: `${frontendUrl.replace(/\/$/, '')}/reset-password` },
+      headers: {
+        'content-type': 'application/json',
+        origin: frontendUrl,
+      },
+    });
+
+    if (resetRes.statusCode < 200 || resetRes.statusCode >= 300) {
+      app.log.warn(`Password setup trigger returned ${resetRes.statusCode} for ${email}`);
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    app.log.warn(`Password setup trigger failed for ${email}: ${e}`);
+    return false;
+  }
 }
 
 // ==========================================
@@ -389,7 +418,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
           .set({ role: 'STAFF', updatedAt: new Date() })
           .where(eq(authUsers.id, newUser.id));
 
-        const frontendUrl = config.cors.origins[0] || 'http://localhost:5173';
+        const frontendUrl = config.web.url;
 
         // In development, log the temporary password so the PM can share it for testing
         if (config.nodeEnv === 'development') {
@@ -402,19 +431,8 @@ export async function projectManagementRoutes(app: FastifyInstance) {
           app.log.info(`========================================`);
         }
 
-        // Trigger password reset so the new staff member can set their own password
-        try {
-          const resetRes = await fetch(`${origin}/api/auth/request-password-reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Origin: origin },
-            body: JSON.stringify({ email: body.email, redirectTo: `${frontendUrl}/reset-password` }),
-          });
-          if (!resetRes.ok) {
-            app.log.warn(`Password reset request returned ${resetRes.status} for ${body.email}`);
-          }
-        } catch (e) {
-          app.log.warn(`Password reset trigger failed for ${body.email}: ${e}`);
-        }
+        // Trigger password setup so the new staff member can set their own password
+        await triggerPasswordSetupEmail(app, body.email, frontendUrl);
 
         // Send welcome email
         if (isEmailConfigured()) {
@@ -535,11 +553,26 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       totalsByStaff.set(t.staffMemberId, cur);
     }
 
+    // Fetch all SOWs for this project so we can show per-member SOW status
+    const projectSows = await app.db.query.sowDocuments.findMany({
+      where: eq(sowDocuments.projectId, request.params.projectId),
+      columns: { id: true, number: true, status: true, staffUserId: true, contractorId: true },
+      orderBy: (s, { desc }) => [desc(s.createdAt)],
+    });
+    // Index by staffUserId (most recent wins — already desc ordered)
+    const sowByUserId = new Map<string, typeof projectSows[number]>();
+    for (const sow of projectSows) {
+      if (sow.staffUserId && !sowByUserId.has(sow.staffUserId)) {
+        sowByUserId.set(sow.staffUserId, sow);
+      }
+    }
+
     const enriched = items.map((a) => {
       const live = totalsByStaff.get(a.staffMemberId);
-      // Prefer the live task total when present; fall back to the row's stored value.
       const allocatedFromTasks = live?.allocated ?? 0;
       const loggedFromTasks = live?.logged ?? 0;
+      // Match SOW via the staff member's Better Auth userId
+      const sow = a.staffMember?.userId ? sowByUserId.get(a.staffMember.userId) : undefined;
       return {
         ...a,
         totalAllocatedHours: String(
@@ -548,6 +581,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         totalLoggedHours: String(
           Math.max(Number(a.totalLoggedHours || 0), loggedFromTasks),
         ),
+        sow: sow ? { id: sow.id, number: sow.number, status: sow.status } : null,
       };
     });
 
@@ -627,6 +661,326 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   // TASK ASSIGNMENTS
   // ==========================================
 
+  // Workflow guide for multiple projects.
+  // Returns checklist completion, blockers, and the next recommended action per project.
+  app.get('/projects/workflow-guide', {
+    preHandler: requireAuth,
+  }, async (request) => {
+    const query = workflowGuideQuerySchema.parse(request.query);
+
+    const projectIds = Array.from(new Set(
+      query.projectIds
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ));
+
+    const validProjectIds = z.array(z.string().uuid()).max(100).parse(projectIds);
+    if (validProjectIds.length === 0) return { data: [] };
+
+    const [projectRows, milestoneRows, budgetLineRows, teamRows, acceptedSowRows, taskRows] = await Promise.all([
+      app.db.query.projects.findMany({
+        where: inArray(projects.id, validProjectIds),
+        columns: { id: true, number: true, name: true, status: true },
+      }),
+      app.db
+        .select({ projectId: projectMilestones.projectId, count: sql<number>`count(*)` })
+        .from(projectMilestones)
+        .where(inArray(projectMilestones.projectId, validProjectIds))
+        .groupBy(projectMilestones.projectId),
+      app.db
+        .select({ projectId: budgetLineItems.projectId, count: sql<number>`count(*)` })
+        .from(budgetLineItems)
+        .where(inArray(budgetLineItems.projectId, validProjectIds))
+        .groupBy(budgetLineItems.projectId),
+      app.db
+        .select({ projectId: staffProjectAssignments.projectId, count: sql<number>`count(*)` })
+        .from(staffProjectAssignments)
+        .where(and(
+          inArray(staffProjectAssignments.projectId, validProjectIds),
+          eq(staffProjectAssignments.isActive, true),
+        ))
+        .groupBy(staffProjectAssignments.projectId),
+      app.db
+        .select({ projectId: sowDocuments.projectId, count: sql<number>`count(*)` })
+        .from(sowDocuments)
+        .where(and(
+          inArray(sowDocuments.projectId, validProjectIds),
+          eq(sowDocuments.status, 'ACCEPTED'),
+        ))
+        .groupBy(sowDocuments.projectId),
+      app.db
+        .select({
+          projectId: taskAssignments.projectId,
+          taskCount: sql<number>`count(*)`,
+          startedCount: sql<number>`count(*) filter (where ${taskAssignments.status} in ('ASSIGNED','IN_PROGRESS','REVIEW','COMPLETED'))`,
+          reviewCount: sql<number>`count(*) filter (where ${taskAssignments.status} = 'REVIEW')`,
+          completedCount: sql<number>`count(*) filter (where ${taskAssignments.status} = 'COMPLETED')`,
+        })
+        .from(taskAssignments)
+        .where(inArray(taskAssignments.projectId, validProjectIds))
+        .groupBy(taskAssignments.projectId),
+    ]);
+
+    const milestoneCountByProject = new Map(milestoneRows.map((r) => [r.projectId, Number(r.count)]));
+    const budgetLineCountByProject = new Map(budgetLineRows.map((r) => [r.projectId, Number(r.count)]));
+    const teamCountByProject = new Map(teamRows.map((r) => [r.projectId, Number(r.count)]));
+    const acceptedSowCountByProject = new Map(acceptedSowRows.map((r) => [r.projectId, Number(r.count)]));
+    const taskStatsByProject = new Map(taskRows.map((r) => [r.projectId, {
+      taskCount: Number(r.taskCount),
+      startedCount: Number(r.startedCount),
+      reviewCount: Number(r.reviewCount),
+      completedCount: Number(r.completedCount),
+    }]));
+
+    const projectById = new Map(projectRows.map((p) => [p.id, p]));
+
+    const data = validProjectIds
+      .map((projectId) => {
+        const project = projectById.get(projectId);
+        if (!project) return null;
+
+        const milestoneCount = milestoneCountByProject.get(projectId) || 0;
+        const budgetLineCount = budgetLineCountByProject.get(projectId) || 0;
+        const teamCount = teamCountByProject.get(projectId) || 0;
+        const acceptedSowCount = acceptedSowCountByProject.get(projectId) || 0;
+        const taskStats = taskStatsByProject.get(projectId) || {
+          taskCount: 0,
+          startedCount: 0,
+          reviewCount: 0,
+          completedCount: 0,
+        };
+
+        // ── Build full 8-stage breakdown ──────────────────────────────────────
+        type StageStatus = 'COMPLETED' | 'CURRENT' | 'BLOCKED' | 'UPCOMING';
+        type StageAction = { label: string; href: string };
+        type StageEntry = { key: string; name: string; status: StageStatus; blockers: string[]; action?: StageAction };
+
+        const budgetApproved = project.status === 'IN_PROGRESS' || project.status === 'COMPLETED';
+        const allTasksDone = taskStats.taskCount > 0 && taskStats.completedCount === taskStats.taskCount;
+        const projectComplete = project.status === 'COMPLETED';
+
+        // Determine highest completed stage index (0-based) to assign UPCOMING to later ones
+        let currentStageIndex = 0;
+        if (projectComplete) {
+          currentStageIndex = 7;
+        } else if (allTasksDone) {
+          currentStageIndex = 7;
+        } else if (taskStats.taskCount > 0) {
+          currentStageIndex = 6;
+        } else if (taskStats.taskCount === 0 && budgetApproved && acceptedSowCount > 0) {
+          currentStageIndex = 5;
+        } else if (budgetApproved && teamCount > 0 && acceptedSowCount === 0) {
+          currentStageIndex = 4;
+        } else if (budgetApproved && teamCount === 0) {
+          currentStageIndex = 3;
+        } else if (project.status === 'BUDGETED') {
+          currentStageIndex = 2;
+        } else if (milestoneCount > 0) {
+          currentStageIndex = 1;
+        } else {
+          currentStageIndex = 0;
+        }
+
+        const stage1Blockers: string[] = [];
+        const stage2Blockers: string[] = [];
+        const stage3Blockers: string[] = [];
+        const stage4Blockers: string[] = [];
+        const stage5Blockers: string[] = [];
+        const stage6Blockers: string[] = [];
+        const stage7Blockers: string[] = [];
+        const stage8Blockers: string[] = [];
+
+        if (currentStageIndex === 1 && milestoneCount === 0) stage2Blockers.push('No milestones defined yet');
+        if (currentStageIndex === 1 && budgetLineCount === 0) stage2Blockers.push('No budget lines added yet');
+        if (currentStageIndex === 3 && teamCount === 0) stage4Blockers.push('No team members assigned yet');
+        if (currentStageIndex === 4 && acceptedSowCount === 0) stage5Blockers.push('No accepted SOW yet');
+        if (currentStageIndex === 5 && taskStats.taskCount === 0) stage6Blockers.push('No tasks created from SOW');
+        if (currentStageIndex === 6 && taskStats.reviewCount > 0) stage7Blockers.push(`${taskStats.reviewCount} task(s) awaiting your review`);
+
+        const stageCompleted = (i: number) => i < currentStageIndex || (i === 7 && projectComplete);
+        const stageCurrent = (i: number) => i === currentStageIndex && !(i === 7 && projectComplete);
+
+        const stageBlockers = [stage1Blockers, stage2Blockers, stage3Blockers, stage4Blockers, stage5Blockers, stage6Blockers, stage7Blockers, stage8Blockers];
+        const stageActions: (StageAction | undefined)[] = [
+          { label: 'Open project', href: `/budgeting/projects/${projectId}` },
+          { label: 'Add milestones & budget', href: `/budgeting/projects/${projectId}` },
+          { label: 'Approve budget', href: `/budgeting/projects/${projectId}` },
+          { label: 'Assign team members', href: `/pm/projects/${projectId}/team` },
+          { label: 'Create & send SOW', href: `/pm/projects/${projectId}/team` },
+          { label: 'Create first task', href: `/pm/projects/${projectId}/tasks/new` },
+          { label: taskStats.reviewCount > 0 ? 'Review submitted tasks' : 'Track task progress', href: `/pm/projects/${projectId}/tasks` },
+          { label: 'View completed project', href: `/budgeting/projects/${projectId}` },
+        ];
+        const stageNames = ['Create Project', 'Define Budget', 'Approve Budget', 'Assign Team', 'Create & Accept SOW', 'Create Tasks', 'Execute & Review', 'Close Project'];
+        const stageKeys = ['PROJECT_SETUP', 'BUDGET_PLANNING', 'BUDGET_APPROVAL', 'TEAM_ASSEMBLY', 'SOW_CREATION', 'TASK_CREATION', 'EXECUTION', 'COMPLETION'];
+
+        const stages: StageEntry[] = stageKeys.map((key, i) => {
+          let status: StageStatus;
+          if (stageCompleted(i)) {
+            status = 'COMPLETED';
+          } else if (stageCurrent(i)) {
+            status = stageBlockers[i].length > 0 ? 'BLOCKED' : 'CURRENT';
+          } else {
+            status = 'UPCOMING';
+          }
+          return {
+            key,
+            name: stageNames[i],
+            status,
+            blockers: stageBlockers[i],
+            action: stageActions[i],
+          };
+        });
+
+        // ── Legacy fields (backwards-compatible) ─────────────────────────────
+        const currentStage = stages[currentStageIndex];
+        const legacyBlockers = currentStage.blockers;
+        const legacyStage = currentStage.name;
+
+        let nextAction = stageActions[currentStageIndex] ?? { label: 'Open project', href: `/budgeting/projects/${projectId}`, code: 'VIEW_PROJECT' };
+
+        if (project.status === 'PLANNING') {
+          if (milestoneCount === 0) {
+            nextAction = { code: 'ADD_MILESTONES', label: 'Add milestones', href: `/budgeting/projects/${projectId}` } as typeof nextAction;
+          } else if (budgetLineCount === 0) {
+            nextAction = { code: 'BUILD_BUDGET', label: 'Add budget lines', href: `/budgeting/projects/${projectId}` } as typeof nextAction;
+          } else {
+            nextAction = { code: 'SUBMIT_BUDGET', label: 'Submit budget for approval', href: `/budgeting/projects/${projectId}` } as typeof nextAction;
+          }
+        } else if (project.status === 'BUDGETED') {
+          nextAction = { code: 'APPROVE_BUDGET', label: 'Approve and start project', href: `/budgeting/projects/${projectId}` } as typeof nextAction;
+        } else if (project.status === 'IN_PROGRESS') {
+          if (teamCount === 0) {
+            nextAction = { code: 'ASSIGN_TEAM', label: 'Assign project team', href: `/pm/projects/${projectId}/team` } as typeof nextAction;
+          } else if (acceptedSowCount === 0) {
+            nextAction = { code: 'CREATE_SOW', label: 'Create and accept SOW', href: `/pm/projects/${projectId}/team` } as typeof nextAction;
+          } else if (taskStats.taskCount === 0) {
+            nextAction = { code: 'CREATE_TASKS', label: 'Create first task', href: `/pm/projects/${projectId}/tasks/new` } as typeof nextAction;
+          } else if (taskStats.reviewCount > 0) {
+            nextAction = { code: 'REVIEW_TASKS', label: 'Review submitted tasks', href: `/pm/projects/${projectId}/tasks` } as typeof nextAction;
+          } else if (allTasksDone) {
+            nextAction = { code: 'COMPLETE_PROJECT', label: 'Mark project complete', href: `/budgeting/projects/${projectId}` } as typeof nextAction;
+          } else {
+            nextAction = { code: 'TRACK_PROGRESS', label: 'Track task progress', href: `/pm/projects/${projectId}/tasks` } as typeof nextAction;
+          }
+        } else if (project.status === 'COMPLETED') {
+          nextAction = { code: 'VIEW_PROJECT', label: 'View final project record', href: `/budgeting/projects/${projectId}` } as typeof nextAction;
+        } else if (project.status === 'CANCELLED') {
+          nextAction = { code: 'VIEW_PROJECT', label: 'View project record', href: `/budgeting/projects/${projectId}` } as typeof nextAction;
+        }
+
+        const doneCount = stages.filter((s) => s.status === 'COMPLETED').length;
+        const progressPercent = Math.round((doneCount / stages.length) * 100);
+
+        return {
+          projectId,
+          projectNumber: project.number,
+          projectName: project.name,
+          projectStatus: project.status,
+          stage: legacyStage,
+          blockers: legacyBlockers,
+          stages,
+          progressPercent,
+          nextAction,
+        };
+      })
+      .filter(Boolean);
+
+    return { data };
+  });
+
+  // Project overview summary — used by the PM project overview page
+  app.get('/projects/:projectId/overview', {
+    preHandler: requireAuth,
+  }, async (request) => {
+    const { projectId } = z.object({ projectId: z.string().uuid() }).parse(request.params);
+
+    const [project, teamRows, taskRows, sowRows, milestoneRows, budgetRows] = await Promise.all([
+      app.db.query.projects.findFirst({
+        where: eq(projects.id, projectId),
+        columns: { id: true, number: true, name: true, status: true, projectType: true, startDate: true, targetCompletionDate: true, totalBudget: true, totalActual: true, currency: true, authorId: true },
+      }),
+      app.db
+        .select({ count: sql<number>`count(*)` })
+        .from(staffProjectAssignments)
+        .where(and(eq(staffProjectAssignments.projectId, projectId), eq(staffProjectAssignments.isActive, true))),
+      app.db
+        .select({
+          total: sql<number>`count(*)`,
+          draft: sql<number>`count(*) filter (where ${taskAssignments.status} = 'DRAFT')`,
+          assigned: sql<number>`count(*) filter (where ${taskAssignments.status} = 'ASSIGNED')`,
+          inProgress: sql<number>`count(*) filter (where ${taskAssignments.status} = 'IN_PROGRESS')`,
+          review: sql<number>`count(*) filter (where ${taskAssignments.status} = 'REVIEW')`,
+          completed: sql<number>`count(*) filter (where ${taskAssignments.status} = 'COMPLETED')`,
+          cancelled: sql<number>`count(*) filter (where ${taskAssignments.status} = 'CANCELLED')`,
+        })
+        .from(taskAssignments)
+        .where(eq(taskAssignments.projectId, projectId)),
+      app.db
+        .select({
+          total: sql<number>`count(*)`,
+          accepted: sql<number>`count(*) filter (where ${sowDocuments.status} = 'ACCEPTED')`,
+        })
+        .from(sowDocuments)
+        .where(eq(sowDocuments.projectId, projectId)),
+      app.db
+        .select({ count: sql<number>`count(*)` })
+        .from(projectMilestones)
+        .where(eq(projectMilestones.projectId, projectId)),
+      app.db
+        .select({ count: sql<number>`count(*)` })
+        .from(budgetLineItems)
+        .where(eq(budgetLineItems.projectId, projectId)),
+    ]);
+
+    if (!project) {
+      throw app.httpErrors.notFound('Project not found');
+    }
+
+    const totalBudget = Number(project.totalBudget ?? 0);
+    const totalActual = Number(project.totalActual ?? 0);
+
+    return {
+      project: {
+        id: project.id,
+        number: project.number,
+        name: project.name,
+        status: project.status,
+        projectType: project.projectType,
+        startDate: project.startDate,
+        targetCompletionDate: project.targetCompletionDate,
+        currency: project.currency,
+        authorId: project.authorId,
+      },
+      counts: {
+        teamMembers: Number(teamRows[0]?.count ?? 0),
+        tasks: {
+          total: Number(taskRows[0]?.total ?? 0),
+          byStatus: {
+            DRAFT: Number(taskRows[0]?.draft ?? 0),
+            ASSIGNED: Number(taskRows[0]?.assigned ?? 0),
+            IN_PROGRESS: Number(taskRows[0]?.inProgress ?? 0),
+            REVIEW: Number(taskRows[0]?.review ?? 0),
+            COMPLETED: Number(taskRows[0]?.completed ?? 0),
+            CANCELLED: Number(taskRows[0]?.cancelled ?? 0),
+          },
+        },
+        sows: {
+          total: Number(sowRows[0]?.total ?? 0),
+          accepted: Number(sowRows[0]?.accepted ?? 0),
+        },
+        milestones: Number(milestoneRows[0]?.count ?? 0),
+        budgetLines: Number(budgetRows[0]?.count ?? 0),
+      },
+      budget: {
+        totalBudget,
+        totalActual,
+        percentSpent: totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : 0,
+      },
+    };
+  });
+
   // List tasks for a project
   // List all tasks (for reports — PM/admin only)
   app.get('/tasks', {
@@ -664,8 +1018,10 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   app.get<{ Params: { projectId: string } }>('/projects/:projectId/tasks', {
     preHandler: requireAuth,
   }, async (request) => {
-    const query = paginationSchema.parse(request.query);
-    const { page, limit, search } = query;
+    const query = paginationSchema.extend({
+      status: z.string().optional(),
+    }).parse(request.query);
+    const { page, limit, search, status } = query;
     const offset = (page - 1) * limit;
 
     const conditions: any[] = [eq(taskAssignments.projectId, request.params.projectId)];
@@ -677,6 +1033,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         ),
       );
     }
+    if (status) conditions.push(eq(taskAssignments.status, status as any));
     const where = and(...conditions);
 
     const [items, countResult] = await Promise.all([
@@ -844,10 +1201,23 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       totalCost: String(totalCost),
       startDate: body.startDate ? new Date(body.startDate) : null,
       dueDate: body.dueDate ? new Date(body.dueDate) : null,
-      deliverables: body.deliverables || [],
       assignedBy: userId,
       status: 'ASSIGNED',
     }).returning();
+
+    // Create initial deliverables if provided inline
+    if (body.deliverables && body.deliverables.length > 0) {
+      await app.db.insert(taskDeliverables).values(
+        body.deliverables.map((d, i) => ({
+          taskAssignmentId: task.id,
+          title: d.title,
+          description: d.description || null,
+          estimatedHours: d.estimatedHours ? String(d.estimatedHours) : null,
+          sortOrder: i,
+          createdBy: userId,
+        }))
+      );
+    }
 
     // Auto-regen the SOW so its cost breakdown reflects the new task.
     regenerateSowFromTasks(app, {
@@ -873,7 +1243,6 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     if (body.milestoneId !== undefined) updates.milestoneId = body.milestoneId;
     if (body.startDate !== undefined) updates.startDate = body.startDate ? new Date(body.startDate) : null;
     if (body.dueDate !== undefined) updates.dueDate = body.dueDate ? new Date(body.dueDate) : null;
-    if (body.deliverables !== undefined) updates.deliverables = body.deliverables;
     if (body.notes !== undefined) updates.notes = body.notes;
 
     const [updated] = await app.db.update(taskAssignments)
@@ -1461,7 +1830,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     };
   });
 
-  // My time logs
+  // My time logs — returns flat DTO matching EmployeeDashboard's TimeLogEntry interface
   app.get('/my/time-logs', { preHandler: requireAuth }, async (request, reply) => {
     const userId = request.session?.user?.id;
     const staff = await getStaffMemberByUserId(app.db, userId!);
@@ -1485,7 +1854,15 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     ]);
 
     return {
-      data: items,
+      data: items.map((l) => ({
+        id: l.id,
+        date: l.workDate,
+        hours: Number(l.hours),
+        description: l.description,
+        status: l.status,
+        taskTitle: (l.taskAssignment as any)?.title ?? '',
+        projectName: (l.taskAssignment as any)?.project?.name ?? '',
+      })),
       pagination: {
         page, limit,
         total: Number(countResult[0].count),
@@ -1494,7 +1871,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     };
   });
 
-  // My extension requests
+  // My extension requests — returns flat DTO matching EmployeeDashboard's ExtensionEntry interface
   app.get('/my/extensions', { preHandler: requireAuth }, async (request, reply) => {
     const userId = request.session?.user?.id;
     const staff = await getStaffMemberByUserId(app.db, userId!);
@@ -1505,7 +1882,17 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       with: { taskAssignment: { with: { project: true } } },
       orderBy: (e, { desc }) => [desc(e.createdAt)],
     });
-    return { data: items };
+    return {
+      data: items.map((e) => ({
+        id: e.id,
+        requestedHours: Number(e.requestedHours),
+        reason: e.reason,
+        status: e.status,
+        createdAt: e.createdAt,
+        taskTitle: (e.taskAssignment as any)?.title ?? '',
+        projectName: (e.taskAssignment as any)?.project?.name ?? '',
+      })),
+    };
   });
 
   const mapTaskToPlannerDto = (task: any, today: Date) => ({
@@ -2480,11 +2867,11 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       ...tasks.map((t, i) => `${i + 1}. ${t.title}${t.description ? ` — ${t.description}` : ''}`),
     ].join('\n');
 
-    // Build deliverables from tasks
+    // Build deliverables from tasks (titles only — detailed deliverables are tracked in task_deliverables table)
     const deliverables = tasks.map((t) => ({
       description: t.title + (t.milestone ? ` (${t.milestone.name})` : ''),
       dueDate: t.dueDate ? new Date(t.dueDate).toISOString() : new Date().toISOString(),
-      acceptanceCriteria: (t.deliverables as any[])?.map((d: any) => d.description).join('; ') || 'Completed to satisfaction',
+      acceptanceCriteria: 'Completed to satisfaction',
     }));
 
     // Build cost breakdown from tasks
@@ -2540,7 +2927,8 @@ export async function projectManagementRoutes(app: FastifyInstance) {
   // CONTRACTOR MAGIC LINK PORTAL
   // ==========================================
 
-  // Generate contractor access link for a staff member's tasks on a project
+  // Send access link for a staff member's tasks on a project.
+  // Internal staff get an internal login email; external staff get a contractor magic link.
   app.post<{ Params: { projectId: string; staffMemberId: string } }>('/projects/:projectId/staff/:staffMemberId/send-access-link', {
     preHandler: requireRole('admin', 'project_manager'),
   }, async (request, reply) => {
@@ -2552,8 +2940,47 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     const project = await app.db.query.projects.findFirst({ where: eq(projects.id, projectId) });
     if (!project) return reply.notFound('Project not found');
 
-    // Generate magic link token
-    const crypto = await import('node:crypto');
+    const frontendUrl = config.web.url;
+
+    // Internal staff should use normal app login, not contractor portal.
+    if (staff.isInternal) {
+      const passwordSetupTriggered = await triggerPasswordSetupEmail(app, staff.email, frontendUrl);
+
+      if (isEmailConfigured()) {
+        await sendEmail({
+          to: staff.email,
+          subject: `Xarra Books — Access your tasks for ${project.name}`,
+          html: `
+            <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+              <div style="border-bottom:3px solid #166534;padding-bottom:15px;margin-bottom:20px">
+                <h1 style="color:#166534;font-size:20px;margin:0">Xarra Books</h1>
+              </div>
+              <p>Hi ${staff.name},</p>
+              <p>You have been assigned work on <strong>${project.name}</strong> (${project.number}).</p>
+              <p>Please sign in to your internal staff account to view your SOW, tasks, and submit time logs.</p>
+              <div style="margin:25px 0">
+                <a href="${frontendUrl}/login" style="background:#166534;color:#fff;padding:14px 28px;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600">
+                  Sign In to Xarra Books
+                </a>
+              </div>
+              <p style="color:#666;font-size:13px">If this is your first login, use "Forgot password" on the login page to set your password.</p>
+              <p style="color:#999;font-size:12px;margin-top:30px">Xarra Books Management System</p>
+            </div>
+          `,
+        });
+      }
+
+      return {
+        data: {
+          type: 'internal',
+          email: staff.email,
+          loginUrl: `${frontendUrl}/login`,
+          passwordSetupTriggered,
+        },
+      };
+    }
+
+    // External staff use contractor magic links.
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
@@ -2565,10 +2992,8 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       createdBy: request.session?.user?.id,
     });
 
-    // Send email with link
-    const { sendEmail, isEmailConfigured } = await import('../../services/email.js');
     if (isEmailConfigured()) {
-      const link = `${(request.headers.origin || request.headers.referer || 'https://app.xarrabooks.com').replace(/\/$/, '')}/contractor/${token}`;
+      const link = `${frontendUrl}/contractor/${token}`;
       await sendEmail({
         to: staff.email,
         subject: `Xarra Books — Your Tasks on ${project.name}`,
@@ -2592,7 +3017,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       });
     }
 
-    return { data: { token, email: staff.email, expiresAt } };
+    return { data: { type: 'contractor', token, email: staff.email, expiresAt } };
   });
 
   // Contractor portal: get tasks and SOW via magic link (NO AUTH REQUIRED)
@@ -2615,7 +3040,7 @@ export async function projectManagementRoutes(app: FastifyInstance) {
         eq(taskAssignments.projectId, tokenRecord.projectId),
         eq(taskAssignments.staffMemberId, tokenRecord.staffMemberId),
       ),
-      with: { milestone: true, timeLogs: true },
+      with: { milestone: true, timeLogs: true, deliverables: true },
       orderBy: (t, { asc }) => [asc(t.createdAt)],
     });
 
@@ -2661,7 +3086,14 @@ export async function projectManagementRoutes(app: FastifyInstance) {
           hourlyRate: t.hourlyRate,
           startDate: t.startDate,
           dueDate: t.dueDate,
-          deliverables: t.deliverables,
+          deliverables: (t.deliverables || []).map((d) => ({
+            id: d.id,
+            title: d.title,
+            description: d.description,
+            estimatedHours: d.estimatedHours,
+            status: d.status,
+            sortOrder: d.sortOrder,
+          })),
           milestone: t.milestone?.name || null,
           timeLogs: (t.timeLogs || []).map((l) => ({
             id: l.id,
@@ -3285,7 +3717,6 @@ export async function projectManagementRoutes(app: FastifyInstance) {
       hourlyRate: String(body.hourlyRate),
       totalCost: String(totalCost),
       dueDate: body.dueDate ? new Date(body.dueDate) : null,
-      deliverables: [],
       assignedBy: userId,
       status: 'ASSIGNED',
     }).returning();
@@ -3408,9 +3839,377 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     return { data: updated };
   });
 
+  // ==========================================
+  // DELIVERABLES — per task_assignment
+  // ==========================================
+
+  // Helper: check all deliverables approved → complete task → check if project is fully done → notify
+  async function maybeAutoCompleteTask(taskAssignmentId: string) {
+    try {
+      const delivs = await app.db.query.taskDeliverables.findMany({
+        where: eq(taskDeliverables.taskAssignmentId, taskAssignmentId),
+      });
+      if (delivs.length === 0) return;
+      const allApproved = delivs.every((d: any) => d.status === 'APPROVED');
+      if (!allApproved) return;
+
+      const task = await app.db.query.taskAssignments.findFirst({
+        where: eq(taskAssignments.id, taskAssignmentId),
+      });
+      if (!task || task.status === 'COMPLETED') return;
+
+      await app.db.update(taskAssignments)
+        .set({ status: 'COMPLETED', updatedAt: new Date() })
+        .where(eq(taskAssignments.id, taskAssignmentId));
+
+      // Notify project ready to close if all tasks completed
+      const allTasks = await app.db.query.taskAssignments.findMany({
+        where: and(
+          eq(taskAssignments.projectId, task.projectId),
+          notInArray(taskAssignments.status, ['CANCELLED']),
+        ),
+      });
+      const allDone = allTasks.every((t: any) => t.status === 'COMPLETED' || t.id === taskAssignmentId);
+      if (allDone) {
+        const project = await app.db.query.projects.findFirst({ where: eq(projects.id, task.projectId) });
+        if (project) {
+          await createBroadcastNotification(app, {
+            type: 'PROJECT_READY_TO_CLOSE',
+            priority: 'HIGH',
+            title: 'Project Ready to Close',
+            message: `All tasks and deliverables for project ${project.number} "${project.name}" have been approved.`,
+            actionUrl: `/pm/projects/${project.id}`,
+            referenceType: 'PROJECT',
+            referenceId: project.id,
+          });
+        }
+      }
+    } catch (_e) {
+      // Non-blocking
+    }
+  }
+
+  // GET /tasks/:id/deliverables — list deliverables for a task
+  app.get<{ Params: { id: string } }>('/tasks/:id/deliverables', { preHandler: requireAuth }, async (request, reply) => {
+    const delivs = await request.server.db.query.taskDeliverables.findMany({
+      where: eq(taskDeliverables.taskAssignmentId, request.params.id),
+      orderBy: (d, { asc }) => [asc(d.sortOrder), asc(d.createdAt)],
+    });
+    return { data: delivs };
+  });
+
+  // POST /tasks/:id/deliverables — PM creates a deliverable
+  app.post<{ Params: { id: string } }>('/tasks/:id/deliverables', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({
+      title: z.string().min(1).max(255),
+      description: z.string().nullable().optional(),
+      estimatedHours: z.coerce.number().positive().nullable().optional(),
+      sortOrder: z.coerce.number().int().min(0).optional(),
+    }).parse(request.body);
+
+    const task = await request.server.db.query.taskAssignments.findFirst({
+      where: eq(taskAssignments.id, request.params.id),
+    });
+    if (!task) return reply.notFound('Task not found');
+
+    const userId = request.session?.user?.id;
+    const [created] = await request.server.db.insert(taskDeliverables).values({
+      taskAssignmentId: request.params.id,
+      title: body.title,
+      description: body.description || null,
+      estimatedHours: body.estimatedHours ? String(body.estimatedHours) : null,
+      sortOrder: body.sortOrder ?? 0,
+      createdBy: userId,
+    }).returning();
+
+    return reply.status(201).send({ data: created });
+  });
+
+  // PATCH /tasks/:taskId/deliverables/:deliverableId — PM updates a deliverable
+  app.patch<{ Params: { taskId: string; deliverableId: string } }>('/tasks/:taskId/deliverables/:deliverableId', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({
+      title: z.string().min(1).max(255).optional(),
+      description: z.string().nullable().optional(),
+      estimatedHours: z.coerce.number().positive().nullable().optional(),
+      sortOrder: z.coerce.number().int().min(0).optional(),
+    }).parse(request.body);
+
+    const updates: Record<string, any> = { updatedAt: new Date() };
+    if (body.title !== undefined) updates.title = body.title;
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.estimatedHours !== undefined) updates.estimatedHours = body.estimatedHours ? String(body.estimatedHours) : null;
+    if (body.sortOrder !== undefined) updates.sortOrder = body.sortOrder;
+
+    const [updated] = await request.server.db.update(taskDeliverables)
+      .set(updates)
+      .where(and(
+        eq(taskDeliverables.id, request.params.deliverableId),
+        eq(taskDeliverables.taskAssignmentId, request.params.taskId),
+      ))
+      .returning();
+    if (!updated) return reply.notFound('Deliverable not found');
+    return { data: updated };
+  });
+
+  // DELETE /tasks/:taskId/deliverables/:deliverableId — PM removes a deliverable
+  app.delete<{ Params: { taskId: string; deliverableId: string } }>('/tasks/:taskId/deliverables/:deliverableId', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const deliv = await request.server.db.query.taskDeliverables.findFirst({
+      where: and(
+        eq(taskDeliverables.id, request.params.deliverableId),
+        eq(taskDeliverables.taskAssignmentId, request.params.taskId),
+      ),
+    });
+    if (!deliv) return reply.notFound('Deliverable not found');
+    if (deliv.status === 'APPROVED') return reply.badRequest('Cannot delete an approved deliverable');
+
+    await request.server.db.delete(taskDeliverables)
+      .where(eq(taskDeliverables.id, request.params.deliverableId));
+    return reply.status(204).send();
+  });
+
+  // POST /tasks/:taskId/deliverables/:deliverableId/log — staff logs work on a deliverable
+  app.post<{ Params: { taskId: string; deliverableId: string } }>('/tasks/:taskId/deliverables/:deliverableId/log', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const body = z.object({
+      workDate: z.string(),
+      hours: z.coerce.number().positive().max(24),
+      description: z.string().min(1),
+    }).parse(request.body);
+
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(request.server.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found');
+
+    const task = await request.server.db.query.taskAssignments.findFirst({
+      where: eq(taskAssignments.id, request.params.taskId),
+    });
+    if (!task) return reply.notFound('Task not found');
+    if (task.staffMemberId !== staff.id) return reply.forbidden('You are not assigned to this task');
+    if (task.status === 'COMPLETED' || task.status === 'CANCELLED') {
+      return reply.badRequest('Cannot log work on a completed or cancelled task');
+    }
+
+    const deliv = await request.server.db.query.taskDeliverables.findFirst({
+      where: and(
+        eq(taskDeliverables.id, request.params.deliverableId),
+        eq(taskDeliverables.taskAssignmentId, request.params.taskId),
+      ),
+    });
+    if (!deliv) return reply.notFound('Deliverable not found');
+    if (deliv.status === 'APPROVED') return reply.badRequest('This deliverable is already approved');
+
+    // Create the log entry
+    const [log] = await request.server.db.insert(deliverableLogs).values({
+      deliverableId: request.params.deliverableId,
+      taskAssignmentId: request.params.taskId,
+      staffMemberId: staff.id,
+      workDate: body.workDate,
+      hours: String(body.hours),
+      description: body.description,
+    }).returning();
+
+    // Move deliverable to IN_PROGRESS if it was NOT_STARTED
+    if (deliv.status === 'NOT_STARTED') {
+      await request.server.db.update(taskDeliverables)
+        .set({ status: 'IN_PROGRESS', updatedAt: new Date() })
+        .where(eq(taskDeliverables.id, request.params.deliverableId));
+    }
+
+    // Also update task loggedHours + remainingHours
+    const newLogged = Number(task.loggedHours) + body.hours;
+    const newRemaining = Math.max(0, Number(task.allocatedHours) - newLogged);
+    await request.server.db.update(taskAssignments)
+      .set({
+        loggedHours: String(newLogged),
+        remainingHours: String(newRemaining),
+        timeExhausted: newLogged >= Number(task.allocatedHours),
+        updatedAt: new Date(),
+      })
+      .where(eq(taskAssignments.id, request.params.taskId));
+
+    return reply.status(201).send({ data: log });
+  });
+
+  // POST /tasks/:taskId/deliverables/:deliverableId/submit — staff submits for review
+  app.post<{ Params: { taskId: string; deliverableId: string } }>('/tasks/:taskId/deliverables/:deliverableId/submit', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+    const staff = await getStaffMemberByUserId(request.server.db, userId!);
+    if (!staff) return reply.badRequest('No staff member profile found');
+
+    const task = await request.server.db.query.taskAssignments.findFirst({
+      where: eq(taskAssignments.id, request.params.taskId),
+      with: { staffMember: true },
+    });
+    if (!task) return reply.notFound('Task not found');
+    if (task.staffMemberId !== staff.id) return reply.forbidden('You are not assigned to this task');
+
+    const deliv = await request.server.db.query.taskDeliverables.findFirst({
+      where: and(
+        eq(taskDeliverables.id, request.params.deliverableId),
+        eq(taskDeliverables.taskAssignmentId, request.params.taskId),
+      ),
+    });
+    if (!deliv) return reply.notFound('Deliverable not found');
+    if (deliv.status === 'APPROVED') return reply.badRequest('Already approved');
+    if (deliv.status === 'SUBMITTED') return reply.badRequest('Already submitted for review');
+
+    const [updated] = await request.server.db.update(taskDeliverables)
+      .set({ status: 'SUBMITTED', submittedAt: new Date(), updatedAt: new Date() })
+      .where(eq(taskDeliverables.id, request.params.deliverableId))
+      .returning();
+
+    // Notify PMs
+    await createBroadcastNotification(request.server, {
+      type: 'DELIVERABLE_SUBMITTED',
+      priority: 'NORMAL',
+      title: 'Deliverable Submitted for Review',
+      message: `${staff.name} submitted "${deliv.title}" on task ${task.number} for review.`,
+      actionUrl: `/pm/tasks/${request.params.taskId}`,
+      referenceType: 'TASK_ASSIGNMENT',
+      referenceId: request.params.taskId,
+    });
+
+    return { data: updated };
+  });
+
+  // POST /tasks/:taskId/deliverables/:deliverableId/approve — PM approves
+  app.post<{ Params: { taskId: string; deliverableId: string } }>('/tasks/:taskId/deliverables/:deliverableId/approve', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const userId = request.session?.user?.id;
+
+    const deliv = await request.server.db.query.taskDeliverables.findFirst({
+      where: and(
+        eq(taskDeliverables.id, request.params.deliverableId),
+        eq(taskDeliverables.taskAssignmentId, request.params.taskId),
+      ),
+    });
+    if (!deliv) return reply.notFound('Deliverable not found');
+    if (deliv.status === 'APPROVED') return reply.badRequest('Already approved');
+
+    const [updated] = await request.server.db.update(taskDeliverables)
+      .set({ status: 'APPROVED', reviewedBy: userId, reviewedAt: new Date(), updatedAt: new Date() })
+      .where(eq(taskDeliverables.id, request.params.deliverableId))
+      .returning();
+
+    // Notify assigned staff
+    const task = await request.server.db.query.taskAssignments.findFirst({
+      where: eq(taskAssignments.id, request.params.taskId),
+      with: { staffMember: true },
+    });
+    if (task?.staffMember?.userId) {
+      await createNotification(request.server, {
+        type: 'DELIVERABLE_APPROVED',
+        priority: 'NORMAL',
+        title: 'Deliverable Approved',
+        message: `Your deliverable "${deliv.title}" on task ${task.number} has been approved.`,
+        userId: task.staffMember.userId,
+        actionUrl: `/employee/tasks/${request.params.taskId}`,
+        referenceType: 'TASK_ASSIGNMENT',
+        referenceId: request.params.taskId,
+      });
+    }
+
+    // Check if all deliverables are now approved → auto-complete task
+    await maybeAutoCompleteTask(request.params.taskId);
+
+    return { data: updated };
+  });
+
+  // POST /tasks/:taskId/deliverables/:deliverableId/reject — PM rejects with reason
+  app.post<{ Params: { taskId: string; deliverableId: string } }>('/tasks/:taskId/deliverables/:deliverableId/reject', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request, reply) => {
+    const body = z.object({
+      rejectionReason: z.string().min(1),
+    }).parse(request.body);
+
+    const userId = request.session?.user?.id;
+
+    const deliv = await request.server.db.query.taskDeliverables.findFirst({
+      where: and(
+        eq(taskDeliverables.id, request.params.deliverableId),
+        eq(taskDeliverables.taskAssignmentId, request.params.taskId),
+      ),
+    });
+    if (!deliv) return reply.notFound('Deliverable not found');
+
+    const [updated] = await request.server.db.update(taskDeliverables)
+      .set({
+        status: 'IN_PROGRESS',
+        rejectionReason: body.rejectionReason,
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        submittedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(taskDeliverables.id, request.params.deliverableId))
+      .returning();
+
+    // Notify staff
+    const task = await request.server.db.query.taskAssignments.findFirst({
+      where: eq(taskAssignments.id, request.params.taskId),
+      with: { staffMember: true },
+    });
+    if (task?.staffMember?.userId) {
+      await createNotification(request.server, {
+        type: 'DELIVERABLE_REJECTED',
+        priority: 'HIGH',
+        title: 'Deliverable Returned for Rework',
+        message: `Your deliverable "${deliv.title}" on task ${task.number} was returned: ${body.rejectionReason}`,
+        userId: task.staffMember.userId,
+        actionUrl: `/employee/tasks/${request.params.taskId}`,
+        referenceType: 'TASK_ASSIGNMENT',
+        referenceId: request.params.taskId,
+      });
+    }
+
+    return { data: updated };
+  });
+
+  // GET /deliverables/review-queue — PM review queue (all SUBMITTED deliverables)
+  app.get('/deliverables/review-queue', {
+    preHandler: requireRole('admin', 'project_manager'),
+  }, async (request) => {
+    const pending = await request.server.db.query.taskDeliverables.findMany({
+      where: eq(taskDeliverables.status, 'SUBMITTED'),
+      with: {
+        taskAssignment: {
+          with: { staffMember: true, project: true },
+        },
+      },
+      orderBy: (d, { asc }) => [asc(d.submittedAt)],
+    });
+    return { data: pending };
+  });
+
+  // GET /tasks/:id/deliverables/:deliverableId/logs — history of work logs for a deliverable
+  app.get<{ Params: { id: string; deliverableId: string } }>('/tasks/:id/deliverables/:deliverableId/logs', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const logs = await request.server.db.query.deliverableLogs.findMany({
+      where: and(
+        eq(deliverableLogs.deliverableId, request.params.deliverableId),
+        eq(deliverableLogs.taskAssignmentId, request.params.id),
+      ),
+      with: { staffMember: true },
+      orderBy: (l, { desc }) => [desc(l.workDate)],
+    });
+    return { data: logs };
+  });
+
   // Staff: update a request when PM asks for more info
   app.patch<{ Params: { id: string } }>('/my/task-requests/:id', { preHandler: requireAuth }, async (request, reply) => {
-    const body = z.object({
+  const body = z.object({
       title: z.string().min(1).max(255).optional(),
       description: z.string().min(1).optional(),
       justification: z.string().min(1).optional(),

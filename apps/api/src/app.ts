@@ -48,6 +48,7 @@ import { settlementRoutes } from './modules/settlement/routes.js';
 import { suspenseRoutes } from './modules/suspense/routes.js';
 import { projectManagementRoutes } from './modules/project-management/routes.js';
 import { aiRoutes } from './modules/ai/routes.js';
+import { billetterieRoutes } from './modules/billetterie/routes.js';
 import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
@@ -372,6 +373,7 @@ export async function buildApp() {
     api.register(suspenseRoutes, { prefix: '/suspense' });
     api.register(projectManagementRoutes, { prefix: '/project-management' });
     api.register(aiRoutes, { prefix: '/ai' });
+    api.register(billetterieRoutes, { prefix: '/billetterie' });
   }, { prefix: '/api/v1' });
 
   return app;

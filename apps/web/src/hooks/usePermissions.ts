@@ -30,14 +30,6 @@ export function usePermissions() {
   const role = (session?.user as any)?.role as string | undefined;
   const canonical = role ? canonicalRole(role) : '';
 
-  // DEBUG: remove after fixing
-  if (role) {
-    const testDashboard = canAccessModule(role, 'dashboard');
-    const testEmployee = canAccessModule(role, 'employeePortal');
-    const testInvoices = canAccessModule(role, 'invoices');
-    console.log('[PERMS DEBUG]', { role, canonical, isStaff: canonical === 'staff', dashboard: testDashboard, employeePortal: testEmployee, invoices: testInvoices });
-  }
-
   return {
     role: role ?? '',
     can: (module: Module, permission: Permission): boolean => {
