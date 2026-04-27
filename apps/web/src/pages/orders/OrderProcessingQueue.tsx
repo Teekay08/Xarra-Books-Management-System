@@ -48,21 +48,48 @@ interface ConsignmentSummary {
 interface ReturnSummary {
   id: string;
   number: string;
-  partnerName: string;
+  partner?: { name: string } | null;
+  partnerName?: string;
   status: string;
   reason?: string | null;
-  sorNumber?: string | null;
+  consignment?: { proformaNumber: string } | null;
   createdAt: string;
   courierCompany?: string | null;
   courierWaybill?: string | null;
+  grnNumber?: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Must match ORDER_PIPELINE_STEPS in packages/shared/src/constants.ts exactly
 const PIPELINE_STEPS = [
-  'ORDER_RECEIVED','CONFIRMED','PICKING','PACKING','DISPATCHED',
-  'WITH_COURIER','IN_TRANSIT','OUT_FOR_DELIVERY','DELIVERED',
-];
+  'ORDER_RECEIVED', 'CONFIRMED', 'PICKING', 'PACKING', 'DISPATCHED',
+  'WITH_COURIER', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED',
+] as const;
+
+// Human-readable labels for all 9 pipeline steps
+const STEP_LABELS: Record<number, string> = {
+  0: 'Received',
+  1: 'Confirmed',
+  2: 'Picking',
+  3: 'Packing',
+  4: 'Dispatched',
+  5: 'With Courier',
+  6: 'In Transit',
+  7: 'Out for Delivery',
+  8: 'Delivered',
+};
+
+const STEP_COLOR: Record<number, string> = {
+  1: 'bg-blue-100 text-blue-700',
+  2: 'bg-amber-100 text-amber-700',
+  3: 'bg-orange-100 text-orange-700',
+  4: 'bg-purple-100 text-purple-700',
+  5: 'bg-indigo-100 text-indigo-700',
+  6: 'bg-cyan-100 text-cyan-700',
+  7: 'bg-sky-100 text-sky-700',
+  8: 'bg-green-100 text-green-700',
+};
 
 function formatAge(date: string) {
   const diff = Date.now() - new Date(date).getTime();
@@ -72,7 +99,7 @@ function formatAge(date: string) {
   return d < 30 ? `${d}d` : `${Math.floor(d / 30)}mo`;
 }
 
-function PartnerCell({ order }: { order: { partnerName?: string | null; partner?: { name: string } | null; branchName?: string | null; branch?: { name: string } | null } }) {
+function PartnerCell({ order }: { order: ProcessingOrder }) {
   const name = order.partner?.name ?? order.partnerName ?? '—';
   const branch = order.branch?.name ?? order.branchName;
   return (
@@ -101,9 +128,12 @@ function EmptyState({ message }: { message: string }) {
 
 function SorExpiryBadge({ daysUntilExpiry }: { daysUntilExpiry?: number | null }) {
   if (daysUntilExpiry === null || daysUntilExpiry === undefined) return null;
-  if (daysUntilExpiry < 0) return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-semibold">Expired {Math.abs(daysUntilExpiry)}d ago</span>;
-  if (daysUntilExpiry <= 7) return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-semibold">{daysUntilExpiry}d left</span>;
-  if (daysUntilExpiry <= 14) return <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-semibold">{daysUntilExpiry}d left</span>;
+  if (daysUntilExpiry < 0)
+    return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-semibold">Expired {Math.abs(daysUntilExpiry)}d ago</span>;
+  if (daysUntilExpiry <= 7)
+    return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-semibold">{daysUntilExpiry}d left</span>;
+  if (daysUntilExpiry <= 14)
+    return <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-semibold">{daysUntilExpiry}d left</span>;
   return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">{daysUntilExpiry}d left</span>;
 }
 
@@ -121,6 +151,8 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 // ─── Queue Tab ────────────────────────────────────────────────────────────────
+// Shows all PROCESSING orders. Advance button is limited to steps 1–2
+// (up to PICKING). PACKING → DISPATCHED must go through the Dispatch tab.
 
 function QueueTab() {
   const navigate = useNavigate();
@@ -138,16 +170,18 @@ function QueueTab() {
     mutationFn: ({ id, step }: { id: string; step: string }) =>
       api(`/order-tracking/orders/${id}/pipeline-step`, { method: 'POST', body: JSON.stringify({ step }) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pq-queue'] }),
+    onError:   () => alert('Failed to advance order. Please try again.'),
   });
 
   const orders = data?.data ?? [];
-  const nextStep = (step: number) => PIPELINE_STEPS[step + 1] ?? null;
 
-  const STEP_LABELS: Record<number, string> = { 1: 'Confirmed', 2: 'Picking', 3: 'Packing', 4: 'Dispatched' };
-  const STEP_COLOR: Record<number, string> = {
-    1: 'bg-blue-100 text-blue-700', 2: 'bg-amber-100 text-amber-700',
-    3: 'bg-orange-100 text-orange-700', 4: 'bg-purple-100 text-purple-700',
-  };
+  // Only allow advance up to PACKING (step 3). Orders at PACKING+ must go
+  // through the Dispatch tab which runs the full dispatch flow with inventory
+  // deductions, SOR updates and courier records.
+  function nextStep(step: number): string | null {
+    if (step >= 3) return null; // at PACKING or beyond — no shortcut to DISPATCHED
+    return PIPELINE_STEPS[step + 1] ?? null;
+  }
 
   return (
     <div className="space-y-4 p-4">
@@ -175,7 +209,7 @@ function QueueTab() {
               {orders.map(order => {
                 const step = order.currentPipelineStep ?? 1;
                 const next = nextStep(step);
-                const pct = Math.round((step / (PIPELINE_STEPS.length - 1)) * 100);
+                const pct  = Math.round((step / (PIPELINE_STEPS.length - 1)) * 100);
                 return (
                   <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
@@ -199,11 +233,19 @@ function QueueTab() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center gap-2 justify-end">
-                        {next && (
-                          <button onClick={() => advanceMutation.mutate({ id: order.id, step: next })} disabled={advanceMutation.isPending}
-                            className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition-colors disabled:opacity-50">
+                        {next ? (
+                          <button
+                            onClick={() => advanceMutation.mutate({ id: order.id, step: next })}
+                            disabled={advanceMutation.isPending && advanceMutation.variables?.id === order.id}
+                            className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition-colors disabled:opacity-50"
+                          >
                             → {STEP_LABELS[step + 1] ?? next}
                           </button>
+                        ) : (
+                          // At PACKING or beyond — direct to appropriate tab
+                          step === 3 && (
+                            <span className="text-xs text-gray-400 italic">Use Dispatch tab →</span>
+                          )
                         )}
                         <ActionMenu items={[{ label: 'View Details', onClick: () => navigate(`/orders/${order.id}`) }]} />
                       </div>
@@ -234,8 +276,10 @@ function PickingTab() {
   });
 
   const markPackingMutation = useMutation({
-    mutationFn: (id: string) => api(`/order-tracking/orders/${id}/pipeline-step`, { method: 'POST', body: JSON.stringify({ step: 'PACKING' }) }),
+    mutationFn: (id: string) =>
+      api(`/order-tracking/orders/${id}/pipeline-step`, { method: 'POST', body: JSON.stringify({ step: 'PACKING' }) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pq-picking'] }),
+    onError:   () => alert('Failed to advance order. Please try again.'),
   });
 
   const orders = data?.data ?? [];
@@ -260,18 +304,28 @@ function PickingTab() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Link to={`/orders/${order.id}`} className="font-mono font-semibold text-blue-600 hover:underline">{order.number}</Link>
                   <span className="text-sm text-gray-600">{order.partner?.name ?? order.partnerName}</span>
-                  {(order.branch?.name ?? order.branchName) && <span className="text-xs text-gray-400">{order.branch?.name ?? order.branchName}</span>}
+                  {(order.branch?.name ?? order.branchName) && (
+                    <span className="text-xs text-gray-400">{order.branch?.name ?? order.branchName}</span>
+                  )}
                   <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-semibold">Picking</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">{order.itemCount ?? order.lines?.length ?? 0} item(s) · Started {order.pickingStartedAt ? formatAge(order.pickingStartedAt) : 'unknown'} ago</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {order.itemCount ?? order.lines?.length ?? 0} item(s) · Started {order.pickingStartedAt ? formatAge(order.pickingStartedAt) : 'unknown'} ago
+                </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <a href={`/api/v1/order-tracking/orders/${order.id}/picking-slip`} target="_blank" rel="noopener noreferrer"
-                  className="px-3 py-1.5 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors font-medium">
+                <a
+                  href={`/api/v1/order-tracking/orders/${order.id}/picking-slip`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors font-medium"
+                >
                   Print Picking Slip
                 </a>
-                <button onClick={() => markPackingMutation.mutate(order.id)} disabled={markPackingMutation.isPending}
-                  className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors font-medium disabled:opacity-50">
+                <button
+                  onClick={() => markPackingMutation.mutate(order.id)}
+                  disabled={markPackingMutation.isPending && markPackingMutation.variables === order.id}
+                  className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors font-medium disabled:opacity-50"
+                >
                   Mark Picked →
                 </button>
                 <ActionMenu items={[{ label: 'View Details', onClick: () => navigate(`/orders/${order.id}`) }]} />
@@ -285,10 +339,12 @@ function PickingTab() {
 }
 
 // ─── Packing Tab ──────────────────────────────────────────────────────────────
+// Purpose: print packing lists and confirm physical packing is done.
+// NO status advancement here — "Mark Picked" already set the order to PACKING.
+// Actual dispatch happens in the Dispatch tab via the full /dispatch endpoint.
 
 function PackingTab() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -298,11 +354,6 @@ function PackingTab() {
     ),
   });
 
-  const markReadyMutation = useMutation({
-    mutationFn: (id: string) => api(`/order-tracking/orders/${id}/pipeline-step`, { method: 'POST', body: JSON.stringify({ step: 'DISPATCHED' }) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pq-packing'] }),
-  });
-
   const orders = data?.data ?? [];
 
   return (
@@ -310,7 +361,9 @@ function PackingTab() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Packing</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Orders being boxed and labelled. Print packing lists to include in the shipment.</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Orders being boxed and labelled. Print packing lists to include in the shipment, then create a SOR Proforma and dispatch in the next tabs.
+          </p>
         </div>
         <SearchBar value={search} onChange={setSearch} placeholder="Search…" />
       </div>
@@ -326,19 +379,39 @@ function PackingTab() {
                   <Link to={`/orders/${order.id}`} className="font-mono font-semibold text-blue-600 hover:underline">{order.number}</Link>
                   <span className="text-sm text-gray-600">{order.partner?.name ?? order.partnerName}</span>
                   <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-semibold">Packing</span>
+                  {order.consignmentId
+                    ? <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">SOR ✓</span>
+                    : <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">Needs SOR</span>
+                  }
                 </div>
-                <p className="text-xs text-gray-500 mt-1">{order.itemCount ?? order.lines?.length ?? 0} item(s) · PO: {order.customerPoNumber ?? '—'}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {order.itemCount ?? order.lines?.length ?? 0} item(s) · PO: {order.customerPoNumber ?? '—'}
+                  {order.packingStartedAt && ` · Packing for ${formatAge(order.packingStartedAt)}`}
+                </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <a href={`/api/v1/order-tracking/orders/${order.id}/packing-list`} target="_blank" rel="noopener noreferrer"
-                  className="px-3 py-1.5 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors font-medium">
+                <a
+                  href={`/api/v1/order-tracking/orders/${order.id}/packing-list`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors font-medium"
+                >
                   Print Packing List
                 </a>
-                <button onClick={() => markReadyMutation.mutate(order.id)} disabled={markReadyMutation.isPending}
-                  className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors font-medium disabled:opacity-50">
-                  Mark Packed →
-                </button>
-                <ActionMenu items={[{ label: 'View Details', onClick: () => navigate(`/orders/${order.id}`) }]} />
+                {!order.consignmentId && (
+                  <Link
+                    to={`/consignments/new?orderId=${order.id}`}
+                    className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors font-medium"
+                  >
+                    Create SOR →
+                  </Link>
+                )}
+                <ActionMenu items={[
+                  { label: 'View Details',  onClick: () => navigate(`/orders/${order.id}`) },
+                  ...(order.consignmentId
+                    ? [{ label: 'Go to Dispatch tab', onClick: () => navigate('/orders/processing?tab=dispatch') }]
+                    : []
+                  ),
+                ]} />
               </div>
             </div>
           ))}
@@ -356,7 +429,7 @@ function SorProformaTab() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  // Orders packed but no SOR yet
+  // Orders packed but WITHOUT a SOR yet (consignmentId is null)
   const { data: pendingData, isLoading: pendingLoading } = useQuery({
     queryKey: ['pq-sor-pending', search],
     queryFn: () => api<PaginatedResponse<ProcessingOrder>>(
@@ -365,19 +438,21 @@ function SorProformaTab() {
     enabled: subTab === 'pending',
   });
 
-  // Active SORs (dispatched/delivered, SOR window running)
+  // Active / expiring SORs via settlement endpoint
   const { data: sorData, isLoading: sorLoading } = useQuery({
     queryKey: ['pq-sor-active', page, search, subTab],
     queryFn: () => api<{ data: ConsignmentSummary[]; pagination: any }>(
-      `/settlement/sors?filter=${subTab === 'expiring' ? 'active' : 'active'}&page=${page}&limit=20&search=${encodeURIComponent(search)}`
+      `/settlement/sors?filter=active&page=${page}&limit=20&search=${encodeURIComponent(search)}`
     ),
     enabled: subTab === 'active' || subTab === 'expiring',
   });
 
-  const pendingOrders = pendingData?.data ?? [];
-  const activeSors = sorData?.data ?? [];
+  // Filter to orders that do NOT yet have a SOR linked
+  const pendingOrders = (pendingData?.data ?? []).filter(o => !o.consignmentId);
+
+  const activeSors  = sorData?.data ?? [];
   const displaySors = subTab === 'expiring'
-    ? activeSors.filter((s: ConsignmentSummary) => s.daysUntilExpiry !== null && s.daysUntilExpiry !== undefined && s.daysUntilExpiry <= 14)
+    ? activeSors.filter(s => s.daysUntilExpiry != null && s.daysUntilExpiry <= 14)
     : activeSors;
 
   const isLoading = subTab === 'pending' ? pendingLoading : sorLoading;
@@ -390,12 +465,15 @@ function SorProformaTab() {
           <p className="text-xs text-gray-500 mt-0.5">Create SOR proforma invoices before dispatch. Monitor active SOR periods.</p>
         </div>
         <div className="flex gap-1">
-          {([['pending','Pending SOR'], ['active','Active SORs'], ['expiring','Expiring Soon']] as [string,string][]).map(([k,l]) => (
-            <button key={k} onClick={() => { setSubTab(k as any); setPage(1); }}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${subTab === k ? 'bg-[#8B1A1A] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-              {l}
-            </button>
-          ))}
+          {(['pending', 'active', 'expiring'] as const).map((k) => {
+            const label = k === 'pending' ? 'Pending SOR' : k === 'active' ? 'Active SORs' : 'Expiring Soon';
+            return (
+              <button key={k} onClick={() => { setSubTab(k); setPage(1); }}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${subTab === k ? 'bg-[#8B1A1A] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -420,8 +498,10 @@ function SorProformaTab() {
                         <p className="text-xs text-gray-500 mt-1">{order.itemCount ?? order.lines?.length ?? 0} items · PO: {order.customerPoNumber ?? '—'}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Link to={`/consignments/new?orderId=${order.id}`}
-                          className="px-3 py-1.5 bg-[#8B1A1A] text-white rounded text-xs font-medium hover:bg-[#7a1717] transition-colors">
+                        <Link
+                          to={`/consignments/new?orderId=${order.id}`}
+                          className="px-3 py-1.5 bg-[#8B1A1A] text-white rounded text-xs font-medium hover:bg-[#7a1717] transition-colors"
+                        >
                           Create SOR Proforma
                         </Link>
                         <ActionMenu items={[{ label: 'View Order', onClick: () => navigate(`/orders/${order.id}`) }]} />
@@ -448,7 +528,7 @@ function SorProformaTab() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {displaySors.map((sor: ConsignmentSummary) => (
+                      {displaySors.map(sor => (
                         <tr key={sor.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3">
                             <Link to={`/consignments/${sor.id}`} className="font-mono font-semibold text-blue-600 hover:underline">{sor.proformaNumber}</Link>
@@ -457,14 +537,18 @@ function SorProformaTab() {
                             <p className="font-medium text-sm">{sor.partnerName}</p>
                             {sor.branchName && <p className="text-xs text-gray-500">{sor.branchName}</p>}
                           </td>
-                          <td className="px-4 py-3 text-xs text-gray-500">{sor.dispatchDate ? new Date(sor.dispatchDate).toLocaleDateString('en-ZA') : '—'}</td>
-                          <td className="px-4 py-3 text-xs text-gray-500">{sor.sorExpiryDate ? new Date(sor.sorExpiryDate).toLocaleDateString('en-ZA') : '—'}</td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {sor.dispatchDate ? new Date(sor.dispatchDate).toLocaleDateString('en-ZA') : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {sor.sorExpiryDate ? new Date(sor.sorExpiryDate).toLocaleDateString('en-ZA') : '—'}
+                          </td>
                           <td className="px-4 py-3 text-xs text-gray-600">{sor.totalSold ?? 0} / {sor.totalDispatched ?? 0}</td>
                           <td className="px-4 py-3"><SorExpiryBadge daysUntilExpiry={sor.daysUntilExpiry} /></td>
                           <td className="px-4 py-3 text-right">
                             <ActionMenu items={[
-                              { label: 'View SOR', onClick: () => navigate(`/consignments/${sor.id}`) },
-                              { label: 'Go to Settlement', onClick: () => navigate('/settlement') },
+                              { label: 'View SOR',          onClick: () => navigate(`/consignments/${sor.id}`) },
+                              { label: 'Go to Settlement',  onClick: () => navigate('/settlement') },
                             ]} />
                           </td>
                         </tr>
@@ -487,13 +571,25 @@ function SorProformaTab() {
 }
 
 // ─── Dispatch Tab ─────────────────────────────────────────────────────────────
+// Only shows PACKING orders that have a SOR (consignmentId set).
+// Submitting the form calls /dispatch which:
+//   - requires a consignmentId on the order (checked by backend)
+//   - sets order status to DISPATCHED
+//   - updates qtyDispatched on all lines
+//   - creates CONSIGN inventory movements
+//   - updates the linked consignment (status, sorExpiryDate)
+//   - creates a courierShipments record
+//   - notifies the partner
 
 function DispatchTab() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
-  const [dispatchForm, setDispatchForm] = useState({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '', expectedDeliveryDate: '' });
+  const [dispatchForm, setDispatchForm] = useState({
+    courierCompany: '', courierWaybill: '', courierTrackingUrl: '', expectedDeliveryDate: '',
+  });
+  const [formError, setFormError] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['pq-dispatch', search],
@@ -503,29 +599,61 @@ function DispatchTab() {
   });
 
   const dispatchMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: any }) =>
+    mutationFn: ({ id, body }: { id: string; body: typeof dispatchForm }) =>
       api(`/partner-admin/orders/${id}/dispatch`, { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['pq-dispatch'] }); setDispatchingId(null); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pq-dispatch'] });
+      queryClient.invalidateQueries({ queryKey: ['pq-queue'] });
+      setDispatchingId(null);
+    },
+    onError: (err: any) => {
+      setFormError(err?.message ?? 'Dispatch failed. Please try again.');
+    },
   });
 
-  const orders = data?.data ?? [];
+  // Only show orders that have a SOR proforma linked (consignmentId not null)
+  const orders = (data?.data ?? []).filter(o => o.consignmentId);
+  const allPackingOrders = data?.data ?? [];
+  const noSorCount = allPackingOrders.length - orders.length;
+
+  function openDispatch(id: string) {
+    setDispatchingId(id);
+    setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '', expectedDeliveryDate: '' });
+    setFormError('');
+  }
+
+  function handleConfirmDispatch(orderId: string) {
+    if (!dispatchForm.courierCompany.trim()) { setFormError('Courier company is required.'); return; }
+    if (!dispatchForm.courierWaybill.trim()) { setFormError('Waybill number is required.'); return; }
+    setFormError('');
+    dispatchMutation.mutate({ id: orderId, body: dispatchForm });
+  }
 
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Ready to Dispatch</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Fully packed orders with SOR proforma issued, awaiting courier pickup.</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Fully packed orders with SOR proforma issued, awaiting courier pickup.
+            {noSorCount > 0 && (
+              <span className="ml-2 text-amber-600 font-medium">{noSorCount} order(s) still need a SOR — see SOR Proforma tab.</span>
+            )}
+          </p>
         </div>
         <SearchBar value={search} onChange={setSearch} placeholder="Search…" />
       </div>
 
       {isLoading ? <LoadingSpinner /> : orders.length === 0 ? (
-        <EmptyState message="No orders ready for dispatch." />
+        <EmptyState message={noSorCount > 0
+          ? 'No orders ready to dispatch yet — create SOR proformas first.'
+          : 'No orders ready for dispatch.'
+        } />
       ) : (
         <div className="space-y-3">
           {orders.map(order => {
-            const isDispatching = dispatchingId === order.id;
+            const isOpen      = dispatchingId === order.id;
+            const isSubmitting = dispatchMutation.isPending && dispatchMutation.variables?.id === order.id;
             return (
               <div key={order.id} className="bg-white rounded-xl border border-gray-200 p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -535,48 +663,63 @@ function DispatchTab() {
                       <span className="text-sm text-gray-600">{order.partner?.name ?? order.partnerName}</span>
                       <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">Ready</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{order.itemCount ?? order.lines?.length ?? 0} items · PO: {order.customerPoNumber ?? '—'}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {order.itemCount ?? order.lines?.length ?? 0} items · PO: {order.customerPoNumber ?? '—'} · SOR: {order.consignmentNumber ?? '✓ Linked'}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <a href={`/api/v1/order-tracking/orders/${order.id}/delivery-note`} target="_blank" rel="noopener noreferrer"
-                      className="px-2.5 py-1 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors">
-                      Delivery Note
-                    </a>
-                    <button onClick={() => { setDispatchingId(isDispatching ? null : order.id); setDispatchForm({ courierCompany: '', courierWaybill: '', courierTrackingUrl: '', expectedDeliveryDate: '' }); }}
-                      className="px-2.5 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 transition-colors">
-                      {isDispatching ? 'Cancel' : 'Mark Dispatched'}
+                    <button
+                      onClick={() => isOpen ? setDispatchingId(null) : openDispatch(order.id)}
+                      className="px-2.5 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 transition-colors"
+                    >
+                      {isOpen ? 'Cancel' : 'Mark Dispatched'}
                     </button>
                     <ActionMenu items={[{ label: 'View Details', onClick: () => navigate(`/orders/${order.id}`) }]} />
                   </div>
                 </div>
 
-                {isDispatching && (
-                  <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Courier Company</label>
-                      <input type="text" value={dispatchForm.courierCompany} onChange={e => setDispatchForm(f => ({ ...f, courierCompany: e.target.value }))}
-                        placeholder="e.g. Fastway Couriers" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-[#8B1A1A] focus:border-[#8B1A1A] outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Waybill Number</label>
-                      <input type="text" value={dispatchForm.courierWaybill} onChange={e => setDispatchForm(f => ({ ...f, courierWaybill: e.target.value }))}
-                        placeholder="Waybill / tracking number" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-[#8B1A1A] focus:border-[#8B1A1A] outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Tracking URL (optional)</label>
-                      <input type="url" value={dispatchForm.courierTrackingUrl} onChange={e => setDispatchForm(f => ({ ...f, courierTrackingUrl: e.target.value }))}
-                        placeholder="https://track.courier.com/..." className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-[#8B1A1A] focus:border-[#8B1A1A] outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Expected Delivery Date</label>
-                      <input type="date" value={dispatchForm.expectedDeliveryDate} onChange={e => setDispatchForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-[#8B1A1A] focus:border-[#8B1A1A] outline-none" />
-                    </div>
-                    <div className="sm:col-span-2 flex justify-end">
-                      <button onClick={() => dispatchMutation.mutate({ id: order.id, body: dispatchForm })} disabled={dispatchMutation.isPending}
-                        className="px-4 py-1.5 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 transition-colors disabled:opacity-50">
-                        {dispatchMutation.isPending ? 'Dispatching…' : 'Confirm Dispatch'}
-                      </button>
+                {isOpen && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    {formError && (
+                      <p className="text-xs text-red-600 mb-3 font-medium">{formError}</p>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Courier Company <span className="text-red-500">*</span></label>
+                        <input type="text" value={dispatchForm.courierCompany}
+                          onChange={e => setDispatchForm(f => ({ ...f, courierCompany: e.target.value }))}
+                          placeholder="e.g. Fastway Couriers"
+                          className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-[#8B1A1A] focus:border-[#8B1A1A] outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Waybill Number <span className="text-red-500">*</span></label>
+                        <input type="text" value={dispatchForm.courierWaybill}
+                          onChange={e => setDispatchForm(f => ({ ...f, courierWaybill: e.target.value }))}
+                          placeholder="Waybill / tracking number"
+                          className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-[#8B1A1A] focus:border-[#8B1A1A] outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Tracking URL (optional)</label>
+                        <input type="url" value={dispatchForm.courierTrackingUrl}
+                          onChange={e => setDispatchForm(f => ({ ...f, courierTrackingUrl: e.target.value }))}
+                          placeholder="https://track.courier.com/..."
+                          className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-[#8B1A1A] focus:border-[#8B1A1A] outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Expected Delivery Date</label>
+                        <input type="date" value={dispatchForm.expectedDeliveryDate}
+                          onChange={e => setDispatchForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))}
+                          className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-[#8B1A1A] focus:border-[#8B1A1A] outline-none" />
+                      </div>
+                      <div className="sm:col-span-2 flex justify-end">
+                        <button
+                          onClick={() => handleConfirmDispatch(order.id)}
+                          disabled={isSubmitting}
+                          className="px-4 py-1.5 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
+                        >
+                          {isSubmitting ? 'Dispatching…' : 'Confirm Dispatch'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -591,7 +734,7 @@ function DispatchTab() {
 
 // ─── Returns In Tab ───────────────────────────────────────────────────────────
 
-type ReturnSubTab = 'pending' | 'authorised' | 'transit' | 'received' | 'inspected';
+type ReturnSubTab = 'draft' | 'authorized' | 'transit' | 'received' | 'inspected';
 
 const RETURN_STATUS_CFG: Record<string, { label: string; color: string }> = {
   DRAFT:       { label: 'Draft',       color: 'bg-gray-100 text-gray-600' },
@@ -601,21 +744,22 @@ const RETURN_STATUS_CFG: Record<string, { label: string; color: string }> = {
   INSPECTED:   { label: 'Inspected',   color: 'bg-orange-100 text-orange-700' },
   VERIFIED:    { label: 'Verified',    color: 'bg-green-100 text-green-700' },
   PROCESSED:   { label: 'Processed',   color: 'bg-green-100 text-green-700' },
-  REJECTED:    { label: 'Rejected',    color: 'bg-red-100 text-red-700' },
 };
 
 function ReturnsInTab() {
   const navigate = useNavigate();
-  const [subTab, setSubTab] = useState<ReturnSubTab>('pending');
+  const [subTab, setSubTab] = useState<ReturnSubTab>('draft');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
+  // Status values passed to GET /returns?status=...
+  // returnsAuthorizations uses: DRAFT, AUTHORIZED, IN_TRANSIT, RECEIVED, INSPECTED, VERIFIED, PROCESSED
   const statusMap: Record<ReturnSubTab, string> = {
-    pending: 'DRAFT',
-    authorised: 'AUTHORIZED',
-    transit: 'IN_TRANSIT',
-    received: 'RECEIVED',
-    inspected: 'INSPECTED,VERIFIED',
+    draft:      'DRAFT',
+    authorized: 'AUTHORIZED',
+    transit:    'IN_TRANSIT',
+    received:   'RECEIVED',
+    inspected:  'INSPECTED,VERIFIED',
   };
 
   const { data, isLoading } = useQuery({
@@ -628,11 +772,11 @@ function ReturnsInTab() {
   const returns = data?.data ?? [];
 
   const subTabs: { key: ReturnSubTab; label: string }[] = [
-    { key: 'pending',   label: 'Pending Review' },
-    { key: 'authorised',label: 'Authorised' },
-    { key: 'transit',   label: 'In Transit' },
-    { key: 'received',  label: 'Received' },
-    { key: 'inspected', label: 'Inspected' },
+    { key: 'draft',      label: 'Draft / New' },
+    { key: 'authorized', label: 'Authorised' },
+    { key: 'transit',    label: 'In Transit' },
+    { key: 'received',   label: 'Received' },
+    { key: 'inspected',  label: 'Inspected' },
   ];
 
   return (
@@ -640,7 +784,9 @@ function ReturnsInTab() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Returns In</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Inbound returns from partners — authorisation, receiving and inspection. Credit issuance happens in Account Settlement.</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Inbound returns — authorisation, receiving and inspection. Credit issuance happens in Account Settlement.
+          </p>
         </div>
         <Link to="/orders/returns/new" className="px-3 py-1.5 bg-[#8B1A1A] text-white rounded text-xs font-medium hover:bg-[#7a1717] transition-colors">
           + Capture Return
@@ -650,7 +796,9 @@ function ReturnsInTab() {
       <div className="flex gap-1 overflow-x-auto flex-wrap">
         {subTabs.map(st => (
           <button key={st.key} onClick={() => { setSubTab(st.key); setPage(1); }}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${subTab === st.key ? 'bg-[#8B1A1A] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${
+              subTab === st.key ? 'bg-[#8B1A1A] text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}>
             {st.label}
           </button>
         ))}
@@ -666,32 +814,55 @@ function ReturnsInTab() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['RA Number', 'Partner', 'SOR Ref', 'Reason', 'Status', ''].map(h => (
+                  {['RA Number', 'Partner', 'SOR Ref', 'GRN', 'Reason', 'Status', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {returns.map((ret: ReturnSummary) => {
+                {returns.map(ret => {
                   const cfg = RETURN_STATUS_CFG[ret.status] ?? { label: ret.status, color: 'bg-gray-100 text-gray-500' };
+                  const partnerName = ret.partner?.name ?? ret.partnerName ?? '—';
+                  const sorRef      = ret.consignment?.proformaNumber ?? '—';
                   return (
                     <tr key={ret.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
                         <Link to={`/orders/returns/${ret.id}`} className="font-mono font-semibold text-blue-600 hover:underline">{ret.number}</Link>
                       </td>
-                      <td className="px-4 py-3 font-medium text-sm text-gray-900">{ret.partnerName}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-gray-500">{ret.sorNumber ?? '—'}</td>
-                      <td className="px-4 py-3 text-xs text-gray-600 max-w-[160px] truncate">{ret.reason ?? '—'}</td>
+                      <td className="px-4 py-3 font-medium text-sm text-gray-900">{partnerName}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-500">{sorRef}</td>
+                      <td className="px-4 py-3">
+                        {ret.grnNumber ? (
+                          <a
+                            href={`/api/v1/returns/${ret.id}/grn`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="font-mono text-xs text-green-700 font-semibold hover:underline"
+                          >
+                            {ret.grnNumber}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600 max-w-[140px] truncate">{ret.reason ?? '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center gap-2 justify-end">
                           {subTab === 'inspected' && (
-                            <button onClick={() => navigate('/settlement?tab=returns')}
-                              className="px-2.5 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition-colors">
+                            <button
+                              onClick={() => navigate('/settlement?tab=returns')}
+                              className="px-2.5 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition-colors"
+                            >
                               Issue Credit →
                             </button>
+                          )}
+                          {ret.grnNumber && (
+                            <a href={`/api/v1/returns/${ret.id}/grn`} target="_blank" rel="noopener noreferrer"
+                              className="px-2.5 py-1 border border-green-200 text-green-700 rounded text-xs font-medium hover:bg-green-50 transition-colors">
+                              GRN ↗
+                            </a>
                           )}
                           <ActionMenu items={[{ label: 'View Return', onClick: () => navigate(`/orders/returns/${ret.id}`) }]} />
                         </div>
@@ -726,7 +897,6 @@ export function OrderProcessingQueue() {
         backTo={{ href: '/orders', label: 'Order Hub' }}
       />
 
-      {/* Process-flow tab bar */}
       <div className="bg-white border-b border-gray-200">
         <div className="flex overflow-x-auto">
           {TABS.map((tab, i) => (
@@ -748,7 +918,6 @@ export function OrderProcessingQueue() {
         </div>
       </div>
 
-      {/* Tab content */}
       <div className="bg-gray-50 min-h-[calc(100vh-220px)]">
         {activeTab === 'queue'    && <QueueTab />}
         {activeTab === 'picking'  && <PickingTab />}

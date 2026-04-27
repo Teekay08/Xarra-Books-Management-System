@@ -1,10 +1,11 @@
 import { NavLink, useNavigate } from 'react-router';
 import { usePermissions } from '../hooks/usePermissions';
 import { useCompany } from '../hooks/useCompany';
+import { useProducts } from '../hooks/useProducts';
 import { COMPANIES } from '../stores/companyStore';
 import type { Module } from '@xarra/shared';
 
-interface NavItem { name: string; href: string; module?: Module }
+interface NavItem { name: string; href: string; module?: Module | undefined }
 interface NavSection { label: string; items: NavItem[] }
 
 // ─── Xarra Books navigation ──────────────────────────────────────────────────
@@ -129,63 +130,84 @@ const xarraSections: NavSection[] = [
   },
 ];
 
-// ─── Billetterie Software navigation ─────────────────────────────────────────
+// ─── Billetterie Software navigation (computed — role-aware) ─────────────────
+// Built at render time because visibility depends on Billetterie system roles
+// which are not available at module-init time.
 
-const billetterieSections: NavSection[] = [
-  {
-    label: '',
-    items: [{ name: 'Dashboard', href: '/billetterie', module: 'dashboard' }],
-  },
-  {
-    label: 'Project Management',
-    items: [
-      { name: 'All Projects',    href: '/billetterie/projects',       module: 'projectManagement' },
-      { name: 'Staff Members',   href: '/pm/staff',                   module: 'projectManagement' },
-      { name: 'Task Requests',   href: '/pm/task-requests',           module: 'projectManagement' },
-      { name: 'Resource Planning',href: '/pm/capacity',               module: 'projectManagement' },
-    ],
-  },
-  {
-    label: 'My Workspace',
-    items: [
-      { name: 'My Dashboard', href: '/employee',          module: 'employeePortal' },
-      { name: 'My Planner',   href: '/employee/planner',  module: 'employeePortal' },
-    ],
-  },
-  {
-    label: 'Finance',
-    items: [
-      { name: 'Timesheets',   href: '/budgeting/timesheets',   module: 'projectManagement' },
-      { name: 'SOW Documents',href: '/budgeting/sow',          module: 'projectManagement' },
-      { name: 'Invoices',     href: '/invoices',               module: 'invoices' },
-      { name: 'Quotations',   href: '/quotations',             module: 'quotations' },
-      { name: 'Expenses',     href: '/expenses',               module: 'expenses' },
-      { name: 'Expense Claims',href: '/expenses/claims',       module: 'expenseClaims' },
-    ],
-  },
-  {
-    label: 'Project Budgeting',
-    items: [
-      { name: 'Budget Dashboard', href: '/budgeting',            module: 'budgeting' },
-      { name: 'Projects',         href: '/budgeting/projects',   module: 'budgeting' },
-      { name: 'Rate Cards',       href: '/budgeting/rate-cards', module: 'budgeting' },
-    ],
-  },
-  {
-    label: 'Reports',
-    items: [
-      { name: 'Reports', href: '/reports', module: 'reports' },
-    ],
-  },
-  {
-    label: 'Admin',
-    items: [
-      { name: 'Settings',        href: '/settings',          module: 'settings' },
-      { name: 'User Management', href: '/settings/users',    module: 'users' },
-      { name: 'Audit Trail',     href: '/admin/audit-log',   module: 'auditLogs' },
-    ],
-  },
-];
+function useBilletterieSections(): NavSection[] {
+  const { isXarraBusinessUser, isBilAdmin, isBilManager } = usePermissions();
+
+  const sections: NavSection[] = [
+    {
+      label: '',
+      items: [{ name: 'Dashboard', href: '/billetterie' }],
+    },
+    {
+      // All billetterieAccess users can see projects (API scopes results by team membership)
+      label: 'Project Management',
+      items: [
+        { name: 'All Projects', href: '/billetterie/projects' },
+        { name: 'My Work',      href: '/billetterie/my-work' },
+        // Xarra PM-level staff also get the broader PM tooling
+        ...(isXarraBusinessUser ? [
+          { name: 'Team Members',     href: '/pm/staff' },
+          { name: 'Task Requests',    href: '/pm/task-requests' },
+          { name: 'Resource Planning', href: '/pm/capacity' },
+        ] : []),
+      ],
+    },
+    {
+      label: 'My Workspace',
+      items: [
+        { name: 'My Dashboard', href: '/employee' },
+        { name: 'My Planner',   href: '/employee/planner' },
+      ],
+    },
+  ];
+
+  // Finance & budgeting — only for Xarra business users (admin, finance, projectManager)
+  if (isXarraBusinessUser) {
+    sections.push(
+      {
+        label: 'Finance',
+        items: [
+          { name: 'Timesheets',    href: '/budgeting/timesheets' },
+          { name: 'SOW Documents', href: '/budgeting/sow' },
+          { name: 'Invoices',      href: '/invoices' },
+          { name: 'Quotations',    href: '/quotations' },
+          { name: 'Expenses',      href: '/expenses' },
+          { name: 'Expense Claims', href: '/expenses/claims' },
+        ],
+      },
+      {
+        label: 'Project Budgeting',
+        items: [
+          { name: 'Budget Dashboard', href: '/budgeting' },
+          { name: 'Projects',         href: '/budgeting/projects' },
+          { name: 'Rate Cards',       href: '/budgeting/rate-cards' },
+        ],
+      },
+      {
+        label: 'Reports',
+        items: [{ name: 'Reports', href: '/reports' }],
+      },
+    );
+  }
+
+  // Admin section — BIL_ADMIN or Xarra admin only
+  if (isBilAdmin) {
+    sections.push({
+      label: 'Admin',
+      items: [
+        { name: 'Settings',        href: '/settings' },
+        { name: 'User Management', href: '/settings/users' },
+        { name: 'Audit Trail',     href: '/admin/audit-log' },
+      ],
+    });
+  }
+
+  return sections;
+}
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -227,12 +249,17 @@ function SectionGroup({
 }
 
 // ─── Company switcher pill ────────────────────────────────────────────────────
+// Only shown when the user actually has access to both products.
 
 function CompanySwitcher() {
   const navigate = useNavigate();
-  const { company, companies, setActiveCompany } = useCompany();
-  const other = companies.find((c) => c.slug !== company.slug);
+  const { company, setActiveCompany } = useCompany();
+  const { hasMultiple } = useProducts();
 
+  // Only render the switcher when the user has access to multiple products
+  if (!hasMultiple) return null;
+
+  const other = COMPANIES.find((c) => c.slug !== company.slug);
   if (!other) return null;
 
   function switchTo() {
@@ -245,13 +272,15 @@ function CompanySwitcher() {
     <div className="px-4 pb-2 pt-3 border-b border-gray-100">
       <button
         onClick={switchTo}
-        className="w-full flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 px-3 py-2 transition-colors"
+        className="w-full flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 px-3 py-2 transition-colors group"
       >
         <div className="flex items-center gap-2">
-          <div className="h-4 w-4 rounded-full" style={{ backgroundColor: other.accentColor }} />
-          <span className="text-xs text-gray-600 font-medium">Switch to {other.shortName}</span>
+          <div className="h-4 w-4 rounded-full flex-shrink-0" style={{ backgroundColor: other.accentColor }} />
+          <span className="text-xs text-gray-600 font-medium group-hover:text-gray-900 transition-colors">
+            Switch to {other.shortName}
+          </span>
         </div>
-        <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
         </svg>
       </button>
@@ -264,16 +293,19 @@ function CompanySwitcher() {
 export function Sidebar() {
   const { canAccess } = usePermissions();
   const { company, isBilletterie } = useCompany();
+  const bilSections = useBilletterieSections();
 
-  const rawSections = isBilletterie ? billetterieSections : xarraSections;
   const linkClass = isBilletterie ? billetterieLinkClass : xarraLinkClass;
 
-  const sections = rawSections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => !item.module || canAccess(item.module)),
-    }))
-    .filter((section) => section.items.length > 0);
+  // Xarra: filter by canAccess(module). Billetterie: already role-computed above.
+  const sections = isBilletterie
+    ? bilSections.filter((s) => s.items.length > 0)
+    : xarraSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => !item.module || canAccess(item.module)),
+        }))
+        .filter((section) => section.items.length > 0);
 
   return (
     <aside className="w-64 h-full bg-white border-r border-gray-200 flex flex-col shrink-0">

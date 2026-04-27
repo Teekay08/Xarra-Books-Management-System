@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 120" width="280" height="120">
+  <!-- Billetterie text -->
+  <text x="10" y="62" font-family="Georgia, 'Times New Roman', serif" font-size="46" font-weight="700" fill="#111111" letter-spacing="-1">Billetterie</text>
+  <!-- Teal dots over the two 'i' letters — approximate positions -->
+  <circle cx="40"  cy="20" r="4.5" fill="#2dd4bf"/>
+  <circle cx="74"  cy="20" r="4.5" fill="#2dd4bf"/>
+  <!-- Registered mark -->
+  <text x="237" y="38" font-family="Arial, sans-serif" font-size="13" fill="#111111">®</text>
+  <!-- SOFTWARE bar -->
+  <rect x="10" y="72" width="258" height="38" rx="2" fill="#111111"/>
+  <text x="139" y="99" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="4">SOFTWARE</text>
+</svg>

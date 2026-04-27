@@ -5,7 +5,7 @@ import {
   inventoryMovements, titles, companySettings, partnerBranches,
 } from '@xarra/db';
 import { createConsignmentSchema, paginationSchema, VAT_RATE, roundAmount, DEFAULT_SOR_DAYS } from '@xarra/shared';
-import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { requireAuth, requireRole, requireXarraBusinessUser } from '../../middleware/require-auth.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
 import { renderSorProformaHtml } from '../../services/templates/sor-proforma.js';
@@ -14,6 +14,8 @@ import { sendEmailWithAttachment, isEmailConfigured } from '../../services/email
 import { documentEmails } from '@xarra/db';
 
 export async function consignmentRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', requireXarraBusinessUser);
+
   // List consignments (paginated)
   app.get('/', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);

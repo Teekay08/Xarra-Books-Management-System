@@ -2,10 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc } from 'drizzle-orm';
 import { inventoryMovements, titles } from '@xarra/db';
 import { stockAdjustmentSchema, paginationSchema } from '@xarra/shared';
-import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { requireAuth, requireRole, requireXarraBusinessUser } from '../../middleware/require-auth.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 
 export async function inventoryRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', requireXarraBusinessUser);
+
   // Stock levels per title (aggregated from movements)
   app.get('/stock', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);

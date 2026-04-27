@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and, inArray } from 'drizzle-orm';
 import {
   returnsAuthorizations, returnsAuthorizationLines,
   returnInspectionLines, inventoryMovements, consignmentLines,
@@ -9,9 +9,10 @@ import { paginationSchema, VAT_RATE, roundAmount } from '@xarra/shared';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import { createBroadcastNotification } from '../../services/notifications.js';
 import { notifyPartner } from '../../services/partner-notifications.js';
-import { nextCreditNoteNumber, nextReturnNumber } from '../finance/invoice-number.js';
+import { nextCreditNoteNumber, nextReturnNumber, nextGRNNumber } from '../finance/invoice-number.js';
 import { generatePdf } from '../../services/pdf.js';
 import { renderReturnAuthorisationHtml } from '../../services/templates/return-authorisation.js';
+import { renderGRNHtml } from '../../services/templates/grn.js';
 import { sendDocumentEmail } from '../../services/document-email.js';
 import { z } from 'zod';
 
@@ -34,15 +35,27 @@ const createReturnSchema = z.object({
 
 
 export async function returnRoutes(app: FastifyInstance) {
-  // List returns
+  // List returns  (supports ?status=X or ?status=X,Y  and ?search=)
   app.get('/', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search } = query;
+    const { status } = request.query as { status?: string };
     const offset = (page - 1) * limit;
 
-    const where = search
-      ? sql`${returnsAuthorizations.number} ILIKE ${'%' + search + '%'}`
-      : undefined;
+    const conditions: any[] = [];
+    if (search) {
+      conditions.push(sql`${returnsAuthorizations.number} ILIKE ${'%' + search + '%'}`);
+    }
+    if (status) {
+      const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+      if (statuses.length === 1) {
+        conditions.push(eq(returnsAuthorizations.status, statuses[0] as any));
+      } else if (statuses.length > 1) {
+        conditions.push(inArray(returnsAuthorizations.status, statuses as any[]));
+      }
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [items, countResult] = await Promise.all([
       app.db.query.returnsAuthorizations.findMany({
@@ -133,7 +146,7 @@ export async function returnRoutes(app: FastifyInstance) {
     return { data: { message: 'Return marked as in transit' } };
   });
 
-  // Receive goods at warehouse (sign for delivery)
+  // Receive goods at warehouse — auto-generates a GRN
   app.post<{ Params: { id: string } }>('/:id/receive', {
     preHandler: requireRole('admin', 'operations'),
   }, async (request, reply) => {
@@ -147,27 +160,87 @@ export async function returnRoutes(app: FastifyInstance) {
 
     const body = request.body as { deliverySignedBy?: string; courierCompany?: string; courierWaybill?: string };
     const userId = request.session?.user?.id;
+    const now = new Date();
 
-    await app.db.update(returnsAuthorizations).set({
+    // Auto-generate GRN number on first receipt
+    const grnNumber = await nextGRNNumber(app.db as any);
+
+    const [updated] = await app.db.update(returnsAuthorizations).set({
       status: 'RECEIVED',
-      receivedAt: new Date(),
+      receivedAt: now,
       receivedBy: userId,
-      deliverySignedBy: body.deliverySignedBy,
+      deliverySignedBy: body.deliverySignedBy ?? null,
       courierCompany: body.courierCompany ?? ra.courierCompany,
       courierWaybill: body.courierWaybill ?? ra.courierWaybill,
-    }).where(eq(returnsAuthorizations.id, ra.id));
+      grnNumber,
+      grnIssuedAt: now,
+    }).where(eq(returnsAuthorizations.id, ra.id)).returning();
 
-    // Notify partner that goods have been received
     notifyPartner(app, ra.partnerId, {
       type: 'RETURN_STATUS_CHANGED',
-      title: `Return ${ra.number} received at warehouse`,
-      message: 'Your returned goods have been received and will be inspected.',
+      title: `Return ${ra.number} received at warehouse (${grnNumber})`,
+      message: `Your returned goods have been received and a Goods Return Note (${grnNumber}) has been issued. Inspection will follow shortly.`,
       actionUrl: '/partner/returns',
       referenceType: 'RETURN',
       referenceId: ra.id,
     }).catch((err) => app.log.error({ err }, 'Failed to create partner notification'));
 
-    return { data: { message: 'Goods received at warehouse' } };
+    return { data: { message: 'Goods received at warehouse', grnNumber } };
+  });
+
+  // Download Goods Return Note PDF
+  app.get<{ Params: { id: string } }>('/:id/grn', {
+    preHandler: requireRole('admin', 'operations', 'finance'),
+  }, async (request, reply) => {
+    const ra = await app.db.query.returnsAuthorizations.findFirst({
+      where: eq(returnsAuthorizations.id, request.params.id),
+      with: {
+        partner: true,
+        lines: { with: { title: true } },
+      },
+    });
+    if (!ra) return reply.notFound('Return authorization not found');
+    if (!ra.grnNumber) {
+      return reply.badRequest('GRN not yet generated — goods must be received at the warehouse first');
+    }
+
+    const settings = await app.db.query.companySettings.findFirst();
+
+    const html = renderGRNHtml({
+      grnNumber: ra.grnNumber,
+      raNumber: ra.number,
+      receivedAt: ra.grnIssuedAt?.toISOString() ?? ra.receivedAt?.toISOString() ?? new Date().toISOString(),
+      receivedBy: ra.receivedBy ?? null,
+      deliverySignedBy: ra.deliverySignedBy ?? null,
+      courierCompany: ra.courierCompany ?? null,
+      courierWaybill: ra.courierWaybill ?? null,
+      reason: ra.reason,
+      notes: ra.notes ?? null,
+      partner: { name: ra.partner.name },
+      lines: ra.lines.map((l: any) => ({
+        title: l.title?.title ?? 'Unknown',
+        isbn: l.title?.isbn13 ?? null,
+        quantityAuthorized: l.quantity,
+        condition: l.condition,
+        notes: l.notes ?? null,
+      })),
+      company: settings ? {
+        name: settings.companyName ?? 'Xarra Books',
+        tradingAs: settings.tradingAs ?? null,
+        addressLine1: settings.addressLine1 ?? null,
+        city: settings.city ?? null,
+        province: settings.province ?? null,
+        postalCode: settings.postalCode ?? null,
+        phone: settings.phone ?? null,
+        email: settings.email ?? null,
+        logoUrl: settings.logoUrl ?? null,
+      } : { name: 'Xarra Books', tradingAs: null, addressLine1: null, city: null, province: null, postalCode: null, phone: null, email: null, logoUrl: null },
+    });
+
+    const pdfBuffer = await generatePdf(html);
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="${ra.grnNumber}.pdf"`);
+    return reply.send(pdfBuffer);
   });
 
   // Inspect returned goods (record per-line condition breakdown)

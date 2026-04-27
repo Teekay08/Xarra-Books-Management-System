@@ -52,6 +52,12 @@ const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+const updateProductAccessSchema = z.object({
+  xarraAccess:           z.boolean().optional(),
+  billetterieAccess:     z.boolean().optional(),
+  billetterieSystemRole: z.enum(['MANAGER', 'ADMIN']).nullable().optional(),
+});
+
 export async function userRoutes(app: FastifyInstance) {
   // List users with PM/admin role — used by Project form's "Project Manager" picker.
   // Accessible to admin + project_manager so PMs can create projects too.
@@ -179,6 +185,32 @@ export async function userRoutes(app: FastifyInstance) {
         isActive: updated.isActive ?? true,
       },
     };
+  });
+
+  // Update product access (admin only)
+  app.patch<{ Params: { id: string } }>('/:id/product-access', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const body = updateProductAccessSchema.parse(request.body);
+
+    const updateData: Record<string, any> = { updatedAt: new Date() };
+    if (body.xarraAccess       !== undefined) updateData.xarraAccess           = body.xarraAccess;
+    if (body.billetterieAccess !== undefined) updateData.billetterieAccess     = body.billetterieAccess;
+    if ('billetterieSystemRole' in body)      updateData.billetterieSystemRole = body.billetterieSystemRole ?? null;
+
+    const [updated] = await app.db
+      .update(authUsers)
+      .set(updateData)
+      .where(eq(authUsers.id, request.params.id))
+      .returning({
+        id: authUsers.id,
+        name: authUsers.name,
+        email: authUsers.email,
+        xarraAccess: authUsers.xarraAccess,
+        billetterieAccess: authUsers.billetterieAccess,
+        billetterieSystemRole: authUsers.billetterieSystemRole,
+      });
+
+    if (!updated) return reply.notFound('User not found');
+    return { data: updated };
   });
 
   // Resend verification email (admin only)

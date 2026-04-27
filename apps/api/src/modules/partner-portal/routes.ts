@@ -1800,7 +1800,9 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
     return { data: order };
   });
 
-  // Confirm order (SUBMITTED → CONFIRMED)
+  // Confirm order (SUBMITTED or RECEIVED → CONFIRMED)
+  // Portal orders arrive as SUBMITTED; staff-captured orders arrive as RECEIVED.
+  // Both are confirmable — they are semantically identical from the hub's perspective.
   app.post<{ Params: { id: string } }>('/orders/:id/confirm', {
     preHandler: requireRole('admin', 'operations'),
   }, async (request, reply) => {
@@ -1809,7 +1811,9 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
       with: { lines: true },
     });
     if (!order) return reply.notFound('Order not found');
-    if (order.status !== 'SUBMITTED') return reply.badRequest('Order must be in SUBMITTED status');
+    if (!['SUBMITTED', 'RECEIVED'].includes(order.status)) {
+      return reply.badRequest('Order must be in SUBMITTED or RECEIVED status to confirm');
+    }
 
     const userId = request.session?.user?.id;
 
@@ -1900,9 +1904,10 @@ export async function partnerPortalAdminRoutes(app: FastifyInstance) {
 
     await app.db.update(partnerOrders).set({
       status: 'DISPATCHED',
-      courierCompany: body?.courierCompany,
-      courierWaybill: body?.courierWaybill,
-      courierTrackingUrl: body?.courierTrackingUrl,
+      courierCompany: body?.courierCompany || null,
+      courierWaybill: body?.courierWaybill || null,
+      courierTrackingUrl: body?.courierTrackingUrl || null,
+      expectedDeliveryDate: body?.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : null,
       dispatchedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(partnerOrders.id, order.id));

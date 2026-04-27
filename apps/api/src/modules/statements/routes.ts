@@ -155,8 +155,20 @@ async function computeStatementData(
 
 export async function statementRoutes(app: FastifyInstance) {
 
-  // ── Batch list ─────────────────────────────────────────────────────────────
-  app.get('/batches', { preHandler: requireAuth }, async () => {
+  // ── Batch list — supports ?status=X or ?status=X,Y ─────────────────────────
+  app.get('/batches', { preHandler: requireAuth }, async (request) => {
+    const { status } = request.query as { status?: string };
+
+    // Build optional WHERE clause from comma-separated status values
+    let statusWhere = '';
+    if (status) {
+      const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+      if (statuses.length > 0) {
+        const escaped = statuses.map(s => `'${s.replace(/'/g, "''")}'`).join(',');
+        statusWhere = `WHERE sb.status IN (${escaped})`;
+      }
+    }
+
     const rows = await app.db.execute(sql`
       SELECT
         sb.id, sb.period_from, sb.period_to, sb.period_label, sb.status,
@@ -166,6 +178,7 @@ export async function statementRoutes(app: FastifyInstance) {
         COUNT(sbi.id) FILTER (WHERE sbi.status = 'FAILED')::int AS total_failed
       FROM statement_batches sb
       LEFT JOIN statement_batch_items sbi ON sbi.batch_id = sb.id
+      ${sql.raw(statusWhere)}
       GROUP BY sb.id, sb.period_from, sb.period_to, sb.period_label, sb.status,
                sb.reviewed_at, sb.approved_at, sb.sent_at, sb.notes, sb.created_at
       ORDER BY sb.created_at DESC
@@ -397,11 +410,14 @@ export async function statementRoutes(app: FastifyInstance) {
     let sent = 0;
     let failed = 0;
 
+    // Normalise to ISO string regardless of what postgres.js returns for the TIMESTAMPTZ column
+    // (Date object, string, or postgres.js internal type)
+    const periodFrom = new Date(batch.period_from as any).toISOString();
+    const periodTo   = new Date(batch.period_to   as any).toISOString();
+
     for (const item of items as any[]) {
       try {
         const consolidated = item.send_to_type === 'HQ_CONSOLIDATED';
-        const periodFrom = typeof batch.period_from === 'string' ? batch.period_from : new Date(batch.period_from).toISOString();
-        const periodTo = typeof batch.period_to === 'string' ? batch.period_to : new Date(batch.period_to).toISOString();
         const stmtData = await computeStatementData(
           app.db,
           item.partner_id,

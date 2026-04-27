@@ -189,11 +189,50 @@ import { TimesheetDetail } from './pages/budgeting/TimesheetDetail';
 // Multi-company
 import { LandingPage } from './pages/LandingPage';
 import { CompanySelector } from './pages/CompanySelector';
+import { useProducts } from './hooks/useProducts';
+import { useNavigate } from 'react-router';
 // Billetterie Software
 import { BilletterieHub } from './pages/billetterie/BilletterieHub';
 import { BilletterieProjectList } from './pages/billetterie/BilletterieProjectList';
 import { BilletterieProjectCreate } from './pages/billetterie/BilletterieProjectCreate';
 import { BilletterieProjectDetail } from './pages/billetterie/BilletterieProjectDetail';
+import BilletterieIssueDetail from './pages/billetterie/BilletterieIssueDetail';
+import BilletterieMyWork from './pages/billetterie/BilletterieMyWork';
+import BilletterieClientView from './pages/billetterie/BilletterieClientView';
+
+// Guard that blocks Billetterie routes for users without billetterieAccess
+function BilletterieGuard({ children }: { children: React.ReactNode }) {
+  const { billetterieAccess, isPending } = useProducts();
+  const navigate = useNavigate();
+
+  if (isPending) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="h-8 w-8 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!billetterieAccess) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-4 text-center">
+        <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-2xl">🔒</div>
+        <h2 className="text-xl font-semibold text-gray-900">Access Restricted</h2>
+        <p className="text-sm text-gray-500 max-w-xs">
+          You don't have access to Billetterie. Contact your administrator to request access.
+        </p>
+        <button
+          onClick={() => navigate('/')}
+          className="mt-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          Return to Xarra
+        </button>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
 
 const router = createBrowserRouter([
   // Unauthenticated public pages
@@ -434,12 +473,14 @@ const router = createBrowserRouter([
       { path: 'admin/system-health', element: <ProtectedRoute allowedRoles={['admin']}><SystemHealth /></ProtectedRoute> },
       { path: 'admin/deletion-requests', element: <ProtectedRoute allowedRoles={['admin']}><DeletionRequests /></ProtectedRoute> },
 
-      // Billetterie Software
-      { path: 'billetterie', element: <BilletterieHub /> },
-      { path: 'billetterie/projects', element: <BilletterieProjectList /> },
-      { path: 'billetterie/projects/new', element: <BilletterieProjectCreate /> },
-      { path: 'billetterie/projects/:id', element: <BilletterieProjectDetail /> },
-      { path: 'billetterie/projects/:id/edit', element: <BilletterieProjectCreate /> },
+      // Billetterie Software — guarded by product access check
+      { path: 'billetterie', element: <BilletterieGuard><BilletterieHub /></BilletterieGuard> },
+      { path: 'billetterie/projects', element: <BilletterieGuard><BilletterieProjectList /></BilletterieGuard> },
+      { path: 'billetterie/projects/new', element: <BilletterieGuard><BilletterieProjectCreate /></BilletterieGuard> },
+      { path: 'billetterie/projects/:id', element: <BilletterieGuard><BilletterieProjectDetail /></BilletterieGuard> },
+      { path: 'billetterie/projects/:id/edit', element: <BilletterieGuard><BilletterieProjectCreate /></BilletterieGuard> },
+      { path: 'billetterie/projects/:projectId/issues/:issueId', element: <BilletterieGuard><BilletterieIssueDetail /></BilletterieGuard> },
+      { path: 'billetterie/my-work', element: <BilletterieGuard><BilletterieMyWork /></BilletterieGuard> },
 
       // 404
       { path: '*', element: <NotFound /> },
@@ -448,6 +489,9 @@ const router = createBrowserRouter([
 
   // Contractor Portal (magic link access, no login)
   { path: 'contractor/:token', element: <ContractorPortal /> },
+
+  // Billetterie Client Portal (public — token is the credential, no auth)
+  { path: 'billetterie/client/:token', element: <BilletterieClientView /> },
 
   // Public SOW review — for external contractors who don't have system accounts
   { path: 'sow-review/:id', element: <SowReview /> },

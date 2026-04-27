@@ -1,12 +1,42 @@
 /**
  * Role-Based Access Control (RBAC) Permissions Matrix
  *
- * 5 system roles:
- *   ADMIN           — Full access to everything
- *   FINANCE         — Finance, budgeting, reports, payments
- *   PROJECT_MANAGER — Projects, staff, tasks, timesheets, SOWs
- *   AUTHOR          — Author portal (own profile, titles, royalties)
- *   STAFF           — My Workspace (own tasks, timesheets, time logging)
+ * ── XARRA BOOKS ──────────────────────────────────────────────────────────────
+ * 5 system roles (stored on the Better Auth user record as `role`):
+ *
+ *   admin          — Full access to every module and action.
+ *
+ *   finance        — Financial cycle: invoices, credit/debit notes, payments,
+ *                    remittances, expenses, royalties, budgeting, statements.
+ *                    Read-only on titles/partners/consignments for context.
+ *
+ *   projectManager — Business operations: titles, partners, consignments,
+ *                    inventory, order management, project management, courier.
+ *                    Read-only on invoices and royalties. No user/settings admin.
+ *                    (Key kept as `projectManager` for backward compatibility;
+ *                     conceptually covers both "Operations Manager" and "PM".)
+ *
+ *   author         — External author portal only: own profile, own titles,
+ *                    own royalty statements. No access to any business data.
+ *
+ *   staff          — Internal team member workspace only: own tasks, timesheets,
+ *                    planner. No access to any business or financial data.
+ *
+ * ── BILLETTERIE SOFTWARE ─────────────────────────────────────────────────────
+ * System-level Billetterie roles (stored as `billetterieSystemRole` on user):
+ *
+ *   ADMIN   — Full Billetterie access: all projects, team management, settings.
+ *   MANAGER — Can create projects; has project-team role access within projects.
+ *   (null)  — Team member only: access scoped to projects they're assigned to.
+ *
+ * Project-team roles (stored in billetterie_project_team per project):
+ *
+ *   SPONSOR — Approves gate docs, advances phases, creates/edits issues. View all.
+ *   PM      — Full project control: tasks, issues, team, timesheets, milestones.
+ *   BA      — Creates/edits tasks, issues, deliverables; logs time; records meetings/docs.
+ *   ADMIN   — Administrative: meeting minutes, docs, action items; logs time; creates issues.
+ *
+ * Note: Xarra system `admin` role always bypasses all Billetterie checks too.
  *
  * Staff members' actual job function (Editor, Typesetter, Cover Designer)
  * is stored in their staff_members profile, not the system role.
@@ -118,19 +148,35 @@ export const PERMISSIONS: PermissionMatrix = {
     employeePortal: ['read', 'create', 'update'],
   },
   projectManager: {
-    // PM access intentionally excludes dashboard/catalog/finance/admin-settings modules.
-    budgeting: ['read', 'create', 'update', 'approve', 'export'], // manage project budgets
-    projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'], // full PM access
-    employeePortal: ['read', 'create', 'update'], // see own workspace too
+    // Business operations — titles, partners, consignments, inventory, orders, PM.
+    // Explicitly excludes: finance mutations, royalties, user management, settings.
+    dashboard:         ['read'],
+    authors:           ['read'],
+    titles:            ['read', 'create', 'update', 'delete'],
+    partners:          ['read', 'create', 'update'],
+    inventory:         ['read', 'create', 'update', 'delete'],
+    consignments:      ['read', 'create', 'update', 'approve'],
+    returns:           ['read', 'create', 'update', 'approve'],
+    invoices:          ['read'],               // read-only: POs and client invoices for context
+    purchaseOrders:    ['read', 'create', 'update', 'export'],
+    orderManagement:   ['read', 'create', 'update', 'approve'],
+    courierShipments:  ['read', 'create', 'update'],
+    partnerPortal:     ['read', 'create', 'update'],
+    reports:           ['read'],
+    sync:              ['read'],
+    budgeting:         ['read', 'create', 'update', 'approve', 'export'],
+    projectManagement: ['read', 'create', 'update', 'delete', 'approve', 'export'],
+    employeePortal:    ['read', 'create', 'update'],
   },
   author: {
-    dashboard: ['read'],
-    authors: ['read'], // own profile only (enforced at route level)
-    titles: ['read'],  // own titles only
+    // External author portal only — own data, enforced at route level.
+    authors:    ['read'],
+    titles:     ['read'],
     statements: ['read'],
-    reports: ['read'], // own royalty reports only
+    reports:    ['read'],
   },
   staff: {
+    // Internal team member — own workspace only, no business data access.
     employeePortal: ['read', 'create', 'update'],
   },
 };

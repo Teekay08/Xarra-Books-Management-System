@@ -9,8 +9,6 @@ import fp from 'fastify-plugin';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import postgres from 'postgres';
-import { config } from '../config.js';
 
 const dir = typeof __dirname !== 'undefined'
   ? __dirname
@@ -33,10 +31,28 @@ const PENDING_MIGRATIONS = [
   '0020_task_deliverables.sql',
   '0021_companies.sql',
   '0022_billetterie_projects.sql',
+  '0023_billetterie_tasks_bugs.sql',
+  '0024_bil_project_team.sql',
+  '0025_bil_milestones_task_cols.sql',
+  '0026_bil_time_logs.sql',
+  '0027_bil_issues_comments.sql',
+  '0028_bil_issue_labels.sql',
+  '0029_bil_client_tokens.sql',
+  '0030_bil_documents_deliverables.sql',
+  '0031_user_product_access.sql',
+  '0032_bil_time_logs_deliverable.sql',
+  '0033_return_grn.sql',
+  '0034_pms_phase1.sql',
+  '0035_bil_support_desk.sql',
+  '0036_bil_change_requests.sql',
+  '0037_bil_testing.sql',
+  '0038_billetterie_org_settings.sql',
 ];
 
 export default fp(async (app) => {
-  const sql = postgres(config.database.url, { max: 1 });
+  // Reuse the existing postgres client from the Drizzle DB instance to avoid
+  // opening a second connection pool (which can time out on remote / limited DBs).
+  const sql = (app.db as any).$client as import('postgres').Sql;
 
   for (const file of PENDING_MIGRATIONS) {
     const filePath = resolve(MIGRATIONS_DIR, file);
@@ -59,18 +75,18 @@ export default fp(async (app) => {
         code === '42701' || // duplicate_column
         code === '42P07' || // duplicate_table
         code === '42710' || // duplicate_object (enum value)
+        code === '42P16' || // invalid_table_definition (e.g. column already nullable)
         msg.includes('already exists') ||
+        msg.includes('already nullable') ||
         msg.includes('duplicate')
       ) {
         app.log.debug({ file }, 'Migration already applied — skipping');
       } else {
         app.log.error({ err, file }, 'Migration failed');
-        await sql.end();
         throw new Error(`Migration ${file} failed: ${msg}`);
       }
     }
   }
 
-  await sql.end();
   app.log.info('Migrations complete');
 }, { name: 'migrations' });

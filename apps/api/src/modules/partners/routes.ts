@@ -2,9 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc, asc, and } from 'drizzle-orm';
 import { channelPartners, partnerBranches } from '@xarra/db';
 import { createChannelPartnerSchema, updateChannelPartnerSchema, paginationSchema, createPartnerBranchSchema, updatePartnerBranchSchema } from '@xarra/shared';
-import { requireAuth, requireRole } from '../../middleware/require-auth.js';
+import { requireAuth, requireRole, requireXarraBusinessUser } from '../../middleware/require-auth.js';
 
 export async function partnerRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', requireXarraBusinessUser);
+
   // List partners (paginated)
   app.get('/', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);

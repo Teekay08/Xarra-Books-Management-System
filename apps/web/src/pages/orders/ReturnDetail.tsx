@@ -32,6 +32,9 @@ interface ReturnDetail {
   creditNoteId?: string | null;
   creditNote?: { number: string } | null;
   notes?: string | null;
+  grnNumber?: string | null;
+  grnIssuedAt?: string | null;
+  deliverySignedBy?: string | null;
   lines: ReturnLine[];
   createdAt: string;
 }
@@ -183,7 +186,21 @@ export function ReturnDetail() {
         );
       case 'RECEIVED':
         return (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            {ra.grnNumber && (
+              <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div>
+                  <p className="text-xs font-semibold text-green-800">
+                    GRN issued: <span className="font-mono">{ra.grnNumber}</span>
+                    {ra.deliverySignedBy && <span className="font-normal text-green-700"> · Signed by {ra.deliverySignedBy}</span>}
+                  </p>
+                </div>
+                <a href={`/api/v1/returns/${id}/grn`} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto text-xs text-green-700 underline whitespace-nowrap">
+                  Print GRN →
+                </a>
+              </div>
+            )}
             <p className="text-xs text-gray-500">Inspect each line item below, then mark as inspected.</p>
             <button onClick={() => inspectMutation.mutate()} disabled={inspectMutation.isPending}
               className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 disabled:opacity-50">
@@ -217,12 +234,27 @@ export function ReturnDetail() {
         subtitle={`Return from ${ra.partner?.name ?? '—'} · ${ra.reason}`}
         backTo={{ href: '/orders/returns', label: 'Returns' }}
         action={
-          <button
-            onClick={() => window.open(`/api/returns/${id}/pdf`, '_blank')}
-            className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"
-          >
-            Download RA PDF
-          </button>
+          <div className="flex items-center gap-2">
+            {ra.grnNumber && (
+              <a
+                href={`/api/v1/returns/${id}/grn`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                GRN {ra.grnNumber}
+              </a>
+            )}
+            <a
+              href={`/api/v1/returns/${id}/pdf`}
+              target="_blank" rel="noopener noreferrer"
+              className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              RA PDF
+            </a>
+          </div>
         }
       />
 
@@ -261,6 +293,14 @@ export function ReturnDetail() {
                     <p className={`text-xs mt-0.5 ${isCurrent ? 'text-gray-600' : isCompleted ? 'text-green-600' : 'text-gray-400'}`}>
                       {step.description}
                     </p>
+                    {/* Show GRN reference on the RECEIVED step whether current or completed */}
+                    {step.key === 'RECEIVED' && ra.grnNumber && (isCompleted || isCurrent) && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs font-mono font-semibold text-green-700">{ra.grnNumber}</span>
+                        <a href={`/api/v1/returns/${id}/grn`} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] text-green-600 hover:underline">Print GRN</a>
+                      </div>
+                    )}
                     {isCurrent && (
                       <div className="mt-3">{renderCTA()}</div>
                     )}
@@ -317,17 +357,28 @@ export function ReturnDetail() {
       </div>
 
       {/* Cross-references */}
-      {(ra.consignment || ra.creditNote) && (
+      {(ra.consignment || ra.creditNote || ra.grnNumber) && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">References</h2>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Documents &amp; References</h2>
           <div className="flex flex-wrap gap-2">
+            {ra.grnNumber && (
+              <a href={`/api/v1/returns/${id}/grn`} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-800 border border-green-200 rounded-lg text-xs font-semibold hover:bg-green-100 transition-colors">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                GRN: {ra.grnNumber} ↗
+              </a>
+            )}
             {ra.consignment && (
-              <Link to={`/consignments?search=${ra.consignment.number}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-lg text-xs font-semibold hover:bg-yellow-100">
+              <Link to={`/consignments?search=${ra.consignment.number}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-lg text-xs font-semibold hover:bg-yellow-100 transition-colors">
                 SOR: {ra.consignment.number} →
               </Link>
             )}
             {ra.creditNote && (
-              <Link to={`/credit-notes?search=${ra.creditNote.number}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-800 border border-green-200 rounded-lg text-xs font-semibold hover:bg-green-100">
+              <Link to={`/credit-notes?search=${ra.creditNote.number}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-800 border border-teal-200 rounded-lg text-xs font-semibold hover:bg-teal-100 transition-colors">
                 Credit Note: {ra.creditNote.number} →
               </Link>
             )}

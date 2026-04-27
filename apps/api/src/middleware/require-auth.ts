@@ -72,6 +72,57 @@ export function requireRole(...roles: string[]) {
 }
 
 /**
+ * Middleware that requires the user to have access to a specific product.
+ * Products: 'xarra' | 'billetterie'
+ *
+ * Usage: { preHandler: requireProduct('billetterie') }
+ *
+ * System admins bypass the product check — they always have access everywhere.
+ */
+export function requireProduct(product: 'xarra' | 'billetterie') {
+  return async function (request: FastifyRequest, reply: FastifyReply) {
+    if (!request.session?.user) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+
+    const user = request.session.user as any;
+
+    // System admins have access to all products
+    if (canonicalRole(user.role ?? '') === 'admin') return;
+
+    const hasAccess = product === 'billetterie'
+      ? user.billetterieAccess === true
+      : user.xarraAccess !== false; // xarra defaults to true
+
+    if (!hasAccess) {
+      return reply.status(403).send({
+        error: 'Product access denied',
+        product,
+        message: `You do not have access to ${product === 'billetterie' ? 'Billetterie Software' : 'Xarra Books'}. Contact your administrator.`,
+      });
+    }
+  };
+}
+
+/**
+ * Blocks roles that have no business-data access (staff, author) from modules
+ * where they should never appear. Apply as a module-level hook via
+ * `app.addHook('preHandler', requireXarraBusinessUser)`.
+ */
+export async function requireXarraBusinessUser(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.session?.user) {
+    return reply.status(401).send({ error: 'Authentication required' });
+  }
+  const canon = canonicalRole(request.session.user.role ?? '');
+  if (canon === 'staff' || canon === 'author') {
+    return reply.status(403).send({
+      error: 'Access denied',
+      message: 'This area requires a business user role (Admin, Finance, or Operations).',
+    });
+  }
+}
+
+/**
  * Factory that creates a middleware requiring specific permission on a module.
  * Usage: { preHandler: requirePermission('invoices', 'create') }
  */

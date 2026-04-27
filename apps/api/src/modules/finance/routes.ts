@@ -1,8 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql, desc, inArray } from 'drizzle-orm';
 import {
-
-
   invoices, invoiceLines, creditNotes, creditNoteLines, debitNotes,
   payments, paymentAllocations, channelPartners,
   partnerBranches, remittances, remittanceInvoices, remittanceCreditNotes, companySettings,
@@ -12,7 +10,7 @@ import {
 } from '@xarra/db';
 import { createInvoiceSchema, recordPaymentSchema, paginationSchema, createRemittanceSchema, createDebitNoteSchema, sendDocumentSchema, createPurchaseOrderSchema } from '@xarra/shared';
 import { VAT_RATE, roundAmount, calculateLineDiscount, DEFAULT_PAYMENT_TERMS_DAYS } from '@xarra/shared';
-import { requireAuth, requireRole, requirePermission } from '../../middleware/require-auth.js';
+import { requireAuth, requireRole, requirePermission, requireXarraBusinessUser } from '../../middleware/require-auth.js';
 import { requireIdempotencyKey, getIdempotencyKey } from '../../middleware/idempotency.js';
 import { nextInvoiceNumber, nextCreditNoteNumber, nextDebitNoteNumber, nextQuotationNumber, nextPurchaseOrderNumber } from './invoice-number.js';
 import { generatePdf } from '../../services/pdf.js';
@@ -81,6 +79,11 @@ function deriveInvoiceStatus(amountPaid: number, effectiveTotal: number): Invoic
 }
 
 export async function financeRoutes(app: FastifyInstance) {
+  // Block staff and author roles from the entire finance module.
+  // Admin, finance, and projectManager roles are allowed through;
+  // route-level guards below enforce finer-grained write permissions.
+  app.addHook('preHandler', requireXarraBusinessUser);
+
   // ==========================================
   // NEXT DOCUMENT NUMBER (suggested / preview)
   // ==========================================
@@ -179,10 +182,13 @@ export async function financeRoutes(app: FastifyInstance) {
   app.get('/invoices', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search, sortOrder } = query;
-    const { status } = request.query as { status?: string };
+    const { status, consignmentOnly, partnerId } = request.query as {
+      status?: string;
+      consignmentOnly?: string;
+      partnerId?: string;
+    };
     const offset = (page - 1) * limit;
 
-    const { partnerId } = request.query as { partnerId?: string };
     const conditions: ReturnType<typeof sql>[] = [];
     if (search) conditions.push(sql`(${invoices.number} ILIKE ${'%' + search + '%'})`);
     if (status) {
@@ -190,6 +196,9 @@ export async function financeRoutes(app: FastifyInstance) {
       if (statuses.length > 0) {
         conditions.push(inArray(invoices.status, statuses as any[]) as any);
       }
+    }
+    if (consignmentOnly === 'true') {
+      conditions.push(sql`${invoices.consignmentId} IS NOT NULL`);
     }
     if (partnerId) conditions.push(sql`${invoices.partnerId} = ${partnerId}`);
     const where = conditions.length > 0
@@ -1041,20 +1050,34 @@ export async function financeRoutes(app: FastifyInstance) {
   // REMITTANCES
   // ==========================================
 
-  // List remittances
+  // List remittances — supports ?status=X or ?status=X,Y and ?search=
   app.get('/remittances', { preHandler: requireAuth }, async (request) => {
     const query = paginationSchema.parse(request.query);
     const { page, limit, search } = query;
+    const { status } = request.query as { status?: string };
     const offset = (page - 1) * limit;
 
-    const where = search
-      ? sql`(${remittances.partnerRef} ILIKE ${'%' + search + '%'} OR ${remittances.status} ILIKE ${'%' + search + '%'})`
+    const conditions: any[] = [];
+    if (search) {
+      conditions.push(sql`(${remittances.partnerRef} ILIKE ${'%' + search + '%'} OR ${remittances.status} ILIKE ${'%' + search + '%'})`);
+    }
+    if (status) {
+      const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+      if (statuses.length === 1) {
+        conditions.push(eq(remittances.status, statuses[0] as any));
+      } else if (statuses.length > 1) {
+        conditions.push(inArray(remittances.status, statuses as any[]));
+      }
+    }
+
+    const where = conditions.length > 0
+      ? sql.join(conditions, sql` AND `)
       : undefined;
 
     const [items, countResult] = await Promise.all([
       app.db.query.remittances.findMany({
         where: where ? () => where : undefined,
-        with: { partner: true },
+        with: { partner: true, invoiceAllocations: true },
         orderBy: (r, { desc }) => [desc(r.createdAt)],
         limit,
         offset,
@@ -2063,7 +2086,7 @@ export async function financeRoutes(app: FastifyInstance) {
   });
 
   // Edit draft credit note (DRAFT only)
-  app.patch<{ Params: { id: string } }>('/credit-notes/:id', { preHandler: requirePermission('finance', 'update') }, async (request, reply) => {
+  app.patch<{ Params: { id: string } }>('/credit-notes/:id', { preHandler: requirePermission('creditNotes', 'update') }, async (request, reply) => {
     const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
     if (!cn) return reply.notFound('Credit note not found');
     if (cn.status !== 'DRAFT') return reply.badRequest('Only DRAFT credit notes can be edited');
@@ -2112,7 +2135,7 @@ export async function financeRoutes(app: FastifyInstance) {
   });
 
   // Submit credit note for review (DRAFT → PENDING_REVIEW)
-  app.post<{ Params: { id: string } }>('/credit-notes/:id/submit', { preHandler: requirePermission('finance', 'update') }, async (request, reply) => {
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/submit', { preHandler: requirePermission('creditNotes', 'update') }, async (request, reply) => {
     const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
     if (!cn) return reply.notFound('Credit note not found');
     if (cn.status !== 'DRAFT') return reply.badRequest('Only DRAFT credit notes can be submitted for review');
@@ -2183,7 +2206,7 @@ export async function financeRoutes(app: FastifyInstance) {
   });
 
   // Mark credit note as sent (APPROVED → SENT)
-  app.post<{ Params: { id: string } }>('/credit-notes/:id/send', { preHandler: requirePermission('finance', 'update') }, async (request, reply) => {
+  app.post<{ Params: { id: string } }>('/credit-notes/:id/send', { preHandler: requirePermission('creditNotes', 'update') }, async (request, reply) => {
     const body = request.body as { sentTo?: string };
     const cn = await app.db.query.creditNotes.findFirst({ where: eq(creditNotes.id, request.params.id) });
     if (!cn) return reply.notFound('Credit note not found');

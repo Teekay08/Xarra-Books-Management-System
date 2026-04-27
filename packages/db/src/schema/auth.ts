@@ -15,6 +15,18 @@ export const user = pgTable('user', {
   banReason: text('banReason'),
   banExpires: integer('banExpires'),
   isActive: boolean('isActive').default(true),
+
+  // ─── Product access ─────────────────────────────────────────────────────────
+  // Controls which products (companies) the user can enter after login.
+  // Designed for Option A → Option B migration: these will eventually map to
+  // workspace/organisation memberships.
+  xarraAccess:           boolean('xarraAccess').notNull().default(true),
+  billetterieAccess:     boolean('billetterieAccess').notNull().default(false),
+  // Billetterie system-level role (orthogonal to project-scoped team roles).
+  // NULL = standard team member (can only work on projects they are assigned to)
+  // 'MANAGER' = can create / archive projects, see all projects
+  // 'ADMIN'   = full Billetterie admin (user management, all projects)
+  billetterieSystemRole: text('billetterieSystemRole'),
 });
 
 export const session = pgTable('session', {
