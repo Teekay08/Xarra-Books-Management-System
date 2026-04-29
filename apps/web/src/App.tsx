@@ -290,6 +290,7 @@ const router = createBrowserRouter([
       { path: 'invoices', element: <InvoiceList /> },
       { path: 'invoices/new', element: <InvoiceCreate /> },
       { path: 'invoices/:id', element: <InvoiceDetail /> },
+      { path: 'invoices/:id/edit', element: <InvoiceCreate /> },
 
       // Payments
       { path: 'payments', element: <PaymentList /> },

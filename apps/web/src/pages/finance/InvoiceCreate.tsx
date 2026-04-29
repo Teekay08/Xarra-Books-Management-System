@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type PaginatedResponse } from '../../lib/api';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
@@ -93,11 +93,14 @@ function PartnerCard({ partner, onEdit }: { partner: Partner; onEdit: () => void
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function InvoiceCreate() {
-  const navigate    = useNavigate();
+  const navigate       = useNavigate();
   const [searchParams] = useSearchParams();
-  const qc          = useQueryClient();
+  const { id: editId } = useParams<{ id?: string }>();
+  const isEdit         = !!editId;
+  const qc             = useQueryClient();
 
   // ── Form state ──────────────────────────────────────────────────
+  const [loaded, setLoaded]             = useState(!isEdit); // skip guard until data loaded
   const [isDirty, setIsDirty]           = useState(false);
   const [error, setError]               = useState('');
   const [partnerId, setPartnerId]       = useState(searchParams.get('partnerId') ?? '');
@@ -114,6 +117,40 @@ export function InvoiceCreate() {
   const [showPartnerCreate, setShowPartnerCreate]   = useState(false);
 
   const partnerOrderId = searchParams.get('partnerOrderId');
+
+  // ── Fetch existing invoice when editing ──────────────────────────
+  const { data: editData } = useQuery({
+    queryKey: ['invoice-edit', editId],
+    queryFn: () => api<{ data: any }>(`/finance/invoices/${editId}`),
+    enabled: isEdit,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (!isEdit || !editData?.data) return;
+    const inv = editData.data;
+    setPartnerId(inv.partnerId ?? inv.partner?.id ?? '');
+    setInvoiceDate(inv.invoiceDate?.split('T')[0] ?? today());
+    setTermsDays(-1);
+    setCustomDue(inv.dueDate?.split('T')[0] ?? '');
+    setTaxInclusive(inv.taxInclusive ?? false);
+    setPoNumber(inv.purchaseOrderNumber ?? '');
+    setCustRef(inv.customerReference ?? '');
+    setNotes(inv.notes ?? '');
+    setConsignmentId(inv.consignmentId ?? '');
+    if (inv.lines?.length) {
+      setLines(inv.lines.map((l: any) => ({
+        _id: uid(),
+        titleId:     l.titleId ?? '',
+        description: l.description ?? '',
+        quantity:    Number(l.quantity),
+        unitPrice:   Number(l.unitPrice),
+        discountPct: Number(l.discountPct),
+        discountExplicit: true,
+      })));
+    }
+    setLoaded(true);
+  }, [editData]);
 
   // ── Data fetching ────────────────────────────────────────────────
   const { data: partnersData } = useQuery({
@@ -250,23 +287,30 @@ export function InvoiceCreate() {
   // ── Submit ────────────────────────────────────────────────────────
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
-      api<{ data: { id: string } }>('/finance/invoices', {
-        method: 'POST',
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': uid() },
-      }),
+      isEdit
+        ? api<{ data: { id: string } }>(`/finance/invoices/${editId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(body),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        : api<{ data: { id: string } }>('/finance/invoices', {
+            method: 'POST',
+            body: JSON.stringify(body),
+            headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': uid() },
+          }),
     onSuccess: async res => {
-      if (partnerOrderId && res.data?.id) {
+      if (!isEdit && partnerOrderId && res.data?.id) {
         await api(`/partner-admin/orders/${partnerOrderId}/link`, {
           method: 'PATCH', body: JSON.stringify({ invoiceId: res.data.id }),
         }).catch(() => {});
       }
       qc.invalidateQueries({ queryKey: ['invoices'] });
+      qc.invalidateQueries({ queryKey: ['invoice', editId] });
       qc.invalidateQueries({ queryKey: ['partner-admin-orders'] });
       setIsDirty(false);
-      navigate('/invoices');
+      navigate(isEdit ? `/invoices/${editId}` : '/invoices');
     },
-    onError: (e: Error) => setError(e.message || 'Failed to create invoice'),
+    onError: (e: Error) => setError(e.message || (isEdit ? 'Failed to save changes' : 'Failed to create invoice')),
   });
 
   function validate() {
@@ -307,6 +351,12 @@ export function InvoiceCreate() {
   const partnerOpts = allPartners.map(p => ({ value: p.id, label: p.name, subtitle: `${Number(p.discountPct)}% discount` }));
   const titleOpts   = allTitles.map(t => ({ value: t.id, label: t.title, subtitle: t.isbn13 ?? undefined }));
 
+  if (isEdit && !loaded) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="text-sm text-gray-400">Loading invoice…</div>
+    </div>
+  );
+
   return (
     <div className="max-w-[900px]">
       <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
@@ -314,23 +364,28 @@ export function InvoiceCreate() {
       {/* ── Top bar ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">New Invoice</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Number will be assigned: <span className="font-mono font-semibold text-gray-600">{nextNumber}</span></p>
+          <h1 className="text-xl font-bold text-gray-900">{isEdit ? 'Edit Invoice' : 'New Invoice'}</h1>
+          {isEdit
+            ? <p className="text-xs text-gray-400 mt-0.5">Only DRAFT invoices can be edited</p>
+            : <p className="text-xs text-gray-400 mt-0.5">Number will be assigned: <span className="font-mono font-semibold text-gray-600">{nextNumber}</span></p>
+          }
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => navigate('/invoices')}
+          <button type="button" onClick={() => navigate(isEdit ? `/invoices/${editId}` : '/invoices')}
             className="px-3.5 py-2 rounded-lg border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors">
             Cancel
           </button>
-          <button type="button" onClick={submit} disabled={mutation.isPending}
-            className="px-3.5 py-2 rounded-lg border border-xarra-red text-xarra-red text-xs font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
-            Save as Draft
-          </button>
+          {!isEdit && (
+            <button type="button" onClick={submit} disabled={mutation.isPending}
+              className="px-3.5 py-2 rounded-lg border border-xarra-red text-xarra-red text-xs font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
+              Save as Draft
+            </button>
+          )}
           <button type="button" onClick={submit} disabled={mutation.isPending}
             className="px-4 py-2 rounded-lg bg-xarra-red text-white text-xs font-semibold hover:bg-xarra-red-dark shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5">
             {mutation.isPending
-              ? <><span className="animate-spin text-sm">⏳</span> Creating…</>
-              : <>Create Invoice <span className="opacity-70">→</span></>}
+              ? <><span className="animate-spin text-sm">⏳</span> {isEdit ? 'Saving…' : 'Creating…'}</>
+              : <>{isEdit ? 'Save Changes' : 'Create Invoice'} <span className="opacity-70">→</span></>}
           </button>
         </div>
       </div>
@@ -658,20 +713,22 @@ export function InvoiceCreate() {
 
         {/* ── Bottom action bar ─────────────────────────────────── */}
         <div className="sticky bottom-0 -mx-6 px-6 py-4 bg-white/95 backdrop-blur border-t border-gray-100 flex items-center justify-between gap-3">
-          <button type="button" onClick={() => navigate('/invoices')}
+          <button type="button" onClick={() => navigate(isEdit ? `/invoices/${editId}` : '/invoices')}
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
             ← Cancel
           </button>
           <div className="flex gap-2">
-            <button type="button" onClick={submit} disabled={mutation.isPending}
-              className="px-4 py-2 rounded-lg border border-xarra-red text-xarra-red text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
-              Save as Draft
-            </button>
+            {!isEdit && (
+              <button type="button" onClick={submit} disabled={mutation.isPending}
+                className="px-4 py-2 rounded-lg border border-xarra-red text-xarra-red text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
+                Save as Draft
+              </button>
+            )}
             <button type="button" onClick={submit} disabled={mutation.isPending}
               className="px-5 py-2 rounded-lg bg-xarra-red text-white text-sm font-semibold hover:bg-xarra-red-dark shadow-sm transition-colors disabled:opacity-50 flex items-center gap-2">
               {mutation.isPending ? (
-                <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Creating…</>
-              ) : <>Create Invoice →</>}
+                <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> {isEdit ? 'Saving…' : 'Creating…'}</>
+              ) : <>{isEdit ? 'Save Changes →' : 'Create Invoice →'}</>}
             </button>
           </div>
         </div>
