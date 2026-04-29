@@ -6,6 +6,7 @@ import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { RecipientEditModal } from '../../components/RecipientEditModal';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
+import { QuickTitleCreate } from '../../components/QuickTitleCreate';
 import { VAT_RATE, roundAmount } from '@xarra/shared';
 
 interface Partner {
@@ -64,6 +65,8 @@ export function QuotationCreate() {
   const [lines,               setLines]              = useState<LineItem[]>([emptyLine()]);
   const [showRecipientModal,  setShowRecipientModal] = useState(false);
   const [showPartnerCreate,   setShowPartnerCreate]  = useState(false);
+  const [showTitleCreate,     setShowTitleCreate]    = useState(false);
+  const [pendingTitleLineId,  setPendingTitleLineId] = useState<string | null>(null);
 
   const { data: partnersData } = useQuery({ queryKey: ['partners-select'], queryFn: () => api<PaginatedResponse<Partner>>('/partners?limit=500') });
   const { data: titlesData }   = useQuery({ queryKey: ['titles-select'],   queryFn: () => api<PaginatedResponse<Title>>('/titles?limit=500') });
@@ -261,7 +264,10 @@ export function QuotationCreate() {
                 <div key={line._id} className="px-6 py-4">
                   <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-x-4 gap-y-2 items-start">
                     <div>
-                      <SearchableSelect options={titleOpts} value={line.titleId} onChange={val => updateLine(line._id, { titleId: val })} placeholder="Search titles…"/>
+                      <SearchableSelect options={titleOpts} value={line.titleId} onChange={val => updateLine(line._id, { titleId: val })} placeholder="Search titles…"
+                        onCreateNew={() => { setPendingTitleLineId(line._id); setShowTitleCreate(true); }}
+                        createNewLabel="+ Add new title"
+                      />
                       {line.titleId && (
                         <input value={line.description} onChange={e => updateLine(line._id, { description: e.target.value })}
                           placeholder="Add a description (optional)"
@@ -384,6 +390,22 @@ export function QuotationCreate() {
       )}
       {showPartnerCreate && (
         <QuickPartnerCreate onClose={() => setShowPartnerCreate(false)} onCreated={(p) => { setPartnerId(p.id); setIsDirty(true); }} />
+      )}
+      {showTitleCreate && (
+        <QuickTitleCreate
+          onClose={() => { setShowTitleCreate(false); setPendingTitleLineId(null); }}
+          onCreated={t => {
+            if (pendingTitleLineId) {
+              updateLine(pendingTitleLineId, {
+                titleId:     t.id,
+                description: t.title,
+                unitPrice:   Number(t.rrpZar),
+              });
+            }
+            setShowTitleCreate(false);
+            setPendingTitleLineId(null);
+          }}
+        />
       )}
     </div>
   );

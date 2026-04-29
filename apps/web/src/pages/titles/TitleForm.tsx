@@ -5,6 +5,7 @@ import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { QuickAuthorCreate } from '../../components/QuickAuthorCreate';
 import { TITLE_FORMATS, TITLE_STATUSES } from '@xarra/shared';
 
 interface Author { id: string; legalName: string; penName: string | null }
@@ -56,9 +57,10 @@ export function TitleForm() {
     queryFn: () => api<PaginatedResponse<Author>>('/authors?limit=500'),
   });
 
-  const [isDirty, setIsDirty] = useState(false);
-  const [error, setError] = useState('');
-  const [authorId, setAuthorId] = useState('');
+  const [isDirty,         setIsDirty]         = useState(false);
+  const [error,           setError]           = useState('');
+  const [authorId,        setAuthorId]        = useState('');
+  const [showAuthorCreate,setShowAuthorCreate] = useState(false);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -125,6 +127,8 @@ export function TitleForm() {
             value={authorId}
             onChange={setAuthorId}
             placeholder="Search authors..."
+            onCreateNew={() => setShowAuthorCreate(true)}
+            createNewLabel="+ Add new author"
           />
         </div>
 
@@ -194,6 +198,12 @@ export function TitleForm() {
           </button>
         </div>
       </form>
+      {showAuthorCreate && (
+        <QuickAuthorCreate
+          onClose={() => setShowAuthorCreate(false)}
+          onCreated={a => { setAuthorId(a.id); setShowAuthorCreate(false); }}
+        />
+      )}
     </div>
   );
 }

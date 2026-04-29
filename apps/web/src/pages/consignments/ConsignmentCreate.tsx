@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
+import { QuickTitleCreate } from '../../components/QuickTitleCreate';
 
 interface Partner { id: string; name: string; discountPct: string }
 interface Title { id: string; title: string; isbn13: string | null }
@@ -19,7 +20,9 @@ export function ConsignmentCreate() {
   const [error, setError] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   const [partnerId, setPartnerId] = useState(searchParams.get('partnerId') ?? '');
-  const [showPartnerCreate, setShowPartnerCreate] = useState(false);
+  const [showPartnerCreate,  setShowPartnerCreate]  = useState(false);
+  const [showTitleCreate,    setShowTitleCreate]    = useState(false);
+  const [pendingTitleLineIdx,setPendingTitleLineIdx]= useState<number | null>(null);
   const [lines, setLines] = useState<LineInput[]>([{ titleId: '', qtyDispatched: 1 }]);
   const partnerOrderId = searchParams.get('partnerOrderId');
 
@@ -170,6 +173,8 @@ export function ConsignmentCreate() {
                       setLines(updated);
                     }}
                     placeholder="Search titles..."
+                    onCreateNew={() => { setPendingTitleLineIdx(i); setShowTitleCreate(true); }}
+                    createNewLabel="+ Add new title"
                   />
                 </div>
                 <div className="col-span-2">
@@ -217,6 +222,20 @@ export function ConsignmentCreate() {
         <QuickPartnerCreate
           onClose={() => setShowPartnerCreate(false)}
           onCreated={(p) => setPartnerId(p.id)}
+        />
+      )}
+      {showTitleCreate && (
+        <QuickTitleCreate
+          onClose={() => { setShowTitleCreate(false); setPendingTitleLineIdx(null); }}
+          onCreated={t => {
+            if (pendingTitleLineIdx !== null) {
+              const updated = [...lines];
+              updated[pendingTitleLineIdx].titleId = t.id;
+              setLines(updated);
+            }
+            setShowTitleCreate(false);
+            setPendingTitleLineIdx(null);
+          }}
         />
       )}
     </div>

@@ -5,6 +5,7 @@ import { api, type PaginatedResponse } from '../../lib/api';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { RecipientEditModal } from '../../components/RecipientEditModal';
 import { QuickPartnerCreate } from '../../components/QuickPartnerCreate';
+import { QuickTitleCreate } from '../../components/QuickTitleCreate';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { VAT_RATE, roundAmount } from '@xarra/shared';
 
@@ -113,8 +114,10 @@ export function InvoiceCreate() {
   const [notes, setNotes]               = useState('');
   const [consignmentId, setConsignmentId] = useState(searchParams.get('consignmentId') ?? '');
   const [lines, setLines]               = useState<LineItem[]>([emptyLine()]);
-  const [showRecipientModal, setShowRecipientModal] = useState(false);
-  const [showPartnerCreate, setShowPartnerCreate]   = useState(false);
+  const [showRecipientModal,  setShowRecipientModal]  = useState(false);
+  const [showPartnerCreate,   setShowPartnerCreate]   = useState(false);
+  const [showTitleCreate,     setShowTitleCreate]     = useState(false);
+  const [pendingTitleLineId,  setPendingTitleLineId]  = useState<string | null>(null);
 
   const partnerOrderId = searchParams.get('partnerOrderId');
 
@@ -574,6 +577,8 @@ export function InvoiceCreate() {
                         value={line.titleId}
                         onChange={val => updateLine(line._id, { titleId: val })}
                         placeholder="Search titles…"
+                        onCreateNew={() => { setPendingTitleLineId(line._id); setShowTitleCreate(true); }}
+                        createNewLabel="+ Add new title"
                       />
                       {line.titleId && (
                         <input
@@ -759,6 +764,22 @@ export function InvoiceCreate() {
         <QuickPartnerCreate
           onClose={() => setShowPartnerCreate(false)}
           onCreated={p => { setPartnerId(p.id); setIsDirty(true); setShowPartnerCreate(false); }}
+        />
+      )}
+      {showTitleCreate && (
+        <QuickTitleCreate
+          onClose={() => { setShowTitleCreate(false); setPendingTitleLineId(null); }}
+          onCreated={t => {
+            if (pendingTitleLineId) {
+              updateLine(pendingTitleLineId, {
+                titleId:     t.id,
+                description: t.title,
+                unitPrice:   Number(t.rrpZar),
+              });
+            }
+            setShowTitleCreate(false);
+            setPendingTitleLineId(null);
+          }}
         />
       )}
     </div>

@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { SearchableSelect } from '../../components/SearchableSelect';
+import { QuickExpenseCategoryCreate } from '../../components/QuickExpenseCategoryCreate';
 import { v4 as uuidv4 } from 'uuid';
 
 export function ExpenseCreate() {
@@ -12,7 +13,8 @@ export function ExpenseCreate() {
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
   const [isDirty, setIsDirty] = useState(false);
-  const [categoryId, setCategoryId] = useState('');
+  const [categoryId,          setCategoryId]          = useState('');
+  const [showCategoryCreate,  setShowCategoryCreate]  = useState(false);
   const [taxInclusive, setTaxInclusive] = useState(false);
 
   const { data: categories } = useQuery({
@@ -74,6 +76,8 @@ export function ExpenseCreate() {
             onChange={setCategoryId}
             placeholder="Search categories..."
             required
+            onCreateNew={() => setShowCategoryCreate(true)}
+            createNewLabel="+ Add new category"
           />
         </div>
 
@@ -135,6 +139,12 @@ export function ExpenseCreate() {
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
         </div>
       </form>
+      {showCategoryCreate && (
+        <QuickExpenseCategoryCreate
+          onClose={() => setShowCategoryCreate(false)}
+          onCreated={cat => { setCategoryId(cat.id); setShowCategoryCreate(false); }}
+        />
+      )}
     </div>
   );
 }

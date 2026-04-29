@@ -5,6 +5,7 @@ import { api, type PaginatedResponse } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { SearchableSelect } from '../../components/SearchableSelect';
+import { QuickTitleCreate } from '../../components/QuickTitleCreate';
 import { VAT_RATE, roundAmount } from '@xarra/shared';
 import { formatR } from '../../lib/format';
 
@@ -35,6 +36,8 @@ export function CashSaleCreate() {
   const [error, setError] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   const [taxInclusive, setTaxInclusive] = useState(true);
+  const [showTitleCreate,     setShowTitleCreate]     = useState(false);
+  const [pendingTitleLineIdx, setPendingTitleLineIdx] = useState<number | null>(null);
   const [lines, setLines] = useState<LineInput[]>([
     { titleId: '', quantity: 1, unitPrice: 0, discount: 0 },
   ]);
@@ -225,6 +228,8 @@ export function CashSaleCreate() {
                     value={line.titleId}
                     onChange={(v) => updateLine(i, 'titleId', v)}
                     placeholder="Search titles..."
+                    onCreateNew={() => { setPendingTitleLineIdx(i); setShowTitleCreate(true); }}
+                    createNewLabel="+ Add new title"
                   />
                 </div>
                 <div className="col-span-1">
@@ -336,6 +341,21 @@ export function CashSaleCreate() {
           </button>
         </div>
       </form>
+      {showTitleCreate && (
+        <QuickTitleCreate
+          onClose={() => { setShowTitleCreate(false); setPendingTitleLineIdx(null); }}
+          onCreated={t => {
+            if (pendingTitleLineIdx !== null) {
+              const updated = [...lines];
+              updated[pendingTitleLineIdx].titleId   = t.id;
+              updated[pendingTitleLineIdx].unitPrice = Number(t.rrpZar);
+              setLines(updated);
+            }
+            setShowTitleCreate(false);
+            setPendingTitleLineIdx(null);
+          }}
+        />
+      )}
     </div>
   );
 }
