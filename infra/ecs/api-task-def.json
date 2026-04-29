@@ -22,6 +22,7 @@
         { "name": "PORT", "value": "3001" },
         { "name": "HOST", "value": "0.0.0.0" },
         { "name": "CORS_ORIGIN", "value": "https://app.xarrabooks.com" },
+        { "name": "WEB_URL", "value": "https://app.xarrabooks.com" },
         { "name": "AWS_REGION", "value": "af-south-1" },
         { "name": "S3_BUCKET", "value": "xarra-documents" }
       ],

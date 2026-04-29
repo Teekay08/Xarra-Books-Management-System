@@ -48,7 +48,7 @@ import { settlementRoutes } from './modules/settlement/routes.js';
 import { suspenseRoutes } from './modules/suspense/routes.js';
 import { projectManagementRoutes } from './modules/project-management/routes.js';
 import { aiRoutes } from './modules/ai/routes.js';
-import { billetterieRoutes } from './modules/billetterie/routes.js';
+import { billetterieRoutes } from './modules/billetterie/index.js';
 import { auditPlugin } from './middleware/audit.js';
 import { config } from './config.js';
 
@@ -60,6 +60,8 @@ export async function buildApp() {
         ? { target: 'pino-pretty', options: { colorize: true } }
         : undefined,
     },
+    // Remote DB migrations can take > 10 s on cold start — give plugins 90 s
+    pluginTimeout: 90_000,
   });
 
   // Core plugins

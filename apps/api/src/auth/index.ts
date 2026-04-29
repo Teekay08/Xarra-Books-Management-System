@@ -89,6 +89,21 @@ export const auth = betterAuth({
         defaultValue: true,
         required: false,
       },
+      // Product access — included in every session response
+      xarraAccess: {
+        type: 'boolean',
+        defaultValue: true,
+        required: false,
+      },
+      billetterieAccess: {
+        type: 'boolean',
+        defaultValue: false,
+        required: false,
+      },
+      billetterieSystemRole: {
+        type: 'string',
+        required: false,
+      },
     },
   },
 });

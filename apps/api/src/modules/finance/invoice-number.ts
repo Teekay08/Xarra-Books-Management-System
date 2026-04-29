@@ -220,9 +220,9 @@ export async function nextGRNNumber(db: NodePgDatabase<Record<string, unknown>>)
   const pattern = `GRN-${year}-%`;
 
   const result = await db.execute<{ maxNum: string | null }>(sql`
-    SELECT MAX(SUBSTRING(number FROM '-([0-9]+)$')::int) AS "maxNum"
-    FROM title_print_runs
-    WHERE number LIKE ${pattern}
+    SELECT MAX(SUBSTRING(grn_number FROM '-([0-9]+)$')::int) AS "maxNum"
+    FROM returns_authorizations
+    WHERE grn_number LIKE ${pattern}
   `);
 
   const nextNum = (Number(result[0]?.maxNum) || 0) + 1;

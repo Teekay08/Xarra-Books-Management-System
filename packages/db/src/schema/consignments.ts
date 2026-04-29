@@ -117,6 +117,9 @@ export const returnsAuthorizations = pgTable('returns_authorizations', {
   // Verification (manager sign-off)
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
   verifiedBy: text('verified_by'),
+  // Goods Return Note — auto-generated when goods are physically received
+  grnNumber: varchar('grn_number', { length: 20 }).unique(), // GRN-YYYY-NNNN
+  grnIssuedAt: timestamp('grn_issued_at', { withTimezone: true }),
   createdBy: text('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

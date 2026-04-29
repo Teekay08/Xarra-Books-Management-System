@@ -151,7 +151,8 @@ export function renderStatementHtml(data: StatementData): string {
     <div>
       ${logoHtml}
       <div class="company">${company.name}</div>
-      ${(company as any).tradingAs ? `<div class="company-sub">Trading as ${(company as any).tradingAs}</div>` : ''}
+      ${(company as any).addressLine1 ? `<div class="company-sub">${(company as any).addressLine1}</div>` : '<div class="company-sub">Midrand, Gauteng, South Africa</div>'}
+      ${company.vatNumber ? `<div class="company-sub">VAT: ${company.vatNumber}</div>` : ''}
     </div>
     <div>
       <div class="stmt-title">STATEMENT OF ACCOUNT</div>
@@ -163,17 +164,6 @@ export function renderStatementHtml(data: StatementData): string {
   </div>
 
   <div class="parties">
-    <div class="party">
-      <h3>From</h3>
-      <p><strong>${company.name}</strong></p>
-      ${(company as any).addressLine1 ? `<p>${(company as any).addressLine1}</p>` : '<p>Midrand, Gauteng, South Africa</p>'}
-      ${(company as any).addressLine2 ? `<p>${(company as any).addressLine2}</p>` : ''}
-      ${(company as any).city || (company as any).province ? `<p>${[(company as any).city, (company as any).province].filter(Boolean).join(', ')}</p>` : ''}
-      ${company.vatNumber ? `<p>VAT: ${company.vatNumber}</p>` : ''}
-      ${(company as any).registrationNumber ? `<p>Reg: ${(company as any).registrationNumber}</p>` : ''}
-      ${(company as any).phone ? `<p>Tel: ${(company as any).phone}</p>` : ''}
-      ${(company as any).email ? `<p>${(company as any).email}</p>` : ''}
-    </div>
     <div class="party">
       <h3>Account Holder</h3>
       <p><strong>${data.recipient.name}</strong></p>

@@ -57,6 +57,10 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'EXTENSION_REQUESTED',
   'EXTENSION_APPROVED',
   'EXTENSION_DECLINED',
+  'DELIVERABLE_SUBMITTED',
+  'DELIVERABLE_APPROVED',
+  'DELIVERABLE_REJECTED',
+  'PROJECT_READY_TO_CLOSE',
   'SYSTEM',
 ]);
 

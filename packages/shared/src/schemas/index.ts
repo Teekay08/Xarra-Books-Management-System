@@ -707,10 +707,16 @@ export const createOrderOnBehalfSchema = z.object({
   branchId: z.string().uuid().optional().nullable(),
   customerPoNumber: z.string().optional().nullable(),
   deliveryAddress: z.string().optional().nullable(),
+  expectedDeliveryDate: z.string().optional().nullable(),
+  source: z.enum(['EMAIL', 'PHONE', 'FAX', 'MANUAL', 'PORTAL']).optional().default('MANUAL'),
   notes: z.string().optional().nullable(),
+  internalNotes: z.string().optional().nullable(),
+  sendIntakeEmail: z.boolean().optional().default(false),
+  notifyEmail: z.string().email().optional().nullable(),
   lines: z.array(z.object({
     titleId: z.string().uuid(),
     quantity: z.number().int().positive(),
+    unitPrice: z.number().positive().optional(),
   })).min(1, 'At least one line item is required'),
 });
 
