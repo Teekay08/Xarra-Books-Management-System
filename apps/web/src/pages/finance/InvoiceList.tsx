@@ -76,7 +76,7 @@ export function InvoiceList() {
         </div>
         <div className="flex items-center gap-2">
           <ExportButton options={[{ label: 'Export CSV', onClick: () => setExportOpen(true) }]} />
-          <Link to="/finance/invoices/new"
+          <Link to="/invoices/new"
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#c0392b] text-white text-xs font-semibold hover:bg-[#a93226] shadow-sm transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
             New Invoice
@@ -91,7 +91,8 @@ export function InvoiceList() {
           <p className="text-sm font-semibold text-red-800">
             {overdueCount} overdue invoice{overdueCount > 1 ? 's' : ''} on this page
           </p>
-          <button onClick={() => handleTab('OVERDUE')} className="ml-auto text-xs font-semibold text-red-700 underline hover:no-underline">
+          <button onClick={() => handleTab('OVERDUE')}
+            className="ml-auto text-xs font-semibold text-red-700 underline hover:no-underline">
             View Overdue →
           </button>
         </div>
@@ -137,7 +138,7 @@ export function InvoiceList() {
                 Clear filters
               </button>
             ) : (
-              <Link to="/finance/invoices/new" className="text-xs text-[#c0392b] hover:underline">
+              <Link to="/invoices/new" className="text-xs text-[#c0392b] hover:underline">
                 Create your first invoice →
               </Link>
             )}
@@ -163,7 +164,7 @@ export function InvoiceList() {
                 const amtDue = Number(inv.amountDue ?? (inv.status === 'PAID' ? 0 : inv.total));
                 return (
                   <tr key={inv.id}
-                    onClick={() => navigate(`/finance/invoices/${inv.id}`)}
+                    onClick={() => navigate(`/invoices/${inv.id}`)}
                     className="group hover:bg-gray-50/60 cursor-pointer transition-colors">
                     <td className="px-5 py-3.5">
                       <span className="font-mono font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{inv.number}</span>
@@ -196,10 +197,10 @@ export function InvoiceList() {
                     </td>
                     <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                       <ActionMenu items={[
-                        { label: 'View Details', onClick: () => navigate(`/finance/invoices/${inv.id}`) },
+                        { label: 'View Details', onClick: () => navigate(`/invoices/${inv.id}`) },
                         { label: 'Download PDF', onClick: () => window.open(`/api/v1/finance/invoices/${inv.id}/pdf`, '_blank') },
                         { label: 'Print', onClick: () => window.open(`/api/v1/finance/invoices/${inv.id}/pdf`, '_blank') },
-                        { label: 'Duplicate', onClick: () => navigate(`/finance/invoices/new?from=${inv.id}`) },
+                        { label: 'Duplicate', onClick: () => navigate(`/invoices/${inv.id}`) },
                       ]} />
                     </td>
                   </tr>
