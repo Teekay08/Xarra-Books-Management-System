@@ -166,14 +166,21 @@ export function BilletterieHub() {
       {/* ── Portfolio overview strip ─────────────────────────────── */}
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'Active',    value: active.length,    icon: '▶', color: 'text-blue-700',   bg: 'bg-blue-50' },
-          { label: 'On Hold',   value: onHold.length,    icon: '⏸', color: 'text-amber-700',  bg: 'bg-amber-50' },
-          { label: 'Completed', value: completed.length, icon: '✓',  color: 'text-green-700',  bg: 'bg-green-50' },
-          { label: 'Total',     value: projects.length,  icon: '◈',  color: 'text-gray-700',   bg: 'bg-gray-50' },
-          { label: 'Red Health', value: redHealth,       icon: '●',  color: 'text-red-600',    bg: redHealth > 0 ? 'bg-red-50' : 'bg-gray-50' },
-          { label: 'Amber',     value: amberHealth,      icon: '●',  color: 'text-amber-600',  bg: amberHealth > 0 ? 'bg-amber-50' : 'bg-gray-50' },
+          { label: 'Active',     value: active.length,    color: 'text-blue-700',   bg: 'bg-blue-50',
+            icon: <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg> },
+          { label: 'On Hold',   value: onHold.length,    color: 'text-amber-700',  bg: 'bg-amber-50',
+            icon: <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5"/></svg> },
+          { label: 'Completed', value: completed.length, color: 'text-green-700',  bg: 'bg-green-50',
+            icon: <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> },
+          { label: 'Total',     value: projects.length,  color: 'text-gray-700',   bg: 'bg-gray-50',
+            icon: <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg> },
+          { label: 'Red Health', value: redHealth,       color: 'text-red-600',    bg: redHealth > 0 ? 'bg-red-50' : 'bg-gray-50',
+            icon: <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg> },
+          { label: 'Amber',     value: amberHealth,      color: 'text-amber-600',  bg: amberHealth > 0 ? 'bg-amber-50' : 'bg-gray-50',
+            icon: <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9.303 3.376c.866 1.5-.217 3.374-1.948 3.374H4.645c-1.73 0-2.813-1.874-1.948-3.374l7.703-13.248c.866-1.5 3.032-1.5 3.898 0l7.703 13.248zm-7.703-4.126h.008v.008H12v-.008z"/></svg> },
         ].map(s => (
           <div key={s.label} className={`card p-4 border ${s.bg}`}>
+            <div className="mb-2">{s.icon}</div>
             <p className={`text-lg font-black leading-none ${s.color}`}>{s.value}</p>
             <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mt-1">{s.label}</p>
           </div>
@@ -208,7 +215,9 @@ export function BilletterieHub() {
 
         {!isLoading && projects.length === 0 && (
           <div className="p-14 text-center space-y-3">
-            <div className="text-4xl opacity-20">📁</div>
+            <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto">
+              <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+            </div>
             <p className="text-sm font-medium text-gray-500">No projects yet</p>
             <Link to="/billetterie/projects/new"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">

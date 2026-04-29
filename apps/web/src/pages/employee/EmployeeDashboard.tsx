@@ -114,7 +114,7 @@ export function EmployeeDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">
-            {greeting()}{userName ? `, ${userName}` : ''} 👋
+            {greeting()}{userName ? `, ${userName}` : ''}
           </h1>
           <p className="text-xs text-gray-400 mt-0.5">
             {new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -140,7 +140,9 @@ export function EmployeeDashboard() {
       {noStaffProfile && (
         <div className="card p-5 border-amber-200 bg-amber-50">
           <div className="flex gap-3">
-            <span className="text-2xl">⚠️</span>
+            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+            </div>
             <div>
               <p className="text-sm font-semibold text-amber-900">Account not linked to a staff profile</p>
               <p className="text-xs text-amber-700 mt-1">Ask your Project Manager to create a staff profile and link it to your account. Your tasks will appear here once linked.</p>
@@ -203,7 +205,9 @@ export function EmployeeDashboard() {
 
           {!tasksLoading && tasks.length === 0 && (
             <div className="card p-10 text-center">
-              <div className="text-3xl mb-2 opacity-30">✅</div>
+              <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
               <p className="text-sm font-medium text-gray-500">No tasks assigned yet</p>
               <p className="text-xs text-gray-400 mt-1">Your PM will assign tasks when ready</p>
             </div>
@@ -263,7 +267,7 @@ export function EmployeeDashboard() {
                     {/* Due date */}
                     {t.dueDate && (
                       <p className={`text-[10px] mt-2 font-medium ${isOverdue ? 'text-red-500' : daysLeft !== null && daysLeft <= 3 ? 'text-amber-600' : 'text-gray-400'}`}>
-                        {isOverdue ? `⚠ ${Math.abs(daysLeft!)}d overdue` : daysLeft === 0 ? 'Due today' : `Due in ${daysLeft}d`}
+                        {isOverdue ? `${Math.abs(daysLeft!)}d overdue` : daysLeft === 0 ? 'Due today' : `Due in ${daysLeft}d`}
                         {' · '}{new Date(t.dueDate).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' })}
                       </p>
                     )}
@@ -287,7 +291,9 @@ export function EmployeeDashboard() {
             </div>
             {logs.length === 0 ? (
               <div className="p-8 text-center">
-                <div className="text-2xl mb-1.5 opacity-20">⏱</div>
+                <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
                 <p className="text-xs text-gray-400">No time logs yet</p>
               </div>
             ) : (
@@ -316,7 +322,9 @@ export function EmployeeDashboard() {
             </div>
             {extensions.length === 0 ? (
               <div className="p-8 text-center">
-                <div className="text-2xl mb-1.5 opacity-20">📋</div>
+                <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                </div>
                 <p className="text-xs text-gray-400">No pending requests</p>
               </div>
             ) : (
