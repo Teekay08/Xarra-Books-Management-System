@@ -727,30 +727,41 @@ function OverviewView({ projectId, project, phaseMap, onAdvance, advancing }: {
   const milestones: any[] = milestonesData?.data ?? [];
   const nextMilestone = milestones.find((m: any) => m.status === 'PENDING');
 
+  // Task completion percentage
+  const taskPct = stats.tasksTotal > 0 ? Math.round((stats.tasksDone / stats.tasksTotal) * 100) : 0;
+
   return (
-    <div className="space-y-6">
-      {/* Stats strip */}
+    <div className="space-y-5">
+
+      {/* ── KPI strip ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-gray-900">{stats.openIssues ?? '—'}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Open Issues</p>
+        <div className={`rounded-xl border p-4 ${(stats.openIssues ?? 0) > 0 ? 'bg-red-50 border-red-100' : 'card'}`}>
+          <p className={`text-2xl font-black leading-none ${(stats.openIssues ?? 0) > 0 ? 'text-red-600' : 'text-gray-900'}`}>{stats.openIssues ?? '—'}</p>
+          <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mt-1">Open Issues</p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-gray-900">{stats.tasksDone ?? 0}/{stats.tasksTotal ?? 0}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Tasks Done</p>
+        <div className="card p-4">
+          <p className="text-2xl font-black text-gray-900 leading-none">{stats.tasksDone ?? 0}<span className="text-base text-gray-400 font-semibold">/{stats.tasksTotal ?? 0}</span></p>
+          <div className="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${taskPct}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mt-1.5">Tasks Done ({taskPct}%)</p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-blue-600">{stats.weekHours != null ? `${Number(stats.weekHours).toFixed(1)}h` : '—'}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Hours This Week</p>
+        <div className="card p-4">
+          <p className="text-2xl font-black text-blue-600 leading-none">
+            {stats.weekHours != null ? `${Number(stats.weekHours).toFixed(1)}h` : '—'}
+          </p>
+          <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mt-1">Hours This Week</p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
-          <p className="text-sm font-bold text-gray-900 truncate">{nextMilestone?.title ?? '—'}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{nextMilestone ? `Due ${nextMilestone.dueDate ?? 'TBD'}` : 'No upcoming milestones'}</p>
+        <div className={`rounded-xl border p-4 ${nextMilestone ? 'bg-amber-50 border-amber-100' : 'card'}`}>
+          <p className="text-xs font-semibold text-gray-900 truncate leading-tight">{nextMilestone?.title ?? '—'}</p>
+          <p className={`text-[10px] font-semibold uppercase tracking-wide mt-1 ${nextMilestone ? 'text-amber-600' : 'text-gray-400'}`}>
+            {nextMilestone ? `Due ${nextMilestone.dueDate ?? 'TBD'}` : 'No upcoming milestones'}
+          </p>
         </div>
       </div>
 
-      {/* Phase stepper + panel */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5">
+      {/* ── Phase lifecycle ───────────────────────────────────────── */}
+      <div className="card p-5">
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Project Lifecycle</h3>
         <PhaseStepper currentPhase={project.currentPhase} phaseMap={phaseMap} />
       </div>
@@ -763,12 +774,12 @@ function OverviewView({ projectId, project, phaseMap, onAdvance, advancing }: {
         advancing={advancing}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Team mini-view */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Project Team</h3>
           {teamMembers.length === 0 ? (
-            <p className="text-sm text-gray-400">No team members assigned yet.</p>
+            <p className="text-xs text-gray-400">No team members assigned yet.</p>
           ) : (
             <div className="space-y-2">
               {teamMembers.map((m: any) => (
@@ -777,9 +788,9 @@ function OverviewView({ projectId, project, phaseMap, onAdvance, advancing }: {
                     {getInitials(m.name ?? '?')}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{m.name}</p>
+                    <p className="text-xs font-medium text-gray-900 truncate">{m.name}</p>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TEAM_ROLE_BADGE[m.role]}`}>{TEAM_ROLE_LABEL[m.role]}</span>
+                  <span className={`pill ${TEAM_ROLE_BADGE[m.role]}`}>{TEAM_ROLE_LABEL[m.role]}</span>
                 </div>
               ))}
             </div>
@@ -787,7 +798,7 @@ function OverviewView({ projectId, project, phaseMap, onAdvance, advancing }: {
         </div>
 
         {/* Project info */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Details</h3>
           <div className="space-y-2 text-sm">
             {project.description && <p className="text-gray-600">{project.description}</p>}
@@ -804,7 +815,7 @@ function OverviewView({ projectId, project, phaseMap, onAdvance, advancing }: {
       </div>
 
       {/* Activity feed */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="card p-5">
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Recent Activity</h3>
         <BilletterieActivityFeed projectId={projectId} />
       </div>
