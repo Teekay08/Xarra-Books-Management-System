@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import {
   billetterieClientTokens, billetterieProjects, billetterieProjectPhases,
   billetterieTasks, billetterieIssues, billetterieMilestones, billetterieMeetings,
+  billetteriePortalComments,
 } from '@xarra/db';
 import { requireAuth } from '../../../middleware/require-auth.js';
 import { getProjectRole } from '../helpers.js';
@@ -147,6 +148,89 @@ export async function clientPortalRoutes(app: FastifyInstance) {
       }).from(billetterieMeetings).where(eq(billetterieMeetings.projectId, pid));
     }
 
+    // Include portal comments visible to this client (non-internal only)
+    result.comments = await db
+      .select()
+      .from(billetteriePortalComments)
+      .where(and(
+        eq(billetteriePortalComments.projectId, pid),
+        eq(billetteriePortalComments.isInternal, false),
+      ))
+      .orderBy(billetteriePortalComments.createdAt);
+
     return { data: result };
+  });
+
+  // ── Client portal: post comment (via token — no login) ───────────────────────
+  app.post('/client-portal/:token/comments', async (request: any, reply) => {
+    const { token } = request.params as { token: string };
+
+    const record = await db.select().from(billetterieClientTokens)
+      .where(eq(billetterieClientTokens.token, token)).limit(1).then((r: any[]) => r[0]);
+
+    if (!record || !record.isActive || new Date(record.expiresAt) < new Date()) {
+      return reply.status(403).send({ error: 'Invalid or expired client link' });
+    }
+
+    const body = z.object({
+      body:     z.string().min(1).max(2000),
+      itemType: z.enum(['deliverable', 'milestone', 'issue', 'general']).optional(),
+      itemId:   z.string().uuid().optional(),
+    }).parse(request.body);
+
+    const [comment] = await db.insert(billetteriePortalComments).values({
+      projectId:  record.projectId,
+      tokenId:    record.id,
+      body:       body.body,
+      itemType:   body.itemType ?? 'general',
+      itemId:     body.itemId ?? null,
+      isTeamResponse: false,
+      isInternal: false,
+    }).returning();
+
+    return reply.status(201).send({ data: comment });
+  });
+
+  // ── Team response to client comment (authenticated — PM or BA only) ──────────
+  app.post('/projects/:id/portal-comments', { preHandler: requireAuth }, async (request: any, reply) => {
+    const { id } = request.params as { id: string };
+    const user = request.session!.user as any;
+    const projectRole = await getProjectRole(db, id, user.id);
+
+    if (!['PM', 'BA'].includes(projectRole ?? '')) {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Only PM or BA can respond to client comments' });
+    }
+
+    const body = z.object({
+      body:       z.string().min(1).max(2000),
+      parentId:   z.string().uuid().optional(),
+      isInternal: z.boolean().default(false),
+      itemType:   z.enum(['deliverable', 'milestone', 'issue', 'general']).optional(),
+      itemId:     z.string().uuid().optional(),
+    }).parse(request.body);
+
+    const [comment] = await db.insert(billetteriePortalComments).values({
+      projectId:      id,
+      authorUserId:   user.id,
+      parentId:       body.parentId ?? null,
+      body:           body.body,
+      itemType:       body.itemType ?? 'general',
+      itemId:         body.itemId ?? null,
+      isTeamResponse: true,
+      isInternal:     body.isInternal,
+    }).returning();
+
+    return reply.status(201).send({ data: comment });
+  });
+
+  // ── List portal comments for a project (team view — includes internal) ──────
+  app.get('/projects/:id/portal-comments', { preHandler: requireAuth }, async (request: any) => {
+    const { id } = request.params as { id: string };
+    const comments = await db
+      .select()
+      .from(billetteriePortalComments)
+      .where(eq(billetteriePortalComments.projectId, id))
+      .orderBy(billetteriePortalComments.createdAt);
+    return { data: comments };
   });
 }

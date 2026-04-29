@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, decimal, integer, pgEnum, jsonb, index, uniqueIndex, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, decimal, integer, pgEnum, jsonb, index, uniqueIndex, boolean, date } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { projects, projectMilestones } from './budgeting';
 import { user } from './auth';
@@ -19,12 +19,29 @@ export const staffAvailabilityEnum = pgEnum('staff_availability_type', [
   'FULL_TIME', 'PART_TIME', 'CONTRACT',
 ]);
 
+export const staffJobFunctionEnum = pgEnum('staff_job_function', [
+  'ceo', 'cto', 'coo', 'finance_director', 'managing_director',
+  'project_manager', 'programme_manager', 'portfolio_manager',
+  'developer', 'senior_developer', 'tech_lead', 'architect', 'devops_engineer',
+  'business_analyst', 'systems_analyst', 'data_analyst',
+  'qa_engineer', 'test_analyst', 'uat_coordinator',
+  'ux_designer', 'ui_designer', 'graphic_designer',
+  'editor', 'typesetter', 'copywriter', 'proofreader', 'cover_designer',
+  'project_admin', 'executive_assistant',
+  'client_representative', 'consultant', 'contractor',
+  'other',
+]);
+
 export const staffPaymentStatusEnum = pgEnum('staff_payment_status', [
   'PENDING', 'APPROVED', 'PAID',
 ]);
 
 export const taskRequestStatusEnum = pgEnum('task_request_status', [
   'PENDING', 'APPROVED', 'REJECTED', 'NEEDS_INFO',
+]);
+
+export const deliverableStatusEnum = pgEnum('deliverable_status', [
+  'NOT_STARTED', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED',
 ]);
 
 // ==========================================
@@ -55,7 +72,9 @@ export const staffMembers = pgTable('staff_members', {
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull(),
   phone: varchar('phone', { length: 50 }),
-  role: varchar('role', { length: 100 }).notNull(), // Editor, Typesetter, Cover Designer, etc.
+  role: varchar('role', { length: 100 }).notNull(), // legacy free-text job title (kept for backward compat)
+  jobFunction: staffJobFunctionEnum('job_function'), // structured function — drives Billetterie role suggestions
+  displayTitle: varchar('display_title', { length: 100 }), // optional formatted title shown in UI
   skills: jsonb('skills').notNull().default('[]').$type<string[]>(),
   availabilityType: staffAvailabilityEnum('availability_type').notNull().default('FULL_TIME'),
   maxHoursPerMonth: integer('max_hours_per_month').notNull().default(160),
@@ -126,8 +145,6 @@ export const taskAssignments = pgTable('task_assignments', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
   // SOW link (if a formal SOW was issued for this task)
   sowDocumentId: uuid('sow_document_id'),
-  // Deliverables
-  deliverables: jsonb('deliverables').default('[]').$type<Array<{ description: string; completed: boolean }>>(),
   // Workflow
   assignedBy: text('assigned_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
@@ -283,6 +300,50 @@ export const contractorAccessTokens = pgTable('contractor_access_tokens', {
 ]);
 
 // ==========================================
+// TASK DELIVERABLES
+// ==========================================
+
+export const taskDeliverables = pgTable('task_deliverables', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  taskAssignmentId: uuid('task_assignment_id').notNull().references(() => taskAssignments.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  estimatedHours: decimal('estimated_hours', { precision: 10, scale: 2 }),
+  status: deliverableStatusEnum('status').notNull().default('NOT_STARTED'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  rejectionReason: text('rejection_reason'),
+  reviewedBy: text('reviewed_by').references(() => user.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  createdBy: text('created_by').references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_deliverables_task').on(t.taskAssignmentId),
+  index('idx_deliverables_status').on(t.status),
+]);
+
+// ==========================================
+// DELIVERABLE LOGS
+// ==========================================
+
+export const deliverableLogs = pgTable('deliverable_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  deliverableId: uuid('deliverable_id').notNull().references(() => taskDeliverables.id, { onDelete: 'cascade' }),
+  taskAssignmentId: uuid('task_assignment_id').notNull().references(() => taskAssignments.id, { onDelete: 'cascade' }),
+  staffMemberId: uuid('staff_member_id').notNull().references(() => staffMembers.id),
+  workDate: date('work_date').notNull(),
+  hours: decimal('hours', { precision: 5, scale: 2 }).notNull(),
+  description: text('description').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_del_logs_deliverable').on(t.deliverableId),
+  index('idx_del_logs_task').on(t.taskAssignmentId),
+  index('idx_del_logs_staff').on(t.staffMemberId),
+  index('idx_del_logs_date').on(t.workDate),
+]);
+
+// ==========================================
 // RELATIONS
 // ==========================================
 
@@ -294,6 +355,7 @@ export const staffMembersRelations = relations(staffMembers, ({ one, many }) => 
   timeLogs: many(taskTimeLogs),
   extensionRequests: many(timeExtensionRequests),
   payments: many(staffPayments),
+  deliverableLogs: many(deliverableLogs),
 }));
 
 export const staffProjectAssignmentsRelations = relations(staffProjectAssignments, ({ one }) => ({
@@ -313,6 +375,20 @@ export const taskAssignmentsRelations = relations(taskAssignments, ({ one, many 
   plannerEntries: many(staffTaskPlannerEntries),
   timeLogs: many(taskTimeLogs),
   extensionRequests: many(timeExtensionRequests),
+  deliverables: many(taskDeliverables),
+}));
+
+export const taskDeliverablesRelations = relations(taskDeliverables, ({ one, many }) => ({
+  taskAssignment: one(taskAssignments, { fields: [taskDeliverables.taskAssignmentId], references: [taskAssignments.id] }),
+  reviewer: one(user, { fields: [taskDeliverables.reviewedBy], references: [user.id], relationName: 'deliverableReviewer' }),
+  creator: one(user, { fields: [taskDeliverables.createdBy], references: [user.id], relationName: 'deliverableCreator' }),
+  logs: many(deliverableLogs),
+}));
+
+export const deliverableLogsRelations = relations(deliverableLogs, ({ one }) => ({
+  deliverable: one(taskDeliverables, { fields: [deliverableLogs.deliverableId], references: [taskDeliverables.id] }),
+  taskAssignment: one(taskAssignments, { fields: [deliverableLogs.taskAssignmentId], references: [taskAssignments.id] }),
+  staffMember: one(staffMembers, { fields: [deliverableLogs.staffMemberId], references: [staffMembers.id] }),
 }));
 
 export const staffTaskPlannerEntriesRelations = relations(staffTaskPlannerEntries, ({ one }) => ({

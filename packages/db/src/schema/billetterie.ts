@@ -846,6 +846,42 @@ export const billetterieTestExecutionsRelations = relations(billetterieTestExecu
 // Separate from Xarra Books' company_settings.
 // ==========================================
 
+// ==========================================
+// CLIENT PORTAL COMMENTS
+// ==========================================
+// Clients comment via token; PM/BA respond as authenticated users.
+
+export const billetteriePortalComments = pgTable('billetterie_portal_comments', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  projectId:      uuid('project_id').notNull().references(() => billetterieProjects.id, { onDelete: 'cascade' }),
+  tokenId:        uuid('token_id').references(() => billetterieClientTokens.id, { onDelete: 'set null' }),
+  authorUserId:   text('author_user_id').references(() => user.id, { onDelete: 'set null' }),
+  itemType:       varchar('item_type', { length: 50 }),
+  itemId:         uuid('item_id'),
+  parentId:       uuid('parent_id'),
+  body:           text('body').notNull(),
+  isTeamResponse: boolean('is_team_response').notNull().default(false),
+  isInternal:     boolean('is_internal').notNull().default(false),
+  isEdited:       boolean('is_edited').notNull().default(false),
+  createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_portal_comments_project').on(t.projectId),
+  index('idx_portal_comments_token').on(t.tokenId),
+  index('idx_portal_comments_parent').on(t.parentId),
+]);
+
+export const billetteriePortalCommentsRelations = relations(billetteriePortalComments, ({ one, many }) => ({
+  project: one(billetterieProjects, { fields: [billetteriePortalComments.projectId], references: [billetterieProjects.id] }),
+  token:   one(billetterieClientTokens, { fields: [billetteriePortalComments.tokenId], references: [billetterieClientTokens.id] }),
+  replies: many(billetteriePortalComments, { relationName: 'commentReplies' }),
+  parent:  one(billetteriePortalComments, { fields: [billetteriePortalComments.parentId], references: [billetteriePortalComments.id], relationName: 'commentReplies' }),
+}));
+
+// ==========================================
+// BILLETTERIE ORG SETTINGS (document branding)
+// ==========================================
+
 export const billetterieOrgSettings = pgTable('billetterie_org_settings', {
   id:                uuid('id').primaryKey().defaultRandom(),
   displayName:       varchar('display_name', { length: 255 }).notNull().default('Billetterie Software'),

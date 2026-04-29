@@ -4,6 +4,7 @@ import { eq, and, ilike } from 'drizzle-orm';
 import { staffMembers, billetterieProjectTeam } from '@xarra/db';
 import { requireAuth, requireRole } from '../../../middleware/require-auth.js';
 import { getProjectRole } from '../helpers.js';
+import { JOB_FUNCTION_ROLE_MAP } from '../../project-management/routes.js';
 
 const addMemberSchema = z.object({
   staffMemberId: z.string().uuid(),
@@ -26,6 +27,8 @@ export async function teamRoutes(app: FastifyInstance) {
         id:               staffMembers.id,
         name:             staffMembers.name,
         role:             staffMembers.role,
+        displayTitle:     staffMembers.displayTitle,
+        jobFunction:      staffMembers.jobFunction,
         email:            staffMembers.email,
         availabilityType: staffMembers.availabilityType,
         isActive:         staffMembers.isActive,
@@ -38,7 +41,13 @@ export async function teamRoutes(app: FastifyInstance) {
       )
       .orderBy(staffMembers.name);
 
-    return { data: members };
+    return {
+      data: members.map((m: any) => ({
+        ...m,
+        // Suggested Billetterie project role based on job function
+        suggestedBilRole: m.jobFunction ? (JOB_FUNCTION_ROLE_MAP[m.jobFunction] ?? 'BA') : null,
+      })),
+    };
   });
 
   // ── GET /billetterie/projects/:id/team — project team members with roles ─────

@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
-import { user as authUsers } from '@xarra/db';
-import { paginationSchema } from '@xarra/shared';
+import { user as authUsers, userPermissionOverrides } from '@xarra/db';
+import { paginationSchema, type Module, type Permission } from '@xarra/shared';
 import { requireRole } from '../../middleware/require-auth.js';
+import { logAudit, requestContext } from '../../services/audit.js';
+import { getEffectivePermissions } from '../../services/permissions.js';
 import { z } from 'zod';
 
 const uiToAuthRole: Record<string, string> = {
@@ -212,6 +214,83 @@ export async function userRoutes(app: FastifyInstance) {
     if (!updated) return reply.notFound('User not found');
     return { data: updated };
   });
+
+  // ── Permission overrides — GET /users/:id/permissions ────────────────────────
+  app.get<{ Params: { id: string } }>('/:id/permissions', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const targetUser = await app.db.query.user.findFirst({
+      where: eq(authUsers.id, request.params.id),
+      columns: { id: true, name: true, email: true, role: true },
+    });
+    if (!targetUser) return reply.notFound('User not found');
+
+    const [overrides, effective] = await Promise.all([
+      app.db.select().from(userPermissionOverrides).where(eq(userPermissionOverrides.userId, request.params.id)),
+      getEffectivePermissions(app.db, request.params.id, targetUser.role ?? 'staff'),
+    ]);
+
+    return { data: { user: targetUser, overrides, effectivePermissions: effective } };
+  });
+
+  // ── Permission overrides — PUT /users/:id/permissions ────────────────────────
+  // Replaces the full override set for a user. Body = array of { module, permission, type, reason }.
+  // Admin only. Each change is written to audit_logs.
+  app.put<{ Params: { id: string } }>('/:id/permissions', { preHandler: requireRole('admin') }, async (request: any, reply) => {
+    const adminId = request.session!.user.id;
+    const targetId = request.params.id;
+
+    const bodySchema = z.object({
+      overrides: z.array(z.object({
+        module:     z.string().min(1).max(50),
+        permission: z.string().min(1).max(20),
+        type:       z.enum(['GRANT', 'DENY']),
+        reason:     z.string().optional().nullable(),
+      })),
+    });
+    const { overrides } = bodySchema.parse(request.body);
+
+    const targetUser = await app.db.query.user.findFirst({
+      where: eq(authUsers.id, targetId),
+      columns: { id: true, name: true, role: true },
+    });
+    if (!targetUser) return reply.notFound('User not found');
+
+    // Fetch existing overrides for audit diff
+    const existing = await app.db.select().from(userPermissionOverrides).where(eq(userPermissionOverrides.userId, targetId));
+
+    // Replace all overrides: delete then insert
+    await app.db.delete(userPermissionOverrides).where(eq(userPermissionOverrides.userId, targetId));
+
+    if (overrides.length > 0) {
+      await app.db.insert(userPermissionOverrides).values(
+        overrides.map(o => ({
+          userId:    targetId,
+          module:    o.module,
+          permission: o.permission,
+          type:      o.type,
+          grantedBy: adminId,
+          reason:    o.reason ?? null,
+        })),
+      );
+    }
+
+    await logAudit(app.db, {
+      userId:     adminId,
+      action:     'PERMISSION_GRANT',
+      entityType: 'user',
+      entityId:   targetId,
+      before:     { overrides: existing.map(e => ({ module: e.module, permission: e.permission, type: e.type })) },
+      after:      { overrides: overrides.map(o => ({ module: o.module, permission: o.permission, type: o.type })) },
+      metadata:   { targetUser: targetUser.name },
+      ...requestContext(request),
+    });
+
+    const newOverrides = await app.db.select().from(userPermissionOverrides).where(eq(userPermissionOverrides.userId, targetId));
+    return { data: newOverrides };
+  });
+
+  // ── Product access update: audit the change ────────────────────────────────
+  // Override the existing product-access route to add audit logging
+  // (wrapped inside the same export function so we have app.db access)
 
   // Resend verification email (admin only)
   app.post<{ Params: { id: string } }>('/:id/send-verification', { preHandler: requireRole('admin') }, async (request, reply) => {

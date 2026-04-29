@@ -195,3 +195,30 @@ export const statementBatchItemsRelations = relations(statementBatchItems, ({ on
   partner: one(channelPartners, { fields: [statementBatchItems.partnerId], references: [channelPartners.id] }),
   branch: one(partnerBranches, { fields: [statementBatchItems.branchId], references: [partnerBranches.id] }),
 }));
+
+// ==========================================
+// PER-USER PERMISSION OVERRIDES
+// ==========================================
+// Supplements the base role with individual GRANT or DENY entries.
+// Effective permissions = role defaults + these overrides.
+// Only admins can write; changes are written to audit_logs.
+
+export const userPermissionOverrides = pgTable('user_permission_overrides', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  userId:    text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  module:    varchar('module', { length: 50 }).notNull(),
+  permission: varchar('permission', { length: 20 }).notNull(),
+  type:      varchar('type', { length: 10 }).notNull().default('GRANT'), // GRANT | DENY
+  grantedBy: text('granted_by').notNull().references(() => user.id),
+  reason:    text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_perm_overrides_user').on(t.userId),
+  index('idx_perm_overrides_module').on(t.module),
+]);
+
+export const userPermissionOverridesRelations = relations(userPermissionOverrides, ({ one }) => ({
+  user:      one(user, { fields: [userPermissionOverrides.userId],    references: [user.id], relationName: 'overrideTarget' }),
+  grantedBy: one(user, { fields: [userPermissionOverrides.grantedBy], references: [user.id], relationName: 'overrideGrantor' }),
+}));

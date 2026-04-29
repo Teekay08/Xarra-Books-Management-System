@@ -79,21 +79,39 @@ export function BilletterieTeamPanel({ projectId }: Props) {
           <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Add Team Member</h4>
           <select
             value={newMemberId}
-            onChange={(e) => setNewMemberId(e.target.value)}
+            onChange={(e) => {
+              setNewMemberId(e.target.value);
+              // Auto-set suggested role based on job function
+              const selected = available.find((s: any) => s.id === e.target.value);
+              if (selected?.suggestedBilRole) setNewRole(selected.suggestedBilRole);
+            }}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select staff member...</option>
             {available.map((s: any) => (
-              <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+              <option key={s.id} value={s.id}>
+                {s.name} — {s.displayTitle || s.role}
+                {s.suggestedBilRole ? ` (suggests: ${s.suggestedBilRole})` : ''}
+              </option>
             ))}
           </select>
-          <select
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          >
-            {ROLES.map((r) => <option key={r} value={r}>{TEAM_ROLE_LABEL[r]}</option>)}
-          </select>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-gray-600">Project Role</label>
+              {newMemberId && available.find((s: any) => s.id === newMemberId)?.suggestedBilRole && (
+                <span className="text-[10px] text-blue-600">
+                  Suggested: {available.find((s: any) => s.id === newMemberId)?.suggestedBilRole} based on job function
+                </span>
+              )}
+            </div>
+            <select
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              {ROLES.map((r) => <option key={r} value={r}>{TEAM_ROLE_LABEL[r]}</option>)}
+            </select>
+          </div>
           <div className="flex gap-2">
             <button onClick={addMember} disabled={!newMemberId || adding} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
               {adding ? 'Adding...' : 'Add to Team'}

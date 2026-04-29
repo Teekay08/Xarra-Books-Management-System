@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { hasPermission, type Module, type Permission } from '@xarra/shared';
+import { hasEffectivePermission } from '../services/permissions.js';
 
 /**
  * Map any role string (old or new, any case) to the canonical 5-role name.
@@ -77,7 +78,11 @@ export function requireRole(...roles: string[]) {
  *
  * Usage: { preHandler: requireProduct('billetterie') }
  *
- * System admins bypass the product check — they always have access everywhere.
+ * IMPORTANT: No automatic bypasses — even system admins must be explicitly
+ * granted product access. This enforces separation of concerns between
+ * Xarra Books and Billetterie Software.
+ *
+ * Additionally: author role is permanently blocked from Billetterie.
  */
 export function requireProduct(product: 'xarra' | 'billetterie') {
   return async function (request: FastifyRequest, reply: FastifyReply) {
@@ -87,12 +92,17 @@ export function requireProduct(product: 'xarra' | 'billetterie') {
 
     const user = request.session.user as any;
 
-    // System admins have access to all products
-    if (canonicalRole(user.role ?? '') === 'admin') return;
+    // Authors are external creatives — they have no business in a PM tool
+    if (product === 'billetterie' && canonicalRole(user.role ?? '') === 'author') {
+      return reply.status(403).send({
+        error: 'Access denied',
+        message: 'Author accounts do not have access to Billetterie Software.',
+      });
+    }
 
     const hasAccess = product === 'billetterie'
-      ? user.billetterieAccess === true
-      : user.xarraAccess !== false; // xarra defaults to true
+      ? user.billetterieAccess === true          // must be explicitly granted
+      : user.xarraAccess !== false;              // xarra defaults to true (existing behaviour)
 
     if (!hasAccess) {
       return reply.status(403).send({
@@ -125,6 +135,9 @@ export async function requireXarraBusinessUser(request: FastifyRequest, reply: F
 /**
  * Factory that creates a middleware requiring specific permission on a module.
  * Usage: { preHandler: requirePermission('invoices', 'create') }
+ *
+ * Checks effective permissions = role defaults + per-user overrides.
+ * An admin-granted GRANT can add permissions beyond role; a DENY removes them.
  */
 export function requirePermission(module: Module, permission: Permission) {
   return async function (request: FastifyRequest, reply: FastifyReply) {
@@ -132,8 +145,15 @@ export function requirePermission(module: Module, permission: Permission) {
       return reply.status(401).send({ error: 'Authentication required' });
     }
 
-    const userRole = request.session.user.role;
-    if (!userRole || !hasPermission(userRole, module, permission)) {
+    const user = request.session.user as any;
+    const userRole = user.role ?? '';
+    const db = (request.server as any).db;
+
+    const allowed = db
+      ? await hasEffectivePermission(db, user.id, userRole, module, permission)
+      : hasPermission(userRole, module, permission); // fallback if db not available
+
+    if (!allowed) {
       return reply.status(403).send({
         error: 'Insufficient permissions',
         required: `${module}:${permission}`,

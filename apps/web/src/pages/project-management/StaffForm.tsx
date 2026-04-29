@@ -25,6 +25,59 @@ const AVAILABILITY_TYPES = [
   { value: 'CONTRACT', label: 'Contract' },
 ];
 
+const JOB_FUNCTIONS = [
+  { value: '', label: '— Not specified —' },
+  { group: 'Executive', options: [
+    { value: 'ceo', label: 'CEO' }, { value: 'cto', label: 'CTO' },
+    { value: 'coo', label: 'COO' }, { value: 'finance_director', label: 'Finance Director' },
+    { value: 'managing_director', label: 'Managing Director' },
+  ]},
+  { group: 'Project Management', options: [
+    { value: 'project_manager', label: 'Project Manager' },
+    { value: 'programme_manager', label: 'Programme Manager' },
+    { value: 'portfolio_manager', label: 'Portfolio Manager' },
+  ]},
+  { group: 'Technical', options: [
+    { value: 'developer', label: 'Developer' },
+    { value: 'senior_developer', label: 'Senior Developer' },
+    { value: 'tech_lead', label: 'Tech Lead' },
+    { value: 'architect', label: 'Architect' },
+    { value: 'devops_engineer', label: 'DevOps Engineer' },
+  ]},
+  { group: 'Analysis', options: [
+    { value: 'business_analyst', label: 'Business Analyst' },
+    { value: 'systems_analyst', label: 'Systems Analyst' },
+    { value: 'data_analyst', label: 'Data Analyst' },
+  ]},
+  { group: 'QA / Testing', options: [
+    { value: 'qa_engineer', label: 'QA Engineer' },
+    { value: 'test_analyst', label: 'Test Analyst' },
+    { value: 'uat_coordinator', label: 'UAT Coordinator' },
+  ]},
+  { group: 'Design', options: [
+    { value: 'ux_designer', label: 'UX Designer' },
+    { value: 'ui_designer', label: 'UI Designer' },
+    { value: 'graphic_designer', label: 'Graphic Designer' },
+  ]},
+  { group: 'Content / Publishing', options: [
+    { value: 'editor', label: 'Editor' },
+    { value: 'typesetter', label: 'Typesetter' },
+    { value: 'copywriter', label: 'Copywriter' },
+    { value: 'proofreader', label: 'Proofreader' },
+    { value: 'cover_designer', label: 'Cover Designer' },
+  ]},
+  { group: 'Administration', options: [
+    { value: 'project_admin', label: 'Project Admin' },
+    { value: 'executive_assistant', label: 'Executive Assistant' },
+  ]},
+  { group: 'External', options: [
+    { value: 'client_representative', label: 'Client Representative' },
+    { value: 'consultant', label: 'Consultant' },
+    { value: 'contractor', label: 'Contractor' },
+  ]},
+  { group: 'Other', options: [{ value: 'other', label: 'Other' }]},
+];
+
 interface User {
   id: string;
   name: string;
@@ -42,6 +95,8 @@ export function StaffForm() {
     email: '',
     phone: '',
     role: '',
+    jobFunction: '',
+    displayTitle: '',
     skills: [] as string[],
     availabilityType: 'FULL_TIME',
     maxHoursPerMonth: 160,
@@ -65,7 +120,9 @@ export function StaffForm() {
         name: s.name || '',
         email: s.email || '',
         phone: s.phone || '',
-        role: s.role || '',
+        role:         s.role         || '',
+        jobFunction:  s.jobFunction  || '',
+        displayTitle: s.displayTitle || '',
         skills: s.skills || [],
         availabilityType: s.availabilityType || 'FULL_TIME',
         maxHoursPerMonth: Number(s.maxHoursPerMonth) || 160,
@@ -188,7 +245,33 @@ export function StaffForm() {
           <h3 className="text-sm font-semibold text-gray-900">Role & Skills</h3>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Job Function</label>
+            <p className="text-xs text-gray-500 mb-1.5">Drives the suggested role when adding this person to a Billetterie project</p>
+            <select value={form.jobFunction}
+              onChange={(e) => setForm({ ...form, jobFunction: e.target.value })}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+              <option value="">— Not specified —</option>
+              {JOB_FUNCTIONS.filter(f => 'group' in f).map((f: any) => (
+                <optgroup key={f.group} label={f.group}>
+                  {f.options.map((o: any) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Display Title (optional)</label>
+            <input type="text" value={form.displayTitle}
+              onChange={(e) => setForm({ ...form, displayTitle: e.target.value })}
+              placeholder="e.g. Senior Software Developer, Lead Business Analyst"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            <p className="text-xs text-gray-500 mt-1">Formatted title shown in UI and on documents</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Job Title / Legacy Role</label>
             <input type="text" value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
               placeholder="e.g. Senior Editor, Freelance Designer (optional — defaults to 'Staff Member')"

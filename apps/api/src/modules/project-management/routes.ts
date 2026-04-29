@@ -20,12 +20,45 @@ import crypto from 'node:crypto';
 // ZOD SCHEMAS
 // ==========================================
 
+const JOB_FUNCTIONS = [
+  'ceo', 'cto', 'coo', 'finance_director', 'managing_director',
+  'project_manager', 'programme_manager', 'portfolio_manager',
+  'developer', 'senior_developer', 'tech_lead', 'architect', 'devops_engineer',
+  'business_analyst', 'systems_analyst', 'data_analyst',
+  'qa_engineer', 'test_analyst', 'uat_coordinator',
+  'ux_designer', 'ui_designer', 'graphic_designer',
+  'editor', 'typesetter', 'copywriter', 'proofreader', 'cover_designer',
+  'project_admin', 'executive_assistant',
+  'client_representative', 'consultant', 'contractor',
+  'other',
+] as const;
+
+// Suggested Billetterie project role based on job function
+export const JOB_FUNCTION_ROLE_MAP: Record<string, 'SPONSOR' | 'PM' | 'BA' | 'ADMIN'> = {
+  ceo: 'SPONSOR', cto: 'SPONSOR', coo: 'SPONSOR',
+  finance_director: 'SPONSOR', managing_director: 'SPONSOR',
+  client_representative: 'SPONSOR',
+  project_manager: 'PM', programme_manager: 'PM', portfolio_manager: 'PM',
+  business_analyst: 'BA', systems_analyst: 'BA', data_analyst: 'BA',
+  developer: 'BA', senior_developer: 'BA', tech_lead: 'BA',
+  architect: 'BA', devops_engineer: 'BA',
+  qa_engineer: 'BA', test_analyst: 'BA', uat_coordinator: 'BA',
+  ux_designer: 'BA', ui_designer: 'BA', graphic_designer: 'BA',
+  project_admin: 'ADMIN', executive_assistant: 'ADMIN',
+  editor: 'ADMIN', typesetter: 'ADMIN', copywriter: 'ADMIN',
+  proofreader: 'ADMIN', cover_designer: 'ADMIN',
+  consultant: 'BA', contractor: 'BA',
+  other: 'BA',
+};
+
 const createStaffMemberSchema = z.object({
   userId: z.string().nullable().optional(),
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string().optional(),
   role: z.string().optional().nullable().transform((v) => (v && v.trim()) || 'Staff Member'),
+  jobFunction: z.enum(JOB_FUNCTIONS).optional().nullable(),
+  displayTitle: z.string().max(100).optional().nullable(),
   skills: z.array(z.string()).default([]),
   availabilityType: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT']).default('FULL_TIME'),
   maxHoursPerMonth: z.coerce.number().int().positive().default(160),
@@ -473,19 +506,21 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     }
 
     const [staff] = await app.db.insert(staffMembers).values({
-      userId: linkedUserId,
-      name: body.name,
-      email: body.email,
-      phone: body.phone || null,
-      role: body.role,
-      skills: body.skills,
+      userId:          linkedUserId,
+      name:            body.name,
+      email:           body.email,
+      phone:           body.phone || null,
+      role:            body.role,
+      jobFunction:     (body.jobFunction ?? null) as any,
+      displayTitle:    body.displayTitle ?? null,
+      skills:          body.skills,
       availabilityType: body.availabilityType,
       maxHoursPerMonth: body.maxHoursPerMonth,
-      hourlyRate: String(body.hourlyRate),
-      currency: body.currency,
-      isInternal: body.isInternal,
-      notes: body.notes || null,
-      createdBy: currentUserId,
+      hourlyRate:      String(body.hourlyRate),
+      currency:        body.currency,
+      isInternal:      body.isInternal,
+      notes:           body.notes || null,
+      createdBy:       currentUserId,
     }).returning();
 
     return reply.status(201).send({
@@ -501,10 +536,12 @@ export async function projectManagementRoutes(app: FastifyInstance) {
     const body = updateStaffMemberSchema.parse(request.body);
     const updates: Record<string, any> = { updatedAt: new Date() };
 
-    if (body.name !== undefined) updates.name = body.name;
-    if (body.email !== undefined) updates.email = body.email;
-    if (body.phone !== undefined) updates.phone = body.phone || null;
-    if (body.role !== undefined) updates.role = body.role;
+    if (body.name !== undefined)         updates.name         = body.name;
+    if (body.email !== undefined)        updates.email        = body.email;
+    if (body.phone !== undefined)        updates.phone        = body.phone || null;
+    if (body.role !== undefined)         updates.role         = body.role;
+    if (body.jobFunction !== undefined)  updates.jobFunction  = body.jobFunction;
+    if (body.displayTitle !== undefined) updates.displayTitle = body.displayTitle;
     if (body.skills !== undefined) updates.skills = body.skills;
     if (body.availabilityType !== undefined) updates.availabilityType = body.availabilityType;
     if (body.maxHoursPerMonth !== undefined) updates.maxHoursPerMonth = body.maxHoursPerMonth;

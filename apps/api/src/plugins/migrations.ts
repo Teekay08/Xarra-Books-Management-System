@@ -47,6 +47,8 @@ const PENDING_MIGRATIONS = [
   '0036_bil_change_requests.sql',
   '0037_bil_testing.sql',
   '0038_billetterie_org_settings.sql',
+  '0039_permission_overrides_job_function.sql',
+  '0040_audit_and_portal_comments.sql',
 ];
 
 export default fp(async (app) => {
