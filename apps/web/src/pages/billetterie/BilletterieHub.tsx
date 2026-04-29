@@ -140,65 +140,78 @@ export function BilletterieHub() {
     queryFn: () => api<{ data: any[]; stats: any }>('/billetterie/projects?limit=50'),
   });
 
-  const projects = data?.data ?? [];
-  const stats = data?.stats ?? {};
-
-  const active    = projects.filter((p: any) => p.status === 'ACTIVE');
-  const onHold    = projects.filter((p: any) => p.status === 'ON_HOLD');
-  const completed = projects.filter((p: any) => p.status === 'COMPLETED');
-  const redHealth = active.filter((p: any) => p.healthStatus === 'R').length;
+  const projects    = data?.data ?? [];
+  const active      = projects.filter((p: any) => p.status === 'ACTIVE');
+  const onHold      = projects.filter((p: any) => p.status === 'ON_HOLD');
+  const completed   = projects.filter((p: any) => p.status === 'COMPLETED');
+  const redHealth   = active.filter((p: any) => p.healthStatus === 'R').length;
   const amberHealth = active.filter((p: any) => p.healthStatus === 'A').length;
+  const greenHealth = active.filter((p: any) => p.healthStatus === 'G').length;
 
   return (
-    <div>
-      <PageHeader
-        title="Billetterie Software"
-        subtitle="Project management hub"
-        action={
-          <Link
-            to="/billetterie/projects/new"
-            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
-          >
-            New Project
-          </Link>
-        }
-      />
+    <div className="space-y-5">
+      {/* ── Greeting + New Project ───────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Billetterie Hub</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Software Project Management</p>
+        </div>
+        <Link to="/billetterie/projects/new"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 shadow-sm transition-colors">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          New Project
+        </Link>
+      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
+      {/* ── Portfolio overview strip ─────────────────────────────── */}
+      <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'Active',    value: active.length,    color: 'text-blue-700' },
-          { label: 'On Hold',   value: onHold.length,    color: 'text-yellow-700' },
-          { label: 'Completed', value: completed.length, color: 'text-green-700' },
-          { label: 'Total',     value: projects.length,  color: 'text-gray-900' },
-          { label: '🔴 Red',    value: redHealth,        color: 'text-red-600' },
-          { label: '🟡 Amber',  value: amberHealth,      color: 'text-amber-600' },
-        ].map((s) => (
-          <div key={s.label} className="card p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">{s.label}</p>
-            <p className={`mt-1 text-2xl font-bold ${s.color}`}>{s.value}</p>
+          { label: 'Active',    value: active.length,    icon: '▶', color: 'text-blue-700',   bg: 'bg-blue-50' },
+          { label: 'On Hold',   value: onHold.length,    icon: '⏸', color: 'text-amber-700',  bg: 'bg-amber-50' },
+          { label: 'Completed', value: completed.length, icon: '✓',  color: 'text-green-700',  bg: 'bg-green-50' },
+          { label: 'Total',     value: projects.length,  icon: '◈',  color: 'text-gray-700',   bg: 'bg-gray-50' },
+          { label: 'Red Health', value: redHealth,       icon: '●',  color: 'text-red-600',    bg: redHealth > 0 ? 'bg-red-50' : 'bg-gray-50' },
+          { label: 'Amber',     value: amberHealth,      icon: '●',  color: 'text-amber-600',  bg: amberHealth > 0 ? 'bg-amber-50' : 'bg-gray-50' },
+        ].map(s => (
+          <div key={s.label} className={`card p-4 border ${s.bg}`}>
+            <p className={`text-lg font-black leading-none ${s.color}`}>{s.value}</p>
+            <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mt-1">{s.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Projects list */}
+      {/* ── Health banner (only shown if any red or amber) ────────── */}
+      {(redHealth > 0 || amberHealth > 0) && (
+        <div className={`rounded-xl border px-5 py-3 flex items-center gap-3 ${redHealth > 0 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+          <div className={`h-2 w-2 rounded-full shrink-0 ${redHealth > 0 ? 'bg-red-500' : 'bg-amber-500'}`} />
+          <p className={`text-sm font-semibold ${redHealth > 0 ? 'text-red-800' : 'text-amber-800'}`}>
+            {redHealth > 0
+              ? `${redHealth} project${redHealth > 1 ? 's' : ''} marked RED — immediate attention required`
+              : `${amberHealth} project${amberHealth > 1 ? 's' : ''} marked AMBER — monitor closely`}
+          </p>
+          <Link to="/billetterie/projects" className="ml-auto text-xs font-semibold underline opacity-70 hover:opacity-100">
+            Review now →
+          </Link>
+        </div>
+      )}
+
+      {/* ── Project cards grid ───────────────────────────────────── */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">All Projects</h2>
-          <Link to="/billetterie/projects" className="text-xs text-blue-600 hover:underline">View all</Link>
+        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+          <h2 className="text-sm font-semibold text-gray-900">All Projects ({projects.length})</h2>
+          <Link to="/billetterie/projects" className="text-xs text-blue-600 hover:underline">View all →</Link>
         </div>
 
         {isLoading && (
-          <div className="p-8 text-center text-gray-400 text-sm">Loading projects…</div>
+          <div className="p-10 text-center text-gray-400 text-sm">Loading projects…</div>
         )}
 
         {!isLoading && projects.length === 0 && (
-          <div className="p-12 text-center">
-            <p className="text-gray-500 text-sm mb-4">No projects yet</p>
-            <Link
-              to="/billetterie/projects/new"
-              className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
-            >
+          <div className="p-14 text-center space-y-3">
+            <div className="text-4xl opacity-20">📁</div>
+            <p className="text-sm font-medium text-gray-500">No projects yet</p>
+            <Link to="/billetterie/projects/new"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
               Create First Project
             </Link>
           </div>
@@ -206,44 +219,49 @@ export function BilletterieHub() {
 
         {projects.length > 0 && (
           <div className="divide-y divide-gray-100">
-            {projects.slice(0, 10).map((p: any) => (
+            {projects.slice(0, 12).map((p: any) => (
               <Link
                 key={p.id}
                 to={`/billetterie/projects/${p.id}`}
-                className="flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+                className="group flex items-center gap-4 px-5 py-3.5 hover:bg-blue-50/30 transition-colors"
               >
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="shrink-0">
-                    <p className="text-xs font-mono text-gray-400">{p.number}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
-                    <p className="text-xs text-gray-500">{p.client || '—'}</p>
-                    {p.projectType && (
-                      <p className="text-[10px] text-gray-400 mt-0.5">{p.projectType}</p>
+                {/* Health dot */}
+                <div className="shrink-0">
+                  <span className={`block h-2.5 w-2.5 rounded-full ring-2 ring-white ${
+                    p.healthStatus === 'R' ? 'bg-red-500' :
+                    p.healthStatus === 'A' ? 'bg-amber-400' :
+                    p.healthStatus === 'G' ? 'bg-green-500' :
+                    'bg-gray-200'
+                  }`} title={p.healthStatus ? `Health: ${p.healthStatus === 'R' ? 'Red' : p.healthStatus === 'A' ? 'Amber' : 'Green'}` : 'No health set'} />
+                </div>
+
+                {/* Name + meta */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-gray-900 truncate group-hover:text-blue-700 transition-colors">{p.name}</p>
+                    {p.isAdaptive && (
+                      <span className="shrink-0 text-[9px] font-bold px-1 py-0.5 bg-purple-100 text-purple-600 rounded">Adaptive</span>
                     )}
                   </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-[10px] font-mono text-gray-400">{p.number}</p>
+                    {p.client && <p className="text-[10px] text-gray-400">· {p.client}</p>}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {/* Health R/A/G */}
-                  {p.healthStatus && (
-                    <span className={`h-2.5 w-2.5 rounded-full ${
-                      p.healthStatus === 'R' ? 'bg-red-500' :
-                      p.healthStatus === 'A' ? 'bg-amber-500' :
-                      'bg-green-500'
-                    }`} title={`Health: ${p.healthStatus === 'R' ? 'Red' : p.healthStatus === 'A' ? 'Amber' : 'Green'}`} />
-                  )}
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${PHASE_COLORS[p.currentPhase] || 'bg-gray-100 text-gray-600'}`}>
+
+                {/* Phase + status badges */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className={`pill ${PHASE_COLORS[p.currentPhase] || 'bg-gray-100 text-gray-500'}`}>
                     {p.currentPhase?.replace(/_/g, ' ')}
                   </span>
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}>
-                    {p.status}
+                  <span className={`pill ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-500'}`}>
+                    {p.status.replace('_', ' ')}
                   </span>
-                  {/* Adaptive indicator */}
-                  {p.isAdaptive && (
-                    <span className="text-[9px] font-bold px-1 py-0.5 bg-purple-100 text-purple-700 rounded" title="Adaptive project">A</span>
-                  )}
                 </div>
+
+                <svg className="w-3.5 h-3.5 text-gray-300 group-hover:text-blue-400 shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                </svg>
               </Link>
             ))}
           </div>
