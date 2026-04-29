@@ -65,7 +65,7 @@ export function DeliverableReviewQueue() {
       {isLoading && <p className="text-sm text-gray-400 py-8 text-center">Loading...</p>}
 
       {!isLoading && pending.length === 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
+        <div className="card p-12 text-center">
           <p className="text-gray-400 text-sm">No deliverables pending review.</p>
           <p className="text-xs text-gray-400 mt-1">Staff-submitted deliverables will appear here for approval.</p>
         </div>

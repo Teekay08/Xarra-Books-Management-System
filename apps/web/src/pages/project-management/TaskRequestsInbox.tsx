@@ -154,7 +154,7 @@ export function TaskRequestsInbox() {
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto card">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>
@@ -208,7 +208,7 @@ export function TaskRequestsInbox() {
 
       {active && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto card p-4 shadow-xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{active.title}</h3>

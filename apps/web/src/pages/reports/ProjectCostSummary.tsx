@@ -46,23 +46,23 @@ export function ProjectCostSummary() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Projects</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{projects.length}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Active</p>
           <p className="text-2xl font-bold text-yellow-600 mt-1">{activeCount}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Budget</p>
           <p className="text-lg font-bold text-gray-900 mt-1">R {totalBudget.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Spent</p>
           <p className="text-lg font-bold text-gray-900 mt-1">R {totalActual.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Over Budget</p>
           <p className={`text-2xl font-bold mt-1 ${overBudgetCount > 0 ? 'text-red-600' : 'text-green-700'}`}>{overBudgetCount}</p>
         </div>
@@ -81,7 +81,7 @@ export function ProjectCostSummary() {
       </div>
 
       {/* Project Table */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

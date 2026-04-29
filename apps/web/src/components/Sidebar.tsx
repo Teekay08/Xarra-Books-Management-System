@@ -212,17 +212,17 @@ function useBilletterieSections(): NavSection[] {
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 const xarraLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `block px-6 py-2 text-[13px] font-medium tracking-wide transition-colors ${
+  `flex items-center mx-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-fast ${
     isActive
-      ? 'bg-xarra-red/10 text-xarra-red border-r-3 border-xarra-red'
-      : 'text-gray-700 hover:text-xarra-red hover:bg-gray-50'
+      ? 'bg-xarra-red/10 text-xarra-red font-semibold'
+      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
   }`;
 
 const billetterieLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `block px-6 py-2 text-[13px] font-medium tracking-wide transition-colors ${
+  `flex items-center mx-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-fast ${
     isActive
-      ? 'bg-blue-50 text-blue-700 border-r-3 border-blue-700'
-      : 'text-gray-700 hover:text-blue-700 hover:bg-blue-50/50'
+      ? 'bg-blue-50 text-blue-700 font-semibold'
+      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
   }`;
 
 function SectionGroup({
@@ -233,17 +233,24 @@ function SectionGroup({
   linkClass: (p: { isActive: boolean }) => string;
 }) {
   return (
-    <div>
+    <div className="mb-1">
       {section.label && (
-        <p className="px-6 pt-5 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+        <p className="px-5 pt-4 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
           {section.label}
         </p>
       )}
-      {section.items.map((item) => (
-        <NavLink key={item.href} to={item.href} end={item.href === '/' || item.href === '/billetterie'} className={linkClass}>
-          {item.name}
-        </NavLink>
-      ))}
+      <div className="space-y-0.5">
+        {section.items.map((item) => (
+          <NavLink
+            key={item.href}
+            to={item.href}
+            end={item.href === '/' || item.href === '/billetterie'}
+            className={linkClass}
+          >
+            {item.name}
+          </NavLink>
+        ))}
+      </div>
     </div>
   );
 }
@@ -269,18 +276,16 @@ function CompanySwitcher() {
   }
 
   return (
-    <div className="px-4 pb-2 pt-3 border-b border-gray-100">
+    <div className="px-3 py-2.5 border-b border-gray-100">
       <button
         onClick={switchTo}
-        className="w-full flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 px-3 py-2 transition-colors group"
+        className="w-full flex items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50/80 hover:bg-white hover:border-gray-300 px-3 py-2 transition-all group shadow-xs"
       >
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-4 rounded-full flex-shrink-0" style={{ backgroundColor: other.accentColor }} />
-          <span className="text-xs text-gray-600 font-medium group-hover:text-gray-900 transition-colors">
-            Switch to {other.shortName}
-          </span>
-        </div>
-        <svg className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="h-5 w-5 rounded-full shrink-0 ring-2 ring-white shadow-sm" style={{ backgroundColor: other.accentColor }} />
+        <span className="text-xs text-gray-600 font-medium group-hover:text-gray-900 transition-colors flex-1 text-left">
+          Switch to {other.shortName}
+        </span>
+        <svg className="h-3 w-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
         </svg>
       </button>
@@ -308,21 +313,22 @@ export function Sidebar() {
         .filter((section) => section.items.length > 0);
 
   return (
-    <aside className="w-64 h-full bg-white border-r border-gray-200 flex flex-col shrink-0">
+    <aside className="w-[220px] h-full bg-white border-r border-gray-100 flex flex-col shrink-0">
       {/* Branding */}
-      <div className="p-5 border-b border-gray-100">
+      <div className="px-4 py-3.5 border-b border-gray-100">
         <img
           src={company.logo}
           alt={company.name}
-          className="h-12 mb-1 object-contain"
+          className="h-8 object-contain object-left"
           onError={(e) => {
             const img = e.target as HTMLImageElement;
             img.style.display = 'none';
-            img.nextElementSibling?.classList.remove('hidden');
+            const next = img.nextElementSibling as HTMLElement | null;
+            if (next) next.style.display = 'block';
           }}
         />
-        <span className="hidden text-base font-bold text-gray-900">{company.name}</span>
-        <p className="text-[10px] text-gray-400 font-mono tracking-widest uppercase mt-1">
+        <span className="hidden text-sm font-bold text-gray-900">{company.name}</span>
+        <p className="text-[9px] text-gray-400 font-mono tracking-widest uppercase mt-1.5">
           {company.tagline}
         </p>
       </div>
@@ -337,7 +343,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-4 pb-3 text-[10px] text-gray-300">v0.3.0</div>
+      <div className="px-5 pb-3 text-[9px] text-gray-300 font-mono">v0.3.0</div>
     </aside>
   );
 }

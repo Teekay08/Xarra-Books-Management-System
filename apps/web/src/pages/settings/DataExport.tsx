@@ -14,7 +14,7 @@ interface ExportItem {
 const exportItems: ExportItem[] = [
   { label: 'Titles', description: 'All book titles with author, pricing, and metadata', endpoint: '/export/titles', filename: 'titles-export.csv' },
   { label: 'Authors', description: 'Author profiles, contact info, and tax details', endpoint: '/export/authors', filename: 'authors-export.csv' },
-  { label: 'Channel Partners', description: 'Partner details, discount rates, and payment terms', endpoint: '/export/partners', filename: 'partners-export.csv' },
+  { label: 'Retail Partners', description: 'Partner details, discount rates, and payment terms', endpoint: '/export/partners', filename: 'partners-export.csv' },
   { label: 'Invoices', description: 'All invoices with partner, dates, amounts, and status', endpoint: '/export/invoices', filename: 'invoices-export.csv', hasDateRange: true },
   { label: 'Invoice Lines', description: 'Individual line items across all invoices', endpoint: '/export/invoice-lines', filename: 'invoice-lines-export.csv', hasDateRange: true },
   { label: 'Quotations', description: 'All quotations with partner and amounts', endpoint: '/export/quotations', filename: 'quotations-export.csv', hasDateRange: true },

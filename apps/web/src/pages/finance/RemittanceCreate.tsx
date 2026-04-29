@@ -222,7 +222,7 @@ export function RemittanceCreate() {
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Channel Partner *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Retail Partner *</label>
           <SearchableSelect
             options={partnerOptions}
             value={partnerId}
@@ -260,7 +260,7 @@ export function RemittanceCreate() {
         {partnerId && outstandingInvoices.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Link to Invoices</label>
-            <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+            <div className="card overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -427,7 +427,7 @@ export function RemittanceCreate() {
             )}
 
             {/* Add credit note allocation controls */}
-            <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="card p-3">
               <p className="text-xs text-gray-500 mb-2">
               Available credit notes — select an invoice to apply each credit against.
               A credit note can be split across multiple invoices if its value exceeds a single invoice.

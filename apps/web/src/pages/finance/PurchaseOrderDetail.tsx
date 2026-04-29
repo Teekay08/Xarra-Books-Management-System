@@ -218,7 +218,7 @@ export function PurchaseOrderDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* PO meta */}
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 text-sm">
               <div>
                 <span className="text-xs text-gray-500 block">Status</span>
@@ -324,7 +324,7 @@ export function PurchaseOrderDetail() {
 
           {/* Delivery address */}
           {po.deliveryAddress && (
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Delivery Address</h3>
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{po.deliveryAddress}</p>
             </div>
@@ -334,7 +334,7 @@ export function PurchaseOrderDetail() {
         {/* Sidebar */}
         <div className="space-y-6">
           {po.notes && (
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{po.notes}</p>
             </div>

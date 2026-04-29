@@ -145,7 +145,7 @@ export function CashSaleDetail() {
       </div>
 
       {/* Line items */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Line Items</h3>
         <table className="w-full text-sm">
           <thead>
@@ -179,7 +179,7 @@ export function CashSaleDetail() {
       </div>
 
       {/* Totals */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <div className="flex justify-end">
           <div className="w-72 space-y-2 text-sm">
             <div className="flex justify-between">
@@ -202,7 +202,7 @@ export function CashSaleDetail() {
 
       {/* Notes */}
       {sale.notes && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">Notes</h3>
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{sale.notes}</p>
         </div>
@@ -268,7 +268,7 @@ function MetaCard({
   badge?: string;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="card p-4">
       <p className="text-xs text-gray-500">{label}</p>
       {badge ? (
         <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-xs font-medium ${badge}`}>

@@ -22,6 +22,7 @@ export function QuickPartnerCreate({ onClose, onCreated }: QuickPartnerCreatePro
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['partners-select'] });
       queryClient.invalidateQueries({ queryKey: ['partners'] });
+      queryClient.invalidateQueries({ queryKey: ['partners-list'] });
       onCreated(res.data);
       onClose();
     },
@@ -56,7 +57,7 @@ export function QuickPartnerCreate({ onClose, onCreated }: QuickPartnerCreatePro
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Quick Add Partner</h3>
-              <p className="text-sm text-gray-500 mt-0.5">Create a new channel partner</p>
+              <p className="text-sm text-gray-500 mt-0.5">Create a new retail partner</p>
             </div>
             <button type="button" onClick={onClose}
               className="text-gray-400 hover:text-gray-600 p-1">

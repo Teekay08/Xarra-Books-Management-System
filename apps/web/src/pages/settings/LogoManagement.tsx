@@ -42,7 +42,7 @@ export function LogoManagement() {
       <PageHeader title="Logo Management" subtitle="Upload your company logo for business documents" />
 
       <div className="max-w-xl space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Current Logo</h3>
           {logoUrl ? (
             <div className="space-y-4">
@@ -61,7 +61,7 @@ export function LogoManagement() {
           )}
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Upload Logo</h3>
           <p className="text-xs text-gray-500 mb-3">
             Accepted formats: PNG, JPEG, SVG, WebP. Max 5MB. Recommended: transparent PNG, at least 400px wide.
@@ -76,7 +76,7 @@ export function LogoManagement() {
           {uploading && <p className="text-sm text-gray-500 mt-2">Uploading...</p>}
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Where is the logo used?</h3>
           <ul className="text-sm text-gray-600 space-y-1.5 list-disc list-inside">
             <li>Invoices and credit notes (PDF header)</li>
@@ -91,7 +91,7 @@ export function LogoManagement() {
         </div>
 
         {logoUrl && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className="card p-5">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Document Preview</h3>
             <div className="border border-gray-200 rounded p-6 bg-white">
               <div className="flex justify-between items-start">

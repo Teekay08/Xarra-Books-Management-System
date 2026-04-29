@@ -35,7 +35,7 @@ export function SystemHealth() {
 
       {/* System Info */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Server Info</h3>
           <div className="space-y-2 text-sm">
             <InfoRow label="Node.js" value={h?.nodeVersion || '—'} />
@@ -46,7 +46,7 @@ export function SystemHealth() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Database Stats</h3>
           <div className="space-y-2 text-sm">
             <InfoRow label="Status" value={h?.database?.connected ? 'Connected' : 'Disconnected'} />
@@ -60,7 +60,7 @@ export function SystemHealth() {
       </div>
 
       {/* Background Jobs */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Background Jobs</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {(h?.jobs || []).map((job: any) => (
@@ -77,7 +77,7 @@ export function SystemHealth() {
       </div>
 
       {/* Recent Notifications */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Email Log</h3>
         {h?.recentEmails?.length > 0 ? (
           <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -110,7 +110,7 @@ export function SystemHealth() {
       </div>
 
       {/* Quick Links */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="card p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Developer Quick Links</h3>
         <div className="flex flex-wrap gap-2">
           <a href="/api/v1/health" target="_blank" rel="noopener noreferrer"

@@ -128,7 +128,7 @@ function PhasePanel({ projectId, currentPhase, phaseMap, onAdvance, advancing }:
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <div className="card p-4">
       {/* Phase tabs */}
       <div className="flex gap-1 flex-wrap mb-5">
         {PHASES.map((phase, idx) => {
@@ -275,7 +275,7 @@ function MeetingsPanel({ projectId }: { projectId: string }) {
 
       <div className="space-y-3">
         {meetings.map((m: any) => (
-          <div key={m.id} className="rounded-lg border border-gray-200 bg-white p-4">
+          <div key={m.id} className="card p-4">
             <div className="flex items-start justify-between mb-2">
               <p className="text-sm font-semibold text-gray-900">{m.title}</p>
               <span className="text-xs text-gray-500">{new Date(m.meetingDate).toLocaleDateString('en-ZA')}</span>
@@ -1421,23 +1421,23 @@ export function BilletterieProjectDetail() {
 
       {/* Metric strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Phase</p>
           <p className="mt-1 text-sm font-bold text-blue-700">{project.currentPhase?.replace(/_/g, ' ')}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Budget</p>
           <p className="mt-1 text-lg font-bold text-gray-900">
             {project.budget ? `R ${Number(project.budget).toLocaleString('en-ZA')}` : '—'}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Start Date</p>
           <p className="mt-1 text-sm font-bold text-gray-900">
             {project.startDate ? new Date(project.startDate).toLocaleDateString('en-ZA') : '—'}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Target End</p>
           <p className="mt-1 text-sm font-bold text-gray-900">
             {project.targetEndDate ? new Date(project.targetEndDate).toLocaleDateString('en-ZA') : '—'}

@@ -67,7 +67,7 @@ export function InvoiceReminders() {
       <PageHeader title="Invoice Reminders" subtitle="Configure automatic payment reminder emails to channel partners" />
 
       <div className="max-w-xl space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Auto-Send Reminders</h3>
@@ -119,7 +119,7 @@ export function InvoiceReminders() {
           {mutation.isPending ? 'Saving...' : 'Save Reminder Settings'}
         </button>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">How it works</h3>
           <ul className="text-sm text-gray-600 space-y-1.5 list-disc list-inside">
             <li>Reminders are sent to the partner's remittance email (or contact email as fallback)</li>

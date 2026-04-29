@@ -91,20 +91,20 @@ export function StaffDetail() {
       {/* Profile + Availability Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {showFinancialData && (
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Hourly Rate</p>
             <p className="mt-1 text-xl font-bold text-gray-900">R {Number(staff.hourlyRate || 0).toFixed(2)}/hr</p>
           </div>
         )}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Max Hours/Month</p>
           <p className="mt-1 text-xl font-bold text-gray-900">{staff.maxHoursPerMonth || 160}h</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Active Tasks</p>
           <p className="mt-1 text-xl font-bold text-blue-700">{activeTasks.length}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Hours Remaining</p>
           <p className={`mt-1 text-xl font-bold ${totalRemaining > 0 ? 'text-green-700' : 'text-red-600'}`}>
             {totalRemaining.toFixed(1)}h
@@ -114,7 +114,7 @@ export function StaffDetail() {
 
       {/* Contact + Skills */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Contact Details</h3>
           <div className="space-y-2 text-sm">
             <p><span className="text-gray-500">Email:</span> <span className="font-medium">{staff.email}</span></p>
@@ -128,7 +128,7 @@ export function StaffDetail() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Skills</h3>
           {skills.length > 0 ? (
             <div className="flex flex-wrap gap-2">
@@ -145,7 +145,7 @@ export function StaffDetail() {
       </div>
 
       {/* Hours Summary */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Hours Summary (All Projects)</h3>
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
@@ -173,7 +173,7 @@ export function StaffDetail() {
       </div>
 
       {/* Tasks by Project */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="card p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Tasks Across Projects</h3>
         {projectMap.size === 0 && (
           <p className="text-sm text-gray-400 text-center py-6">No tasks assigned to this staff member yet.</p>

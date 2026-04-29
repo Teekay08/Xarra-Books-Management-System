@@ -70,11 +70,11 @@ export function SellThroughPredictions() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs font-medium text-gray-500 uppercase">Total Predictions</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">{predictions?.pagination?.total || 0}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs font-medium text-gray-500 uppercase">Avg Sell-Through</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">{avgSellThrough.toFixed(1)}%</p>
         </div>
@@ -123,7 +123,7 @@ export function SellThroughPredictions() {
 
       {/* Revenue Forecast */}
       {revForecast?.data && revForecast.data.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Revenue Forecast by Month</h3>
           <div className="flex gap-4 overflow-x-auto">
             {revForecast.data.map((m: any, i: number) => (
@@ -138,7 +138,7 @@ export function SellThroughPredictions() {
       )}
 
       {/* All Predictions Table */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

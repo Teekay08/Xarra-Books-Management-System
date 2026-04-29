@@ -76,7 +76,7 @@ export function BudgetDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Over Budget Projects */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Over Budget Projects</h3>
           {data?.data?.overBudget?.length === 0 && (
             <p className="text-sm text-gray-400">No projects are over budget.</p>
@@ -100,7 +100,7 @@ export function BudgetDashboard() {
         </div>
 
         {/* Recent Projects */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Recent Projects</h3>
           {isLoading && <p className="text-sm text-gray-400">Loading...</p>}
           <div className="space-y-3">
@@ -126,7 +126,7 @@ export function BudgetDashboard() {
 
 function StatCard({ label, value, className, subtitle }: { label: string; value: string; className?: string; subtitle?: string }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <div className="card p-4">
       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
       <p className={`mt-2 text-2xl font-bold ${className || 'text-gray-900'}`}>{value}</p>
       {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}

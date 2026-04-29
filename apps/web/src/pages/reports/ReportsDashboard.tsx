@@ -72,7 +72,7 @@ export function ReportsDashboard() {
               <Link
                 key={r.href}
                 to={r.href}
-                className="rounded-lg border border-gray-200 bg-white p-5 hover:border-green-300 hover:shadow-sm transition-all group"
+                className="card p-4 hover:border-green-300 hover:shadow-sm transition-all group"
               >
                 <h3 className="text-sm font-semibold text-gray-900 group-hover:text-green-700 transition-colors">{r.name}</h3>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">{r.description}</p>

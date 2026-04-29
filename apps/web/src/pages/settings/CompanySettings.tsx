@@ -156,7 +156,7 @@ export function CompanySettings() {
       {/* Company Details Tab */}
       {activeTab === 'company' && (
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
-          <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+          <fieldset className="card p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">Company Information</legend>
             <p className="mb-4 text-xs text-gray-500">This information appears on all generated business documents (invoices, credit notes, statements, etc.).</p>
             <div className="space-y-3">
@@ -183,7 +183,7 @@ export function CompanySettings() {
             </div>
           </fieldset>
 
-          <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+          <fieldset className="card p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">Address</legend>
             <div className="space-y-3">
               <div>
@@ -215,7 +215,7 @@ export function CompanySettings() {
             </div>
           </fieldset>
 
-          <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+          <fieldset className="card p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">Contact Details</legend>
             <div className="grid grid-cols-3 gap-4">
               <div>
@@ -246,7 +246,7 @@ export function CompanySettings() {
       {/* Branding & Logo Tab */}
       {activeTab === 'branding' && (
         <div className="max-w-3xl space-y-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-1">Company Logo</h3>
             <p className="text-xs text-gray-500 mb-4">
               Your logo appears in the header of all generated documents: invoices, credit notes, statements, quotations, debit notes, purchase orders, and receipts.
@@ -320,7 +320,7 @@ export function CompanySettings() {
           </div>
 
           {/* Document Preview */}
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Document Header Preview</h3>
             <div className="rounded border border-gray-200 bg-white p-6">
               <div className="flex justify-between items-start">
@@ -375,7 +375,7 @@ export function CompanySettings() {
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
           <input type="hidden" name="companyName" value={s?.companyName ?? 'Xarra Books'} />
 
-          <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+          <fieldset className="card p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">Banking Details</legend>
             <p className="mb-4 text-xs text-gray-500">These details appear at the bottom of invoices so partners know where to make payment.</p>
             <div className="grid grid-cols-2 gap-4">
@@ -413,7 +413,7 @@ export function CompanySettings() {
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
           <input type="hidden" name="companyName" value={s?.companyName ?? 'Xarra Books'} />
 
-          <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+          <fieldset className="card p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">Document Footer Text</legend>
             <p className="mb-4 text-xs text-gray-500">Custom text that appears at the bottom of generated PDF documents.</p>
             <div className="space-y-4">
@@ -443,7 +443,7 @@ export function CompanySettings() {
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
           <input type="hidden" name="companyName" value={s?.companyName ?? 'Xarra Books'} />
 
-          <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+          <fieldset className="card p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">Partner Portal Settings</legend>
             <p className="mb-4 text-xs text-gray-500">Configure rules and thresholds for the partner ordering portal.</p>
             <div className="space-y-4">

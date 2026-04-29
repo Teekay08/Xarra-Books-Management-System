@@ -109,7 +109,7 @@ export function NotificationEmailSettings() {
       />
 
       {/* Master Toggle */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Email Notifications</h3>
@@ -127,7 +127,7 @@ export function NotificationEmailSettings() {
       {prefs.emailEnabled && (
         <>
           {/* Default Digest */}
-          <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+          <div className="card p-4 mb-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Default Delivery</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
@@ -167,7 +167,7 @@ export function NotificationEmailSettings() {
 
           {/* Per-category settings */}
           {Object.entries(NOTIFICATION_CATEGORIES).map(([category, types]) => (
-            <div key={category} className="rounded-lg border border-gray-200 bg-white p-5 mb-4">
+            <div key={category} className="card p-4 mb-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">{category}</h3>
               <div className="space-y-3">
                 {types.map(({ type, label }) => {

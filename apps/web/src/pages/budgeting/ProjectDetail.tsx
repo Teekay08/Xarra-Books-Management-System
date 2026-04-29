@@ -221,28 +221,28 @@ export function ProjectDetail() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Status</p>
           <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[project.status]}`}>
             {project.status.replace(/_/g, ' ')}
           </span>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Budget</p>
           <p className="mt-1 text-lg font-bold text-gray-900">R {budget.toFixed(2)}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Actual</p>
           <p className="mt-1 text-lg font-bold text-gray-900">R {actual.toFixed(2)}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Variance</p>
           <p className={`mt-1 text-lg font-bold ${variance >= 0 ? 'text-green-700' : 'text-red-600'}`}>
             {variance >= 0 ? '' : '-'}R {Math.abs(variance).toFixed(2)}
           </p>
         </div>
         {project.contractType === 'HYBRID' && (
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Xarra Net</p>
             <p className="mt-1 text-lg font-bold text-gray-900">R {xarraNet.toFixed(2)}</p>
             <p className="text-xs text-gray-400">Author: R {authorContrib.toFixed(2)}</p>
@@ -251,7 +251,7 @@ export function ProjectDetail() {
       </div>
 
       {/* Project Info */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
           <div>
             <span className="text-gray-500">Author</span>
@@ -281,7 +281,7 @@ export function ProjectDetail() {
 
       {/* Milestone Pipeline */}
       {project.milestones.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Milestone Pipeline</h3>
           <div className="flex gap-2 overflow-x-auto pb-2">
             {project.milestones.map((m) => (
@@ -314,7 +314,7 @@ export function ProjectDetail() {
       {activeTab === 'overview' && (
         <div className="space-y-4">
           {/* Budget by Classification */}
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Budget by Classification</h3>
             {(['PUBLISHING', 'OPERATIONAL', 'LAUNCH', 'MARKETING'] as const).map((cls) => {
               const lines = project.budgetLineItems.filter((l) => l.costClassification === cls);
@@ -406,7 +406,7 @@ export function ProjectDetail() {
 
       {/* Variance Tab */}
       {activeTab === 'variance' && varianceData && (
-        <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+        <div className="card overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -515,7 +515,7 @@ function AiEstimationPanel({ projectId, milestones, queryClient }: {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="card p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">AI Cost Estimation</h3>
         <p className="text-sm text-gray-500 mb-4">
           Generate cost estimates based on book metadata and historical data. The system uses baseline rates adjusted by project complexity,
@@ -550,21 +550,21 @@ function AiEstimationPanel({ projectId, milestones, queryClient }: {
       {estimates && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="card p-4">
               <p className="text-xs text-gray-500 uppercase">Est. Total Hours</p>
               <p className="text-xl font-bold">{estimates.summary.totalEstimatedHours.toFixed(1)}h</p>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="card p-4">
               <p className="text-xs text-gray-500 uppercase">Internal Cost</p>
               <p className="text-xl font-bold text-blue-700">R {estimates.summary.totalInternalCost.toFixed(2)}</p>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="card p-4">
               <p className="text-xs text-gray-500 uppercase">External Cost</p>
               <p className="text-xl font-bold text-orange-600">R {estimates.summary.totalExternalCost.toFixed(2)}</p>
             </div>
           </div>
 
-          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+          <div className="card overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -751,7 +751,7 @@ function BudgetTab({ projectId, lines, milestones, showAddLine, setShowAddLine, 
         </div>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -1065,7 +1065,7 @@ function ActualsTab({ projectId, actuals, milestones, budgetLines, showAddActual
         </div>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

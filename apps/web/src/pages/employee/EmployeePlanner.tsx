@@ -616,7 +616,7 @@ export function EmployeePlanner() {
       />
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+        <div className="inline-flex card p-1">
           <button
             type="button"
             onClick={() => setMode('week')}
@@ -837,7 +837,7 @@ export function EmployeePlanner() {
           {monthQuery.isLoading && <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading monthly planner...</div>}
 
           {monthQuery.data && (
-            <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="card p-3">
               <div className="mb-2 grid grid-cols-7 gap-2 text-center text-xs font-semibold uppercase text-gray-500">
                 <div>Mon</div>
                 <div>Tue</div>
@@ -934,7 +934,7 @@ export function EmployeePlanner() {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md card p-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900">Edit Planned Task</h3>
             <p className="mt-1 text-xs text-gray-500">{editing.taskLabel}</p>
 
@@ -1040,7 +1040,7 @@ export function EmployeePlanner() {
 
       {extensionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md card p-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900">Request Time Extension</h3>
             <p className="mt-1 text-xs text-gray-500">{extensionModal.taskLabel}</p>
 
@@ -1095,7 +1095,7 @@ export function EmployeePlanner() {
 
       {logHoursModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md card p-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900">Log Hours</h3>
             <p className="mt-1 text-xs text-gray-500">{logHoursModal.taskLabel}</p>
 
@@ -1156,7 +1156,7 @@ export function EmployeePlanner() {
 
       {requestTaskModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md card p-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900">Request Additional Task</h3>
             <p className="mt-1 text-xs text-gray-500">Project: {requestTaskModal.projectLabel}</p>
             {requestTaskModal.linkedTaskId && (
@@ -1229,7 +1229,7 @@ export function EmployeePlanner() {
 
       {planSpanModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md card p-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900">Plan Task Across Days</h3>
             <p className="mt-1 text-xs text-gray-500">{planSpanModal.taskLabel}</p>
 

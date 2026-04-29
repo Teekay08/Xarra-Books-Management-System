@@ -44,7 +44,7 @@ export function PortalContracts() {
             <Link
               key={c.id}
               to={`/portal/contracts/${c.id}`}
-              className="block rounded-lg border border-gray-200 bg-white p-5 hover:border-gray-300 transition-colors"
+              className="block card p-4 hover:border-gray-300 transition-colors"
             >
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-medium text-gray-900">{c.title?.title ?? 'Unknown Title'}</h3>

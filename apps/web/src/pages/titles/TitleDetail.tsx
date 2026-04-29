@@ -498,7 +498,7 @@ export function TitleDetail() {
 
 function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <div className="card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
         {action}
@@ -548,7 +548,7 @@ function TitleProfitLoss({ titleId }: { titleId: string }) {
   const pl = data?.data;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+    <div className="card overflow-x-auto">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}

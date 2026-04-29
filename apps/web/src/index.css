@@ -2,17 +2,196 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Design tokens ────────────────────────────────────────────────────────── */
+:root {
+  /* Spacing scale */
+  --sidebar-width: 220px;
+  --header-height: 48px;
+
+  /* Elevation */
+  --shadow-xs:  0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-sm:  0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --shadow-md:  0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.07), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+  --shadow-xl:  0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+
+  /* Border radius */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+
+  /* Transitions */
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+}
+
+/* ─── Base reset ────────────────────────────────────────────────────────────── */
 @layer base {
-  body {
-    @apply min-h-screen;
+  html {
+    font-size: 14px; /* Slightly smaller base — prevents the "zoomed in" feel */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
-  /* Hide scrollbars but keep scroll functionality */
-  * {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
+  body {
+    @apply min-h-screen bg-gray-50 text-gray-900;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11"; /* Inter CV alternates */
   }
-  *::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
+
+  /* Thin, styled scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+  *::-webkit-scrollbar { width: 5px; height: 5px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
+  *::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+  /* Focus ring — accessible but subtle */
+  *:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+
+  h1, h2, h3, h4 { @apply font-semibold tracking-tight; }
+}
+
+/* ─── Component layer — shared UI primitives ────────────────────────────────── */
+@layer components {
+
+  /* ── Card ── */
+  .card {
+    @apply bg-white border border-gray-100 rounded-xl;
+    box-shadow: var(--shadow-sm);
+  }
+  .card-hover {
+    @apply card transition-shadow hover:shadow-md;
+  }
+
+  /* ── Page section heading ── */
+  .section-title {
+    @apply text-xs font-bold uppercase tracking-widest text-gray-400 mb-2;
+  }
+
+  /* ── Status pill ── */
+  .pill {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold leading-none;
+  }
+
+  /* ── Table ── */
+  .data-table {
+    @apply w-full text-sm border-collapse;
+  }
+  .data-table thead th {
+    @apply px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-50 border-b border-gray-100;
+  }
+  .data-table tbody td {
+    @apply px-4 py-3 border-b border-gray-50 text-gray-700 leading-snug;
+  }
+  .data-table tbody tr:last-child td { @apply border-b-0; }
+  .data-table tbody tr { @apply hover:bg-gray-50/70 transition-colors; }
+
+  /* ── Input ── */
+  .input {
+    @apply w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900
+           placeholder:text-gray-400 transition-colors
+           focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50;
+  }
+  .input-sm {
+    @apply input px-2.5 py-1.5 text-xs;
+  }
+  .textarea {
+    @apply input resize-none;
+  }
+  .select {
+    @apply input appearance-none pr-8 bg-[image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")] bg-[right_0.5rem_center] bg-no-repeat bg-[length:1.25rem];
+  }
+
+  /* ── Button ── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium
+           transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+  .btn-sm {
+    @apply inline-flex items-center justify-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium
+           transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+  .btn-primary {
+    @apply btn bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-sm;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900;
+  }
+
+  /* ── Xarra brand button ── */
+  .btn-brand {
+    @apply btn bg-xarra-red text-white hover:bg-xarra-red-dark shadow-sm;
+  }
+
+  /* ── Label ── */
+  .form-label {
+    @apply block text-xs font-medium text-gray-600 mb-1;
+  }
+
+  /* ── Stat card ── */
+  .stat-card {
+    @apply card p-4;
+  }
+  .stat-value {
+    @apply text-2xl font-bold text-gray-900 leading-none;
+  }
+  .stat-label {
+    @apply text-xs text-gray-500 mt-1;
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 text-center;
+  }
+  .empty-state-icon {
+    @apply text-4xl mb-3 opacity-50;
+  }
+  .empty-state-title {
+    @apply text-sm font-medium text-gray-500;
+  }
+  .empty-state-desc {
+    @apply text-xs text-gray-400 mt-1;
+  }
+
+  /* ── Page container — constrains content width ── */
+  .page-container {
+    @apply max-w-[1440px] mx-auto;
+  }
+}
+
+/* ─── Utility layer extras ──────────────────────────────────────────────────── */
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .border-r-3 { border-right-width: 3px; }
+
+  /* Subtle grid background for dashboards */
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Glass morphism card */
+  .glass {
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.8);
   }
 }

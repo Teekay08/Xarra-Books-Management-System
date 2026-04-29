@@ -162,7 +162,7 @@ export function RoyaltiesPaymentDetail() {
           { label: 'Amount Due',        value: formatR(pmt.amountDue) },
           { label: 'Amount Paid',       value: Number(pmt.amountPaid) > 0 ? formatR(pmt.amountPaid) : '—' },
         ].map(c => (
-          <div key={c.label} className="rounded-lg border border-gray-200 bg-white p-4">
+          <div key={c.label} className="card p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide">{c.label}</p>
             <p className="text-lg font-bold text-gray-900 mt-1 font-mono">{c.value}</p>
           </div>
@@ -170,7 +170,7 @@ export function RoyaltiesPaymentDetail() {
       </div>
 
       {/* Payment metadata */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="card p-4">
         <h2 className="text-sm font-semibold text-gray-700 mb-3">Payment Details</h2>
         <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
           {[
@@ -197,7 +197,7 @@ export function RoyaltiesPaymentDetail() {
       </div>
 
       {/* Line items */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="card overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100">
           <h2 className="text-sm font-semibold text-gray-700">Line Items ({pmt.lines.length})</h2>
         </div>

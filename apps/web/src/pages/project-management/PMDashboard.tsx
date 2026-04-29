@@ -83,26 +83,26 @@ export function PMDashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Link to="/pm/projects" className="rounded-lg border border-gray-200 bg-white p-5 hover:shadow-md transition-shadow">
+        <Link to="/pm/projects" className="card p-4 hover:shadow-md transition-shadow">
           <p className="text-xs font-medium text-gray-500 uppercase">Active Projects</p>
           <p className="mt-2 text-3xl font-bold text-gray-900">{activeProjects.length}</p>
         </Link>
-        <Link to="/pm/staff" className="rounded-lg border border-gray-200 bg-white p-5 hover:shadow-md transition-shadow">
+        <Link to="/pm/staff" className="card p-4 hover:shadow-md transition-shadow">
           <p className="text-xs font-medium text-gray-500 uppercase">Team Members</p>
           <p className="mt-2 text-3xl font-bold text-gray-900">{activeStaff.length}</p>
         </Link>
-        <Link to="/pm/capacity" className="rounded-lg border border-gray-200 bg-white p-5 hover:shadow-md transition-shadow">
+        <Link to="/pm/capacity" className="card p-4 hover:shadow-md transition-shadow">
           <p className="text-xs font-medium text-gray-500 uppercase">Resource Planning</p>
           <p className="mt-2 text-3xl font-bold text-blue-600">View Capacity</p>
         </Link>
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <p className="text-xs font-medium text-gray-500 uppercase">Total Projects</p>
           <p className="mt-2 text-3xl font-bold text-gray-900">{projects.length}</p>
         </div>
       </div>
 
       {/* Guided Workflow — live stepper for most active project, static if no projects */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">
@@ -151,7 +151,7 @@ export function PMDashboard() {
       </div>
 
       {/* Active Projects with Quick Actions */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Projects</h3>
         {activeProjects.length === 0 && (
           <p className="text-sm text-gray-400 text-center py-6">No active projects. <Link to="/budgeting/projects/new" className="text-green-700 hover:underline">Create one</Link></p>
@@ -186,7 +186,7 @@ export function PMDashboard() {
       </div>
 
       {/* Team Overview */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="card p-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-gray-900">Team Members</h3>
           <Link to="/pm/staff/new" className="text-xs text-green-700 hover:underline">+ Add Staff</Link>

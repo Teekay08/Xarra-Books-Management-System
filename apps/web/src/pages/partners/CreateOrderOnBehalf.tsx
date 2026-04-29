@@ -103,11 +103,11 @@ export function CreateOrderOnBehalf() {
 
       <div className="max-w-4xl space-y-6">
         {/* Partner Selection */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Partner Details</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Channel Partner *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Retail Partner *</label>
               <select value={partnerId} onChange={(e) => { setPartnerId(e.target.value); setBranchId(''); }}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                 <option value="">— Select partner —</option>
@@ -141,7 +141,7 @@ export function CreateOrderOnBehalf() {
         </div>
 
         {/* Line Items */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Order Lines</h3>
 
           {/* Title search */}
@@ -207,7 +207,7 @@ export function CreateOrderOnBehalf() {
         </div>
 
         {/* Notes */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Internal Notes</label>
           <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"

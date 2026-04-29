@@ -19,7 +19,7 @@ const channelLabels: Record<string, string> = {
   XARRA_STORE: 'Xarra Store',
   AMAZON_KDP: 'Amazon KDP',
   TAKEALOT: 'Takealot',
-  PARTNER: 'Channel Partners',
+  PARTNER: 'Retail Partners',
 };
 
 export function ChannelRevenue() {
@@ -124,7 +124,7 @@ export function ChannelRevenue() {
           </div>
 
           {/* Channel summary table */}
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden mb-6">
+          <div className="card overflow-hidden mb-6">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -162,7 +162,7 @@ export function ChannelRevenue() {
           {partners.length > 0 && (
             <>
               <h3 className="text-sm font-medium text-gray-700 mb-2">Partner Revenue Breakdown (via Invoices)</h3>
-              <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+              <div className="card overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>

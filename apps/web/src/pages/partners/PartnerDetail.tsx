@@ -142,7 +142,7 @@ export function PartnerDetail() {
         </div>
 
         {partner.branches?.length > 0 ? (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+          <div className="card overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -302,7 +302,7 @@ function BranchModal({ partnerId, branch, onClose, onSaved }: {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <div className="card p-4">
       <h3 className="text-sm font-semibold text-gray-900 mb-3">{title}</h3>
       {children}
     </div>

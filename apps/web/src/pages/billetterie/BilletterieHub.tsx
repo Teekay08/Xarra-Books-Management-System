@@ -44,7 +44,7 @@ function OrgSettingsPanel() {
   const org = orgData?.data;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden mt-6">
+    <div className="card overflow-hidden mt-6">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Billetterie Org Settings</h2>
@@ -174,7 +174,7 @@ export function BilletterieHub() {
           { label: '🔴 Red',    value: redHealth,        color: 'text-red-600' },
           { label: '🟡 Amber',  value: amberHealth,      color: 'text-amber-600' },
         ].map((s) => (
-          <div key={s.label} className="rounded-lg border border-gray-200 bg-white p-4">
+          <div key={s.label} className="card p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide">{s.label}</p>
             <p className={`mt-1 text-2xl font-bold ${s.color}`}>{s.value}</p>
           </div>
@@ -182,7 +182,7 @@ export function BilletterieHub() {
       </div>
 
       {/* Projects list */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">All Projects</h2>
           <Link to="/billetterie/projects" className="text-xs text-blue-600 hover:underline">View all</Link>

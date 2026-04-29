@@ -384,39 +384,39 @@ export function TaskDetail() {
 
       {/* Info Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Assigned To</p>
           <p className="text-sm font-medium text-gray-900 mt-1">{task.staffMember?.name || '—'}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Project</p>
           <p className="text-sm font-medium text-gray-900 mt-1">{task.project?.number || '—'}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Milestone</p>
           <p className="text-sm font-medium text-gray-900 mt-1">{task.milestone?.name || '—'}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Priority</p>
           <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium mt-1 ${priorityColors[task.priority] || ''}`}>
             {task.priority}
           </span>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Allocated Hours</p>
           <p className="text-sm font-medium text-gray-900 mt-1 font-mono">{Number(task.allocatedHours).toFixed(1)}h</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Logged Hours</p>
           <p className="text-sm font-medium text-gray-900 mt-1 font-mono">{Number(task.loggedHours).toFixed(1)}h</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Remaining</p>
           <p className={`text-sm font-medium mt-1 font-mono ${Number(task.remainingHours) <= 0 ? 'text-red-600' : 'text-gray-900'}`}>
             {Number(task.remainingHours).toFixed(1)}h
           </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Cost</p>
           <p className="text-sm font-medium text-gray-900 mt-1">R {(Number(task.loggedHours) * Number(task.hourlyRate)).toFixed(2)}</p>
         </div>
@@ -542,14 +542,14 @@ export function TaskDetail() {
 
       {/* Description */}
       {task.description && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">Description</h3>
           <p className="text-sm text-gray-700 whitespace-pre-wrap">{task.description}</p>
         </div>
       )}
 
       {/* Deliverables Panel */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-gray-900">
             Deliverables
@@ -751,7 +751,7 @@ export function TaskDetail() {
       )}
 
       {/* Time Logs */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Time Logs</h3>
 
         <div className="overflow-x-auto">
@@ -855,7 +855,7 @@ export function TaskDetail() {
       </div>
 
       {/* Extension Requests */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="card p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Extension Requests</h3>
 
         {task.extensionRequests?.length > 0 ? (

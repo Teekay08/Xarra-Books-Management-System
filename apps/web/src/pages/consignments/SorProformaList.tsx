@@ -49,22 +49,37 @@ export function SorProformaList() {
   return (
     <div>
       <PageHeader
-        title="SOR Pro-forma Invoices"
-        subtitle="All sale-or-return pro-forma invoices generated with consignments"
+        title="Sales PO Agreements"
+        subtitle="Agreement documents and pro-formas generated from sales purchase orders"
         action={
           <button
             onClick={() => navigate('/consignments/new')}
             className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
           >
-            New Consignment
+            New Sales PO
           </button>
         }
       />
 
+      <div className="mb-4 flex items-center gap-2">
+        <button
+          onClick={() => navigate('/consignments')}
+          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Orders
+        </button>
+        <button
+          onClick={() => navigate('/consignments/proformas')}
+          className="rounded-md border border-green-700 bg-green-700 px-3 py-1.5 text-xs font-medium text-white"
+        >
+          Agreements
+        </button>
+      </div>
+
       <div className="mb-4">
         <input
           type="text"
-          placeholder="Search by proforma number, partner name, or PO number..."
+          placeholder="Search by agreement/pro-forma number, partner name, or PO number..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="w-full max-w-md rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
@@ -75,11 +90,11 @@ export function SorProformaList() {
         <div className="py-12 text-center text-gray-400">Loading...</div>
       ) : items.length === 0 ? (
         <div className="py-12 text-center text-gray-400">
-          No SOR pro-forma invoices found. They are auto-generated when consignments are created.
+          No sales PO agreements found. They are auto-generated when sales purchase orders are created.
         </div>
       ) : (
         <>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+          <div className="card overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

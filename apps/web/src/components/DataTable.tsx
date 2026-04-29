@@ -22,14 +22,14 @@ export function DataTable<T extends Record<string, any>>({
 }: DataTableProps<T>) {
   if (data.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-400">
+      <div className="card p-12 text-center text-gray-400">
         {emptyMessage}
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+    <div className="overflow-x-auto card">
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>

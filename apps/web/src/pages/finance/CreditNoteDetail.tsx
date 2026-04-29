@@ -231,7 +231,7 @@ export function CreditNoteDetail() {
 
       {/* Credit Balance */}
       {status !== 'VOIDED' && (
-        <div className="mb-6 rounded-lg border border-gray-200 bg-white overflow-x-auto">
+        <div className="mb-6 card overflow-x-auto">
           <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
             <h3 className="text-sm font-semibold text-gray-900">Credit Balance</h3>
           </div>
@@ -266,7 +266,7 @@ export function CreditNoteDetail() {
 
       {/* Line Items */}
       {cn.lines && cn.lines.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white mb-6 overflow-x-auto">
+        <div className="card mb-6 overflow-x-auto">
           <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
             <h3 className="text-sm font-semibold text-gray-900">Line Items</h3>
           </div>
@@ -303,14 +303,14 @@ export function CreditNoteDetail() {
       )}
 
       {/* Reason */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-2">Reason</h3>
         <p className="text-sm text-gray-600 whitespace-pre-wrap">{cn.reason}</p>
       </div>
 
       {/* Review info */}
       {cn.reviewedAt && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">Review Details</h3>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>

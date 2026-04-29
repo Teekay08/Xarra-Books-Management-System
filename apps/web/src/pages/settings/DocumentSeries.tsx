@@ -97,7 +97,7 @@ export function DocumentSeries() {
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
-        <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+        <fieldset className="card p-4">
           <legend className="px-2 text-sm font-semibold text-gray-700">Document Starting Numbers</legend>
           <p className="mb-4 text-xs text-gray-500">
             Configure the starting number for each document type. Leave blank to use system defaults (typically 1).

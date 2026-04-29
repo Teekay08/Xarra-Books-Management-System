@@ -122,9 +122,9 @@ export function ConsignmentDetail() {
   return (
     <div>
       <PageHeader
-        title={`Consignment — ${con.partner.name}`}
+        title={`Sales PO — ${con.partner.name}`}
         subtitle={con.dispatchDate ? `Dispatched ${new Date(con.dispatchDate).toLocaleDateString('en-ZA')}` : 'Draft'}
-        backTo={{ label: 'Back to Consignments', href: '/consignments' }}
+        backTo={{ label: 'Back to Sales POs', href: '/consignments' }}
         action={
           <div className="flex gap-2">
             <button
@@ -215,7 +215,7 @@ export function ConsignmentDetail() {
 
       {/* Proforma & PO info */}
       {(con.proformaNumber || con.partnerPoNumber) && (
-        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 text-sm">
+        <div className="mb-6 card p-4 text-sm">
           <div className="flex gap-6">
             {con.proformaNumber && (
               <div>
@@ -252,7 +252,7 @@ export function ConsignmentDetail() {
       )}
 
       {/* Line items */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="card p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Line Items</h3>
         <table className="w-full text-sm">
           <thead>
@@ -293,7 +293,7 @@ export function ConsignmentDetail() {
       </div>
 
       {con.notes && (
-        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5">
+        <div className="mt-6 card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">Notes</h3>
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{con.notes}</p>
         </div>

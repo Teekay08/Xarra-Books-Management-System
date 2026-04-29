@@ -64,7 +64,7 @@ export function SystemConfiguration() {
 
       <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         {/* Inventory Settings */}
-        <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+        <fieldset className="card p-4">
           <legend className="px-2 text-sm font-semibold text-gray-700">Inventory Settings</legend>
           <p className="mb-4 text-xs text-gray-500">
             Configure how the system alerts you about low stock levels.
@@ -89,7 +89,7 @@ export function SystemConfiguration() {
         </fieldset>
 
         {/* Consignment Settings */}
-        <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+        <fieldset className="card p-4">
           <legend className="px-2 text-sm font-semibold text-gray-700">Consignment Settings</legend>
           <p className="mb-4 text-xs text-gray-500">
             Configure alerts for Sale or Return (SOR) consignments approaching expiry.
@@ -114,7 +114,7 @@ export function SystemConfiguration() {
         </fieldset>
 
         {/* Exchange Rate Settings */}
-        <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+        <fieldset className="card p-4">
           <legend className="px-2 text-sm font-semibold text-gray-700">Exchange Rate Settings</legend>
           <p className="mb-4 text-xs text-gray-500">
             Choose how exchange rates are sourced when syncing with international sales platforms (e.g., Amazon KDP).

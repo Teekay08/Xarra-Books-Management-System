@@ -86,7 +86,7 @@ export function SuspenseDashboard() {
           <p className="mt-1 text-xl font-bold text-blue-700">{fmt(ss?.safeSpending?.conservative || 0)}</p>
           <p className="text-xs text-blue-500">Conservative</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4 flex items-center gap-3">
+        <div className="card p-4 flex items-center gap-3">
           <div className={`w-8 h-8 rounded-full ${riskColors[ss?.riskLevel || 'GREEN']}`} />
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase">Risk Level</p>
@@ -98,7 +98,7 @@ export function SuspenseDashboard() {
 
       {/* Timeline */}
       {timeline?.data && timeline.data.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Expected Conversions Timeline</h3>
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -123,7 +123,7 @@ export function SuspenseDashboard() {
 
       {/* Partner Breakdown */}
       {s?.partnerBreakdown && s.partnerBreakdown.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Per-Partner Breakdown</h3>
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -149,7 +149,7 @@ export function SuspenseDashboard() {
       )}
 
       {/* Ledger */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Suspense Ledger</h3>
           <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}

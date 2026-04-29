@@ -118,20 +118,20 @@ export function SowReview() {
 
         {/* Summary */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Reference</p>
             <p className="mt-1 text-sm font-mono font-semibold text-gray-900">{sow.number}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Project</p>
             <p className="mt-1 text-sm font-medium text-gray-900">{sow.project?.name}</p>
             {sow.project?.number && <p className="text-xs text-gray-400">{sow.project.number}</p>}
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Contract Value</p>
             <p className="mt-1 text-lg font-bold text-gray-900">R {Number(sow.totalAmount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Valid Until</p>
             <p className="mt-1 text-sm font-medium text-gray-900">
               {sow.validUntil ? new Date(sow.validUntil).toLocaleDateString('en-ZA') : '—'}
@@ -140,14 +140,14 @@ export function SowReview() {
         </div>
 
         {/* Scope */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Scope of Work</h2>
           <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{sow.scope}</p>
         </div>
 
         {/* Deliverables */}
         {deliverables.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="card overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Deliverables</h2>
             </div>
@@ -178,7 +178,7 @@ export function SowReview() {
 
         {/* Timeline */}
         {(timeline.startDate || timeline.endDate) && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h2 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Timeline</h2>
             <div className="flex gap-8 mb-4">
               <div>
@@ -209,7 +209,7 @@ export function SowReview() {
 
         {/* Cost */}
         {costBreakdown.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="card overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Cost Breakdown</h2>
             </div>
@@ -242,7 +242,7 @@ export function SowReview() {
 
         {/* Terms */}
         {sow.terms && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h2 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Terms & Conditions</h2>
             <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{sow.terms}</p>
           </div>

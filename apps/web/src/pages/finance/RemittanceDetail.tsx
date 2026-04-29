@@ -268,7 +268,7 @@ export function RemittanceDetail() {
       )}
 
       {r.status === 'UNDER_REVIEW' && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-800 mb-2">Review Actions</h3>
           <p className="text-xs text-gray-500 mb-3">
             Verify that the invoice allocations, credit notes, and declared amount are correct. The net amount
@@ -326,7 +326,7 @@ export function RemittanceDetail() {
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Linked Invoices</h2>
           <div className="space-y-4 mb-6">
             {r.invoiceAllocations.map((alloc) => (
-              <div key={alloc.id} className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+              <div key={alloc.id} className="card overflow-x-auto">
                 <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
                   <div>
                     <Link to={`/invoices/${alloc.invoice.id}`} className="text-sm font-medium text-green-700 hover:underline">
@@ -378,7 +378,7 @@ export function RemittanceDetail() {
       )}
 
       {r.invoiceAllocations.length === 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 mb-6">
+        <div className="card p-5 text-center text-sm text-gray-500 mb-6">
           No invoices linked to this remittance.
         </div>
       )}
@@ -493,7 +493,7 @@ function InfoCard({ label, value, color, badge }: { label: string; value: string
     ? ''
     : color === 'green' ? 'text-green-600' : color === 'amber' ? 'text-amber-600' : 'text-gray-900';
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="card p-4">
       <p className="text-xs text-gray-500 uppercase">{label}</p>
       {badge ? (
         <span className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-sm font-bold ${badge}`}>{value}</span>

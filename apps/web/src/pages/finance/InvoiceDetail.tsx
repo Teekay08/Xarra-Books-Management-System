@@ -300,7 +300,7 @@ export function InvoiceDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* Invoice meta */}
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 text-sm">
               <div>
                 <span className="text-xs text-gray-500 block">Status</span>
@@ -433,7 +433,7 @@ export function InvoiceDetail() {
 
           {/* Payment History */}
           {inv.paymentHistory && inv.paymentHistory.length > 0 && (
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Payment History</h3>
               <div className="divide-y">
                 {inv.paymentHistory.map((p, i) => (
@@ -452,7 +452,7 @@ export function InvoiceDetail() {
 
           {/* Credit Notes */}
           {inv.creditNotes && inv.creditNotes.length > 0 && (
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Credit Notes</h3>
               <div className="divide-y">
                 {inv.creditNotes.map((cn) => (
@@ -472,14 +472,14 @@ export function InvoiceDetail() {
         {/* Sidebar */}
         <div className="space-y-6">
           {inv.notes && (
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{inv.notes}</p>
             </div>
           )}
 
           {inv.paymentTermsText && (
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Payment Terms</h3>
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{inv.paymentTermsText}</p>
             </div>

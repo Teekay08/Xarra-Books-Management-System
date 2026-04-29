@@ -338,7 +338,7 @@ export function StockTake() {
 
           {/* Summary cards */}
           <div className="grid grid-cols-4 gap-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
+            <div className="card p-4 text-center">
               <p className="text-2xl font-bold text-gray-900">{varianceLines.length}</p>
               <p className="text-xs text-gray-500">Titles Counted</p>
             </div>

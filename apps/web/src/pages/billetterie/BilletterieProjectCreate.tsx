@@ -144,7 +144,7 @@ export function BilletterieProjectCreate() {
         )}
 
         {/* Project Details */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+        <div className="card p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Project Details</h2>
 
           <div>
@@ -237,7 +237,7 @@ export function BilletterieProjectCreate() {
         </div>
 
         {/* Project Team */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+        <div className="card p-5 space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Project Team</h2>
             <p className="text-xs text-gray-500 mt-0.5">Assign the core team now. Additional members can be added from the Team tab after creation.</p>
@@ -273,7 +273,7 @@ export function BilletterieProjectCreate() {
         </div>
 
         {/* Client Contact */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+        <div className="card p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Client Contact</h2>
 
           <div>
@@ -309,7 +309,7 @@ export function BilletterieProjectCreate() {
         </div>
 
         {/* Internal Notes */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <label className={labelCls}>Internal Notes</label>
           <textarea
             value={form.notes}

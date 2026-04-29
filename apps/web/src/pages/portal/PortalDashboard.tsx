@@ -80,7 +80,7 @@ export function PortalDashboard() {
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Recent Payments</h2>
           <div className="space-y-2">
             {recentPayments.map((p, i) => (
-              <div key={i} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
+              <div key={i} className="flex items-center justify-between card px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-gray-900">{p.number}</p>
                   <p className="text-xs text-gray-500">{fmtDate(p.periodFrom)} — {fmtDate(p.periodTo)}</p>
@@ -107,7 +107,7 @@ export function PortalDashboard() {
           const pct = advance > 0 ? Math.min(100, (recovered / advance) * 100) : 100;
 
           return (
-            <div key={c.id} className="rounded-lg border border-gray-200 bg-white p-5">
+            <div key={c.id} className="card p-4">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-medium text-gray-900">{c.title}</h3>
                 <div className="text-right">
@@ -157,7 +157,7 @@ export function PortalDashboard() {
 function StatCard({ label, value, color }: { label: string; value: string; color?: string }) {
   const textColor = color === 'green' ? 'text-green-600' : color === 'amber' ? 'text-amber-600' : 'text-gray-900';
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="card p-4">
       <p className="text-xs text-gray-500 uppercase">{label}</p>
       <p className={`text-xl font-bold mt-1 ${textColor}`}>{value}</p>
     </div>

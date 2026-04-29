@@ -75,7 +75,7 @@ export function EmailSettings() {
 
       <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         {/* SMTP Server Configuration */}
-        <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+        <fieldset className="card p-4">
           <legend className="px-2 text-sm font-semibold text-gray-700">SMTP Server Configuration</legend>
           <p className="mb-4 text-xs text-gray-500">
             Configure your SMTP server settings. If left blank, the system will use the default Resend service.
@@ -173,7 +173,7 @@ export function EmailSettings() {
         </fieldset>
 
         {/* Email Identity */}
-        <fieldset className="rounded-lg border border-gray-200 bg-white p-5">
+        <fieldset className="card p-4">
           <legend className="px-2 text-sm font-semibold text-gray-700">Email Identity</legend>
           <p className="mb-4 text-xs text-gray-500">
             Configure how emails appear to recipients.

@@ -191,7 +191,7 @@ export function TaskForm() {
 
       <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         {/* Assignment */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Assignment</h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -266,7 +266,7 @@ export function TaskForm() {
         </div>
 
         {/* Task Code */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Task Code & Estimation</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
@@ -347,7 +347,7 @@ export function TaskForm() {
         </div>
 
         {/* Task Details */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Task Details</h3>
 
           <div>
@@ -407,7 +407,7 @@ export function TaskForm() {
         </div>
 
         {/* Time & Cost */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Time & Cost</h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -449,7 +449,7 @@ export function TaskForm() {
         </div>
 
         {/* Deliverables */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Deliverables</h3>
 
           <div className="space-y-2">

@@ -111,18 +111,18 @@ export function SorReconciliation() {
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Total Dispatched</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{summary.totalDispatched.toLocaleString()}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Sold</p>
             <p className="text-2xl font-bold text-green-700 mt-1">{summary.totalSold.toLocaleString()}</p>
             {summary.totalDispatched > 0 && (
               <p className="text-xs text-gray-400 mt-1">{Math.round((summary.totalSold / summary.totalDispatched) * 100)}% sell-through</p>
             )}
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Returned</p>
             <p className="text-2xl font-bold text-blue-700 mt-1">{summary.totalReturned.toLocaleString()}</p>
           </div>

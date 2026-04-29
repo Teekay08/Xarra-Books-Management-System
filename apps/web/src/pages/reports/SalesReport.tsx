@@ -21,7 +21,7 @@ type GroupBy = 'title' | 'partner' | 'period' | 'author';
 
 const GROUP_LABELS: Record<GroupBy, string> = {
   title: 'Title',
-  partner: 'Channel Partner',
+  partner: 'Retail Partner',
   period: 'Month',
   author: 'Author',
 };
@@ -60,7 +60,7 @@ export function SalesReport() {
           <label className="block text-xs text-gray-500 mb-1">Group By</label>
           <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className={cls}>
             <option value="title">Title</option>
-            <option value="partner">Channel Partner</option>
+            <option value="partner">Retail Partner</option>
             <option value="period">Period (Month)</option>
             <option value="author">Author</option>
           </select>

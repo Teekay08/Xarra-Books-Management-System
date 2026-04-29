@@ -105,7 +105,7 @@ export function PlannedVsActual() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto card">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>

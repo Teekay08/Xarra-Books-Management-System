@@ -195,31 +195,31 @@ export function SowDetail() {
       <div className="max-w-4xl space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Number</p>
             <p className="mt-1 text-sm font-mono font-medium text-gray-900">{sow.number}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Project</p>
             <p className="mt-1 text-sm font-medium text-gray-900">{sow.project?.name || '—'}</p>
             {sow.project?.number && (
               <p className="text-xs text-gray-400">{sow.project.number}</p>
             )}
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Assigned To</p>
             <p className="mt-1 text-sm font-medium text-gray-900">{assigneeName}</p>
             <p className="text-xs text-gray-400">{assigneeType}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Total Amount</p>
             <p className="mt-1 text-lg font-bold text-gray-900">R {Number(sow.totalAmount).toFixed(2)}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Version</p>
             <p className="mt-1 text-sm font-medium text-gray-900">v{sow.version}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Status</p>
             <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[sow.status] || ''}`}>
               {sow.status}
@@ -228,14 +228,14 @@ export function SowDetail() {
         </div>
 
         {/* Scope */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Scope</h3>
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{sow.scope}</p>
         </div>
 
         {/* Deliverables */}
         {deliverables.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+          <div className="card overflow-x-auto">
             <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold text-gray-900">Deliverables</h3>
             </div>
@@ -263,7 +263,7 @@ export function SowDetail() {
         )}
 
         {/* Timeline */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Timeline</h3>
           <div className="grid grid-cols-2 gap-4 text-sm mb-4">
             <div>
@@ -296,7 +296,7 @@ export function SowDetail() {
 
         {/* Cost Breakdown */}
         {costBreakdown.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+          <div className="card overflow-x-auto">
             <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold text-gray-900">Cost Breakdown</h3>
             </div>
@@ -329,7 +329,7 @@ export function SowDetail() {
 
         {/* Terms */}
         {sow.terms && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Terms</h3>
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{sow.terms}</p>
           </div>
@@ -337,7 +337,7 @@ export function SowDetail() {
 
         {/* Valid Until */}
         {sow.validUntil && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <div className="text-sm">
               <span className="text-gray-500">Valid Until: </span>
               <span className="font-medium">{new Date(sow.validUntil).toLocaleDateString('en-ZA')}</span>
@@ -347,7 +347,7 @@ export function SowDetail() {
 
         {/* Notes */}
         {sow.notes && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{sow.notes}</p>
           </div>
@@ -355,7 +355,7 @@ export function SowDetail() {
 
         {/* Version History */}
         {versions.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+          <div className="card overflow-x-auto">
             <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold text-gray-900">Version History</h3>
             </div>

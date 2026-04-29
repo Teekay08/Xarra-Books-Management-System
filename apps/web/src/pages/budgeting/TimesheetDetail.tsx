@@ -125,32 +125,32 @@ export function TimesheetDetail() {
       <div className="max-w-4xl space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Number</p>
             <p className="mt-1 text-sm font-mono font-medium text-gray-900">{ts.number}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Project</p>
             <p className="mt-1 text-sm font-medium text-gray-900">{ts.project?.name || '—'}</p>
             {ts.project?.number && (
               <p className="text-xs text-gray-400">{ts.project.number}</p>
             )}
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Worker</p>
             <p className="mt-1 text-sm font-medium text-gray-900">{ts.worker?.name || '—'}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Period</p>
             <p className="mt-1 text-sm font-medium text-gray-900">
               {new Date(ts.periodFrom).toLocaleDateString('en-ZA')} — {new Date(ts.periodTo).toLocaleDateString('en-ZA')}
             </p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Total Hours</p>
             <p className="mt-1 text-lg font-bold text-gray-900">{Number(ts.totalHours).toFixed(1)}h</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Status</p>
             <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[ts.status] || ''}`}>
               {ts.status}
@@ -159,7 +159,7 @@ export function TimesheetDetail() {
         </div>
 
         {/* Entries Table */}
-        <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+        <div className="card overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -218,7 +218,7 @@ export function TimesheetDetail() {
 
         {/* Notes */}
         {ts.notes && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{ts.notes}</p>
           </div>

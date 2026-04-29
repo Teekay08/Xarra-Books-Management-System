@@ -134,7 +134,7 @@ export function CreateStaffSow() {
 
       <div className="max-w-4xl space-y-6">
         {/* Scope */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-semibold text-gray-900">Scope of Work</label>
             <AiSuggestButton
@@ -164,7 +164,7 @@ export function CreateStaffSow() {
         </div>
 
         {/* Deliverables */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-sm font-semibold text-gray-900">Deliverables</h3>
             <button type="button" onClick={() => setDeliverables([...deliverables, { description: '', dueDate: '', acceptanceCriteria: '' }])}
@@ -186,7 +186,7 @@ export function CreateStaffSow() {
         </div>
 
         {/* Cost Breakdown */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-sm font-semibold text-gray-900">Cost Breakdown</h3>
             <button type="button" onClick={() => setCostBreakdown([...costBreakdown, { description: '', hours: 0, rate: 0, total: 0 }])}
@@ -225,7 +225,7 @@ export function CreateStaffSow() {
         </div>
 
         {/* Timeline */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Timeline</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -242,7 +242,7 @@ export function CreateStaffSow() {
         </div>
 
         {/* Terms + Notes */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Terms & Conditions</label>
             <textarea rows={4} value={terms} onChange={(e) => setTerms(e.target.value)}

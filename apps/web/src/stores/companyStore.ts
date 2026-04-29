@@ -35,7 +35,7 @@ export const COMPANIES: CompanyConfig[] = [
     slug: 'billetterie',
     name: 'Billetterie Software',
     shortName: 'Billetterie',
-    logo: '/Billetterie-logo.png',
+    logo: '/Billetterie-logo.svg',
     tagline: 'Software Development & Projects',
     accentColor: '#1d4ed8',
     accentClass: 'bg-blue-700',

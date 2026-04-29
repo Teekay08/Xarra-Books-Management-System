@@ -62,7 +62,7 @@ export function PaymentDetail() {
       {p.allocations.length > 0 ? (
         <>
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Allocations</h2>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden mb-6">
+          <div className="card overflow-hidden mb-6">
             <table className="min-w-full divide-y divide-gray-200">
               <thead>
                 <tr>
@@ -82,14 +82,14 @@ export function PaymentDetail() {
           </div>
         </>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 mb-6">
+        <div className="card p-5 text-center text-sm text-gray-500 mb-6">
           No allocations linked to this payment.
         </div>
       )}
 
       {/* Notes */}
       {p.notes && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{p.notes}</p>
         </div>
@@ -101,7 +101,7 @@ export function PaymentDetail() {
 
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="card p-4">
       <p className="text-xs text-gray-500 uppercase">{label}</p>
       <p className="text-lg font-bold mt-1 text-gray-900">{value}</p>
     </div>

@@ -154,7 +154,7 @@ export function ProjectForm() {
 
       <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         {/* Project Identity */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Project Details</h3>
 
           <div>
@@ -220,7 +220,7 @@ export function ProjectForm() {
         </div>
 
         {/* Contract & Funding */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Contract & Funding</h3>
 
           <div>
@@ -245,7 +245,7 @@ export function ProjectForm() {
         </div>
 
         {/* Timeline */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Timeline</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -264,7 +264,7 @@ export function ProjectForm() {
         </div>
 
         {/* Description */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+        <div className="card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-gray-700">Description</label>
             {!isEdit && form.name && (
@@ -355,7 +355,7 @@ export function ProjectForm() {
         )}
 
         {/* Notes */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <textarea rows={2} value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}

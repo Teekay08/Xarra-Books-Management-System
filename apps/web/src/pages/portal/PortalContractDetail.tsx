@@ -101,7 +101,7 @@ export function PortalContractDetail() {
 
       {/* Contract Terms Section */}
       {hasTerms && (
-        <div className="rounded-lg border border-gray-200 bg-white mb-6">
+        <div className="card mb-6">
           <div className="p-5 border-b border-gray-200 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Contract Terms & Conditions</h3>
             {c.isSigned && c.signedAt && (
@@ -195,7 +195,7 @@ export function PortalContractDetail() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Contract Details</h3>
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between">
@@ -230,7 +230,7 @@ export function PortalContractDetail() {
         </div>
 
         {advance > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Advance Recovery</h3>
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
@@ -260,7 +260,7 @@ export function PortalContractDetail() {
       </div>
 
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Royalty Entries</h2>
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

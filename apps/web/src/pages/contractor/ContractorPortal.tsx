@@ -94,7 +94,7 @@ export function ContractorPortal() {
 
       <main className="max-w-4xl mx-auto p-4 sm:p-6">
         {/* Project Info + Downloads */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+        <div className="card p-4 mb-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">{project.name}</h2>
@@ -164,23 +164,23 @@ export function ContractorPortal() {
 
         {/* Hours Summary */}
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
+          <div className="card p-4 text-center">
             <p className="text-xs text-gray-500 uppercase">Total Allocated</p>
             <p className="text-xl font-bold text-gray-900">{totalAllocated.toFixed(1)}h</p>
             <p className="text-[10px] text-gray-400">incl. extensions</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
+          <div className="card p-4 text-center">
             <p className="text-xs text-gray-500 uppercase">Hours Used</p>
             <p className="text-xl font-bold text-blue-700">{totalLogged.toFixed(1)}h</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
+          <div className="card p-4 text-center">
             <p className="text-xs text-gray-500 uppercase">Remaining</p>
             <p className={`text-xl font-bold ${totalRemaining > 0 ? 'text-green-700' : 'text-red-600'}`}>{totalRemaining.toFixed(1)}h</p>
             {totalRemaining > 0 && totalLogged > totalAllocated - totalRemaining && (
               <p className="text-[10px] text-green-600 font-medium">from extension</p>
             )}
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 text-center">
+          <div className="card p-4 text-center">
             <p className="text-xs text-gray-500 uppercase">Utilization</p>
             <p className={`text-xl font-bold ${totalAllocated > 0 && (totalLogged / totalAllocated) > 1 ? 'text-red-600' : 'text-gray-900'}`}>
               {totalAllocated > 0 ? ((totalLogged / totalAllocated) * 100).toFixed(0) : 0}%
@@ -205,7 +205,7 @@ export function ContractorPortal() {
             const hasExtensions = remaining > 0 && logged > allocated - remaining - 0.01;
 
             return (
-              <div key={task.id} className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+              <div key={task.id} className="card overflow-x-auto">
                 {/* Task Header */}
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -409,7 +409,7 @@ export function ContractorPortal() {
         </div>
 
         {tasks.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
+          <div className="card p-8 text-center">
             <p className="text-gray-500">No tasks assigned yet. Your project manager will assign tasks to you.</p>
           </div>
         )}

@@ -80,7 +80,7 @@ export function PartnerForm() {
   return (
     <div>
       <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
-      <PageHeader title={isEdit ? 'Edit Partner' : 'New Channel Partner'} />
+      <PageHeader title={isEdit ? 'Edit Partner' : 'New Retail Partner'} />
 
       <form onSubmit={handleSubmit} onChange={() => !isDirty && setIsDirty(true)} className="max-w-2xl space-y-6">
         {error && (

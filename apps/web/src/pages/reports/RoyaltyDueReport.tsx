@@ -40,7 +40,7 @@ export function RoyaltyDueReport() {
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Authors with Pending</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{authors.length}</p>
         </div>
@@ -52,7 +52,7 @@ export function RoyaltyDueReport() {
           <p className="text-xs text-green-700 uppercase">Approved &amp; Ready</p>
           <p className="text-xl font-bold text-green-700 mt-1">{formatR(totalApproved)}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Outstanding</p>
           <p className="text-xl font-bold text-gray-900 mt-1">{formatR(totalPayable)}</p>
         </div>

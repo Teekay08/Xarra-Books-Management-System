@@ -66,11 +66,11 @@ export function PortalSalesSummary() {
       {/* Summary totals */}
       {titles.length > 0 && (
         <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Total Units Sold</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{totalUnits.toLocaleString()}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Total Revenue</p>
             <p className="text-2xl font-bold text-green-700 mt-1">{fmt(totalRevenue)}</p>
           </div>
@@ -80,13 +80,13 @@ export function PortalSalesSummary() {
       {isLoading ? (
         <div className="py-12 text-center text-gray-400">Loading...</div>
       ) : titles.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+        <div className="card p-8 text-center text-sm text-gray-500">
           No sales recorded for this period.
         </div>
       ) : (
         <div className="space-y-4">
           {titles.map((t) => (
-            <div key={t.titleId} className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+            <div key={t.titleId} className="card overflow-x-auto">
               <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">{t.titleName}</h3>
                 <div className="flex items-center gap-4 text-sm">

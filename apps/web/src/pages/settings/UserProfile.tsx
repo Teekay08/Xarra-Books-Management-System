@@ -70,7 +70,7 @@ export function UserProfile() {
       <PageHeader title="User Profile" subtitle="Manage your account" />
 
       <div className="max-w-xl space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Profile Information</h3>
           <form onSubmit={handleProfileSubmit} className="space-y-4">
             {profileMsg && (
@@ -101,7 +101,7 @@ export function UserProfile() {
           </form>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Change Password</h3>
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
             {pwMsg && (

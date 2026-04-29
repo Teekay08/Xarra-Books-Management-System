@@ -114,7 +114,7 @@ export function AuthorDetail() {
             </Card>
           )}
 
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-900">Contracts</h3>
               <button
@@ -157,7 +157,7 @@ export function AuthorDetail() {
         )}
 
         {/* Portal Access */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900">Portal Access</h3>
             {!author.portalUserId && (
@@ -472,7 +472,7 @@ function PortalAccessModal({
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <div className="card p-4">
       <h3 className="text-sm font-semibold text-gray-900 mb-3">{title}</h3>
       {children}
     </div>

@@ -105,7 +105,7 @@ export function DebitNoteDetail() {
       <FinancialSummary subtotal={dn.subtotal} vatAmount={dn.vatAmount} total={dn.total} />
 
       {/* Reason */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-2">Reason</h3>
         <p className="text-sm text-gray-600 whitespace-pre-wrap">{dn.reason}</p>
       </div>

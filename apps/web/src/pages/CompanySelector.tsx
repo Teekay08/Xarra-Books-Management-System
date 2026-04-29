@@ -1,14 +1,33 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useSession } from '../lib/auth-client';
 import { useCompanyStore, COMPANIES, PLATFORM_NAME, type CompanySlug } from '../stores/companyStore';
+import { useProducts } from '../hooks/useProducts';
 
 export function CompanySelector() {
   const navigate = useNavigate();
   const { data: session } = useSession();
+  const { isPending, products, hasNone } = useProducts();
   const setActiveCompany = useCompanyStore((s) => s.setActiveCompany);
 
   const userName = session?.user?.name?.split(' ')[0] ?? 'there';
   const role = (session?.user as any)?.role?.toLowerCase() ?? '';
+
+  // Auto-route when user has access to exactly one product — skip the selector
+  useEffect(() => {
+    if (isPending) return;
+    if (products.length === 1) {
+      const slug = products[0];
+      setActiveCompany(slug);
+      if (slug === 'xarra') {
+        if (role === 'author') navigate('/portal', { replace: true });
+        else if (role === 'project_manager') navigate('/pm', { replace: true });
+        else navigate('/', { replace: true });
+      } else {
+        navigate('/billetterie', { replace: true });
+      }
+    }
+  }, [isPending, products.length]);
 
   function select(slug: CompanySlug) {
     setActiveCompany(slug);
@@ -20,6 +39,52 @@ export function CompanySelector() {
       navigate('/billetterie');
     }
   }
+
+  // Show loading while session resolves
+  if (isPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800">
+        <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+      </div>
+    );
+  }
+
+  // User has no product access at all
+  if (hasNone) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 px-4">
+        <div className="h-12 w-12 rounded-full bg-red-900/50 flex items-center justify-center text-2xl">⚠</div>
+        <h1 className="text-xl font-bold text-white">No product access</h1>
+        <p className="text-gray-400 text-sm text-center max-w-xs">
+          Your account hasn't been granted access to any product yet. Contact your administrator to get set up.
+        </p>
+        <button
+          onClick={async () => {
+            const { signOut } = await import('../lib/auth-client');
+            await signOut();
+            navigate('/login');
+          }}
+          className="mt-2 text-sm text-gray-400 hover:text-white underline transition-colors"
+        >
+          Sign out
+        </button>
+      </div>
+    );
+  }
+
+  // Single product — show brief loading while the useEffect redirect fires
+  if (products.length === 1) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800">
+        <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+      </div>
+    );
+  }
+
+  // Multiple products — show the selector
+  const accessibleCompanies = COMPANIES.filter((c) =>
+    products.includes(c.slug as any),
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800">
@@ -40,7 +105,7 @@ export function CompanySelector() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-2xl mb-10">
-          {COMPANIES.map((company) => (
+          {accessibleCompanies.map((company) => (
             <button
               key={company.slug}
               onClick={() => select(company.slug)}
@@ -61,7 +126,7 @@ export function CompanySelector() {
                   onError={(e) => {
                     const img = e.target as HTMLImageElement;
                     img.style.display = 'none';
-                    img.nextElementSibling?.classList.remove('hidden');
+                    (img.nextElementSibling as HTMLElement)?.classList.remove('hidden');
                   }}
                 />
                 <span className="hidden text-lg font-bold text-white">{company.name}</span>
@@ -82,10 +147,7 @@ export function CompanySelector() {
                 </span>
                 <svg
                   className="h-4 w-4 text-gray-600 group-hover:text-white group-hover:translate-x-0.5 transition-all"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
@@ -95,7 +157,7 @@ export function CompanySelector() {
         </div>
 
         <p className="text-xs text-gray-600 text-center max-w-xs">
-          Staff, resources, and shared tools are accessible across both companies. You can switch at any time from the sidebar.
+          You can switch between products at any time from the sidebar.
         </p>
       </main>
 
@@ -103,12 +165,8 @@ export function CompanySelector() {
       <footer className="shrink-0 pb-8 text-center">
         <p className="text-xs text-gray-600">
           Powered by{' '}
-          <a
-            href="https://tsedemeko.africa"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-400 hover:text-white font-medium transition-colors"
-          >
+          <a href="https://tsedemeko.africa" target="_blank" rel="noopener noreferrer"
+            className="text-gray-400 hover:text-white font-medium transition-colors">
             Tsedemeko
           </a>
         </p>

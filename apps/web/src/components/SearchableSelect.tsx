@@ -10,6 +10,10 @@ interface SearchableSelectProps {
   options: SelectOption[];
   value: string;
   onChange: (value: string) => void;
+  /** Called when the user types in the search box — use for async option loading */
+  onSearchChange?: (search: string) => void;
+  /** Fallback label when value is set but not found in options (e.g. async search cleared results) */
+  selectedLabel?: string;
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
@@ -22,6 +26,8 @@ export function SearchableSelect({
   options,
   value,
   onChange,
+  onSearchChange,
+  selectedLabel,
   placeholder = 'Select...',
   required,
   disabled,
@@ -36,7 +42,8 @@ export function SearchableSelect({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const selectedOption = options.find((o) => o.value === value);
+  const selectedOption = options.find((o) => o.value === value)
+    ?? (value && selectedLabel ? { value, label: selectedLabel } : undefined);
 
   const filtered = search
     ? options.filter((o) =>
@@ -151,7 +158,7 @@ export function SearchableSelect({
             ref={inputRef}
             type="text"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setHighlightedIndex(0); }}
+            onChange={(e) => { setSearch(e.target.value); setHighlightedIndex(0); onSearchChange?.(e.target.value); }}
             onKeyDown={handleKeyDown}
             placeholder="Type to search..."
             className="w-full outline-none bg-transparent text-sm"

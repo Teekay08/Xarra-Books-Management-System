@@ -59,7 +59,7 @@ export function TrendAnalysis() {
       </div>
 
       {/* Seasonal Patterns */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-2">Seasonal Sell-Through Patterns</h3>
         <p className="text-xs text-gray-500 mb-3">Average sell-through percentage by month across all consignments. Helps identify peak selling seasons.</p>
         {seasonalData?.data && seasonalData.data.length > 0 ? (
@@ -92,7 +92,7 @@ export function TrendAnalysis() {
       </div>
 
       {/* Partner Performance */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-6">
+      <div className="card p-4 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-2">Partner Performance</h3>
         <p className="text-xs text-gray-500 mb-3">Track how each channel partner performs over time. Compare sell-through rates across partners to identify your best-performing retailers.</p>
         <select value={selectedPartnerId} onChange={(e) => setSelectedPartnerId(e.target.value)}
@@ -137,7 +137,7 @@ export function TrendAnalysis() {
       </div>
 
       {/* Title Lifecycle */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="card p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-2">Title Lifecycle</h3>
         <p className="text-xs text-gray-500 mb-3">Analyse how a specific title performs across different partners and over time. Useful for reprint decisions and marketing focus.</p>
         <div className="relative mb-4">

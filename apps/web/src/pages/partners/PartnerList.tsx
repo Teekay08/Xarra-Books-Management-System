@@ -57,7 +57,7 @@ export function PartnerList() {
   return (
     <div>
       <PageHeader
-        title="Channel Partners"
+        title="Retail Partners"
         subtitle="Manage retail and distribution partners"
         action={
           <button

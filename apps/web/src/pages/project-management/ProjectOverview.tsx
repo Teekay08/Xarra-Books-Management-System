@@ -137,7 +137,7 @@ export function ProjectOverview() {
       />
 
       {/* Project header card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 mb-4">
+      <div className="card p-4 mb-4">
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -176,7 +176,7 @@ export function ProjectOverview() {
 
       {/* Workflow stepper */}
       {guide?.stages && (
-        <div className="rounded-lg border border-gray-200 bg-white p-5 mb-4">
+        <div className="card p-4 mb-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-900">Project Workflow</h3>
             <span className="text-xs text-gray-500">{guide.progressPercent}% complete</span>
@@ -247,7 +247,7 @@ export function ProjectOverview() {
       {/* Stats + quick links row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         {/* Task breakdown */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-semibold text-gray-900">Tasks</h4>
             <Link to={`/pm/projects/${projectId}/tasks`} className="text-xs text-blue-600 hover:underline">View all</Link>
@@ -281,7 +281,7 @@ export function ProjectOverview() {
         </div>
 
         {/* Budget */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-semibold text-gray-900">Budget</h4>
             <Link to={`/budgeting/projects/${projectId}`} className="text-xs text-blue-600 hover:underline">View detail</Link>
@@ -313,7 +313,7 @@ export function ProjectOverview() {
         </div>
 
         {/* Quick links */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <h4 className="text-sm font-semibold text-gray-900 mb-3">Quick Links</h4>
           <div className="space-y-2">
             {([

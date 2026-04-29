@@ -113,7 +113,7 @@ export function RateCardForm() {
       )}
 
       <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
             <input type="text" required value={form.name}

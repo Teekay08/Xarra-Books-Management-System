@@ -50,7 +50,7 @@ export function RateCardList() {
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm" />
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

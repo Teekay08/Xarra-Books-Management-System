@@ -109,7 +109,7 @@ export function AutomationScheduling() {
         {success && <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">{success}</div>}
 
         {/* Monthly Statement Generation */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Monthly Statement Generation</h3>
@@ -161,7 +161,7 @@ export function AutomationScheduling() {
         </div>
 
         {/* SOR Auto-Invoicing */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">SOR Expiry Auto-Invoicing</h3>
@@ -215,7 +215,7 @@ export function AutomationScheduling() {
         </div>
 
         {/* Invoice Sending Schedule */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Scheduled Invoice Sending</h3>

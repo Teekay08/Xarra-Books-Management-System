@@ -104,7 +104,7 @@ export function Dashboard() {
   const operationalCards = [
     { label: 'Total Titles', value: stats?.totalTitles, color: 'bg-blue-50 text-blue-700', link: '/titles' },
     { label: 'Active Authors', value: stats?.activeAuthors, color: 'bg-green-50 text-green-700', link: '/authors' },
-    { label: 'Channel Partners', value: stats?.activePartners, color: 'bg-amber-50 text-amber-700', link: '/partners' },
+    { label: 'Retail Partners', value: stats?.activePartners, color: 'bg-amber-50 text-amber-700', link: '/partners' },
     { label: 'Total Stock', value: stats?.totalStock, color: 'bg-purple-50 text-purple-700', link: '/inventory' },
     { label: 'Open POs', value: stats?.openPurchaseOrders, color: 'bg-indigo-50 text-indigo-700', link: '/finance/purchase-orders' },
     { label: 'Cash Sales MTD', value: stats?.mtdCashSales !== undefined ? formatR(stats.mtdCashSales) : undefined, color: 'bg-teal-50 text-teal-700', link: '/sales/cash-sales', isAmount: true },
@@ -114,65 +114,57 @@ export function Dashboard() {
 
   return (
     <div>
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-        <p className="text-sm text-gray-500 mt-1">Xarra Books Management System</p>
+      <div className="mb-5">
+        <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-xs text-gray-500 mt-0.5">Xarra Books — Publishing Management</p>
       </div>
 
-      {/* Financial summary cards */}
+      {/* Financial KPI strip */}
       {pnl && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <p className="text-xs text-gray-500 uppercase">Revenue YTD</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatR(pnl.ytdRevenue)}</p>
-            <p className="text-xs text-gray-400 mt-1">This month: {formatR(pnl.mtdRevenue)}</p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <p className="text-xs text-gray-500 uppercase">Sales This Month</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatR(pnl.mtdRevenue)}</p>
-            {pnl.mtdYoYChange !== null ? (
-              <p className={`text-xs mt-1 font-medium ${pnl.mtdYoYChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {pnl.mtdYoYChange >= 0 ? '▲' : '▼'} {Math.abs(pnl.mtdYoYChange).toFixed(1)}% vs same month last year
-              </p>
-            ) : (
-              <p className="text-xs text-gray-400 mt-1">No comparison data</p>
-            )}
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <p className="text-xs text-gray-500 uppercase">Net Profit YTD</p>
-            <p className={`text-2xl font-bold mt-1 ${pnl.ytdNet >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-              {formatR(pnl.ytdNet)}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">This month: {formatR(pnl.mtdNet)}</p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <p className="text-xs text-gray-500 uppercase">Outstanding</p>
-            <p className="text-2xl font-bold text-amber-600 mt-1">{formatR(pnl.outstanding)}</p>
-            <p className="text-xs text-gray-400 mt-1">Unpaid invoices</p>
-          </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          {[
+            { label: 'Revenue YTD', value: formatR(pnl.ytdRevenue), sub: `MTD ${formatR(pnl.mtdRevenue)}`, accent: 'text-gray-900' },
+            { label: 'Sales MTD', value: formatR(pnl.mtdRevenue),
+              sub: pnl.mtdYoYChange !== null
+                ? `${pnl.mtdYoYChange >= 0 ? '▲' : '▼'} ${Math.abs(pnl.mtdYoYChange).toFixed(1)}% YoY`
+                : 'No YoY data',
+              subColor: pnl.mtdYoYChange !== null
+                ? (pnl.mtdYoYChange >= 0 ? 'text-green-600' : 'text-red-500')
+                : 'text-gray-400',
+              accent: 'text-gray-900',
+            },
+            { label: 'Net Profit YTD', value: formatR(pnl.ytdNet), sub: `MTD ${formatR(pnl.mtdNet)}`, accent: pnl.ytdNet >= 0 ? 'text-green-700' : 'text-red-600' },
+            { label: 'Outstanding', value: formatR(pnl.outstanding), sub: 'Unpaid invoices', accent: 'text-amber-600' },
+          ].map(c => (
+            <div key={c.label} className="card p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{c.label}</p>
+              <p className={`text-xl font-bold mt-1 leading-none ${c.accent}`}>{c.value}</p>
+              <p className={`text-[11px] mt-1.5 ${(c as any).subColor ?? 'text-gray-400'}`}>{c.sub}</p>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Operational stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
         {operationalCards.map((stat) => (
           <div
             key={stat.label}
             onClick={() => navigate(stat.link)}
-            className={`rounded-lg p-5 ${stat.color} cursor-pointer hover:opacity-80 transition-opacity`}
+            className={`card-hover rounded-xl p-4 ${stat.color} cursor-pointer transition-all`}
           >
-            <p className="text-sm font-medium opacity-80">{stat.label}</p>
-            <p className={`font-bold mt-1 ${(stat as any).isAmount ? 'text-xl' : 'text-3xl'}`}>
-              {isLoading ? '...' : stat.value ?? 0}
+            <p className="text-[11px] font-semibold opacity-70 uppercase tracking-wide">{stat.label}</p>
+            <p className={`font-bold mt-1.5 leading-none ${(stat as any).isAmount ? 'text-lg' : 'text-2xl'}`}>
+              {isLoading ? <span className="opacity-30">—</span> : stat.value ?? 0}
             </p>
           </div>
         ))}
       </div>
 
       {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         {/* Revenue bar chart */}
-        <div className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Revenue Over Time</h3>
           {revenueData?.data && revenueData.data.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
@@ -193,7 +185,7 @@ export function Dashboard() {
         </div>
 
         {/* Expense donut chart */}
-        <div className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Expenses by Category (YTD)</h3>
           {expenseData?.data && expenseData.data.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
@@ -225,9 +217,9 @@ export function Dashboard() {
       </div>
 
       {/* Insights row: Top Titles + Outstanding SORs */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         {/* Top 5 Performing Titles */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900">Top Performing Titles</h3>
             <div className="flex rounded-md border border-gray-200 overflow-hidden text-xs">
@@ -262,7 +254,7 @@ export function Dashboard() {
         </div>
 
         {/* Outstanding SORs */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900">Outstanding SORs</h3>
             <button onClick={() => navigate('/consignments')} className="text-xs text-green-700 hover:underline">View all</button>
@@ -295,9 +287,9 @@ export function Dashboard() {
       </div>
 
       {/* Bottom row: Royalties Due + Low Stock + Overdue Invoices + Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         {/* Royalties Due */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900">Royalties Due</h3>
             <button onClick={() => navigate('/royalties')} className="text-xs text-green-700 hover:underline">Manage</button>
@@ -320,7 +312,7 @@ export function Dashboard() {
         </div>
 
         {/* Low Stock Alerts */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900">Low Stock Alerts</h3>
             <button onClick={() => navigate('/inventory')} className="text-xs text-green-700 hover:underline">View inventory</button>
@@ -349,7 +341,7 @@ export function Dashboard() {
       {/* Overdue Invoices + Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Overdue invoices */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Overdue Invoices</h3>
           {overdueData?.data && overdueData.data.length > 0 ? (
             <div className="divide-y max-h-64 overflow-y-auto">
@@ -373,7 +365,7 @@ export function Dashboard() {
         </div>
 
         {/* Recent activity */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Activity</h3>
           {activityData?.data && activityData.data.length > 0 ? (
             <div className="divide-y max-h-64 overflow-y-auto">

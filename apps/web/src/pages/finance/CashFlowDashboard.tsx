@@ -34,7 +34,7 @@ export function CashFlowDashboard() {
       <PageHeader title="Cash Flow & Working Capital" subtitle="Forward-looking cash position with suspense awareness" />
 
       {/* Working Capital */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6 mb-6">
+      <div className="card p-5 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Working Capital Position (This Month)</h3>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
           <div>
@@ -64,7 +64,7 @@ export function CashFlowDashboard() {
 
       {/* Safe Spending + Risk */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Safe Spending Threshold</h3>
           <div className="space-y-4">
             {['conservative', 'moderate', 'aggressive'].map((method) => (
@@ -84,7 +84,7 @@ export function CashFlowDashboard() {
           <p className="text-xs text-gray-400 mt-3">Based on {ss?.conversionRate || 0}% historical conversion rate</p>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center">
+        <div className="card p-5 flex flex-col items-center justify-center">
           <div className={`w-20 h-20 rounded-full ${risk.bg} flex items-center justify-center mb-4`}>
             <span className="text-white text-2xl font-bold">{ss?.riskLevel?.[0] || 'G'}</span>
           </div>
@@ -99,7 +99,7 @@ export function CashFlowDashboard() {
 
       {/* Forecast */}
       {forecastData?.data && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Cash Flow Forecast</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {forecastData.data.map((period: any) => (

@@ -84,39 +84,35 @@ export function UserMenu({ variant = 'admin' }: UserMenuProps) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2.5 rounded-full p-1 hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-xarra-red/30"
+        className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-gray-100 transition-colors focus:outline-none"
         aria-label="User menu"
         aria-expanded={open}
       >
         {hasImage ? (
-          <img
-            src={user.image!}
-            alt={user.name}
-            className="h-9 w-9 rounded-full object-cover ring-2 ring-gray-200"
-          />
+          <img src={user.image!} alt={user.name} className="h-7 w-7 rounded-full object-cover" />
         ) : (
           <div
-            className="h-9 w-9 rounded-full flex items-center justify-center ring-2 ring-gray-200"
+            className="h-7 w-7 rounded-full flex items-center justify-center shrink-0"
             style={{ backgroundColor: avatarColor.bg, color: avatarColor.text }}
           >
-            <span className="text-sm font-semibold leading-none">{initials}</span>
+            <span className="text-[11px] font-bold leading-none">{initials}</span>
           </div>
         )}
-        <div className="hidden sm:block text-left mr-1">
-          <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
-          <p className="text-[11px] text-gray-400 leading-tight capitalize">{user.role?.toLowerCase()}</p>
+        <div className="hidden sm:block text-left">
+          <p className="text-xs font-semibold text-gray-800 leading-tight">{user.name}</p>
+          <p className="text-[10px] text-gray-400 leading-tight capitalize">{user.role?.toLowerCase()}</p>
         </div>
-        <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <svg className="h-3 w-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
         </svg>
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-lg bg-white shadow-lg ring-1 ring-black/5 z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
-          {/* User info header */}
-          <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-900 truncate">{user.name}</p>
-            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+        <div className="absolute right-0 mt-1.5 w-52 origin-top-right rounded-xl bg-white shadow-lg border border-gray-100 z-50 overflow-hidden">
+          {/* User info */}
+          <div className="px-3.5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <p className="text-xs font-semibold text-gray-900 truncate">{user.name}</p>
+            <p className="text-[10px] text-gray-500 truncate mt-0.5">{user.email}</p>
           </div>
 
           {/* Menu items */}
@@ -129,12 +125,12 @@ export function UserMenu({ variant = 'admin' }: UserMenuProps) {
                   to={item.href}
                   onClick={() => setOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 py-2 text-sm transition-colors ${
-                      isActive ? 'text-xarra-red bg-xarra-red/5' : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                    `flex items-center gap-2.5 px-3.5 py-2 text-xs transition-colors ${
+                      isActive ? 'text-xarra-red bg-xarra-red/5 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     }`
                   }
                 >
-                  <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <svg className="h-3.5 w-3.5 shrink-0 opacity-70" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
                   </svg>
                   {item.label}
@@ -143,13 +139,13 @@ export function UserMenu({ variant = 'admin' }: UserMenuProps) {
             })}
           </div>
 
-          {/* Logout */}
+          {/* Sign out */}
           <div className="border-t border-gray-100 py-1">
             <button
               onClick={handleLogout}
-              className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-red-600 transition-colors"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
             >
-              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
               </svg>
               Sign out

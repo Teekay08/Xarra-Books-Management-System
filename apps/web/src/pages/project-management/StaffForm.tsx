@@ -214,7 +214,7 @@ export function StaffForm() {
 
       <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         {/* Contact Details */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Contact Details</h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -241,7 +241,7 @@ export function StaffForm() {
         </div>
 
         {/* Role & Skills */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Role & Skills</h3>
 
           <div>
@@ -297,7 +297,7 @@ export function StaffForm() {
         </div>
 
         {/* Availability & Rate */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">Availability & Rate</h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -335,7 +335,7 @@ export function StaffForm() {
         </div>
 
         {/* System User Link */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-gray-900">System Account</h3>
 
           {isEdit && (
@@ -368,7 +368,7 @@ export function StaffForm() {
         </div>
 
         {/* Notes */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <textarea rows={3} value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}

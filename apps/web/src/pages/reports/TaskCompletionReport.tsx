@@ -68,28 +68,28 @@ export function TaskCompletionReport() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Tasks</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{total}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Completed</p>
           <p className="text-2xl font-bold text-green-700 mt-1">{completed}</p>
           <p className="text-xs text-gray-400">{total > 0 ? ((completed / total) * 100).toFixed(0) : 0}%</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">In Progress</p>
           <p className="text-2xl font-bold text-yellow-600 mt-1">{inProgress}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">In Review</p>
           <p className="text-2xl font-bold text-purple-600 mt-1">{inReview}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Overdue</p>
           <p className={`text-2xl font-bold mt-1 ${overdue > 0 ? 'text-red-600' : 'text-green-700'}`}>{overdue}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Estimate Accuracy</p>
           <p className={`text-2xl font-bold mt-1 ${estimateAccuracy > 120 ? 'text-red-600' : estimateAccuracy > 100 ? 'text-amber-600' : 'text-green-700'}`}>
             {estimateAccuracy > 0 ? `${estimateAccuracy.toFixed(0)}%` : '—'}
@@ -99,7 +99,7 @@ export function TaskCompletionReport() {
       </div>
 
       {/* Hours Summary */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4 mb-6">
+      <div className="card p-4 mb-6">
         <div className="flex items-center gap-8 text-sm">
           <div>
             <span className="text-gray-500">Total Allocated:</span>{' '}
@@ -117,7 +117,7 @@ export function TaskCompletionReport() {
       </div>
 
       {/* Task Table */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

@@ -204,12 +204,12 @@ export function ReturnsDetail() {
 
       <div className="max-w-4xl space-y-6">
         {/* Status stepper */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <StatusStepper currentStatus={ra.status} />
         </div>
 
         {/* Summary info */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
             <div>
               <span className="text-xs text-gray-500 block">Status</span>
@@ -290,7 +290,7 @@ export function ReturnsDetail() {
         </div>
 
         {/* Return lines table */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Return Lines</h3>
           <table className="w-full text-sm">
             <thead>
@@ -649,7 +649,7 @@ export function ReturnsDetail() {
 
         {/* Notes */}
         {ra.notes && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{ra.notes}</p>
           </div>

@@ -97,7 +97,7 @@ export function DebitNoteCreate() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Channel Partner *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Retail Partner *</label>
             <SearchableSelect
               options={partnerOptions}
               value={partnerId}
@@ -119,7 +119,7 @@ export function DebitNoteCreate() {
             <label className="text-sm font-medium text-gray-700">Line Items</label>
             <button type="button" onClick={addLine} className="text-xs text-green-700 hover:underline">+ Add Line</button>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+          <div className="card overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

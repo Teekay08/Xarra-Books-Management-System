@@ -124,7 +124,7 @@ export function NotificationList() {
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+        <div className="card divide-y divide-gray-100">
           {items.map((n) => (
             <div
               key={n.id}

@@ -148,7 +148,7 @@ export function ExpenseClaimDetail() {
 
       <div className="max-w-3xl space-y-6">
         {/* Claim info */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="card p-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 text-sm">
             <div>
               <span className="text-xs text-gray-500 block">Status</span>
@@ -261,7 +261,7 @@ export function ExpenseClaimDetail() {
 
         {/* Notes */}
         {claim.notes && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{claim.notes}</p>
           </div>

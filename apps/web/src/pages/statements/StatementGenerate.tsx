@@ -198,7 +198,7 @@ function BatchManagement() {
       <div className="grid grid-cols-12 gap-6">
         {/* Left: Batch List */}
         <div className="col-span-4 space-y-4">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Compile Statements</h3>
             <div className="flex gap-2 mb-2">
               <select
@@ -235,7 +235,7 @@ function BatchManagement() {
             </button>
           </div>
 
-          <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+          <div className="card divide-y divide-gray-100">
             {batches.length === 0 ? (
               <div className="p-6 text-center text-sm text-gray-400">
                 No statement batches yet. Compile one above or wait for auto-compilation.
@@ -267,14 +267,14 @@ function BatchManagement() {
         {/* Right: Batch Detail */}
         <div className="col-span-8">
           {!selectedBatchId ? (
-            <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-400 text-sm">
+            <div className="card p-12 text-center text-gray-400 text-sm">
               Select a batch from the list to view details, or compile a new one.
             </div>
           ) : !batch ? (
             <div className="py-12 text-center text-gray-400">Loading batch...</div>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 bg-white p-5">
+              <div className="card p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">{batch.periodLabel}</h3>
@@ -332,7 +332,7 @@ function BatchManagement() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+              <div className="card overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -529,7 +529,7 @@ function IndividualStatement() {
     <div>
       <form onSubmit={handleGenerate} className="max-w-2xl space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Channel Partner *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Retail Partner *</label>
           <SearchableSelect
             options={partnerOptions}
             value={partnerId}
@@ -678,7 +678,7 @@ function IndividualStatement() {
       {preview && (
         <div className="mt-8 max-w-2xl">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Preview</h3>
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="card p-4">
             <div className="grid grid-cols-4 gap-4 mb-4">
               <div className="text-center p-3 bg-gray-50 rounded">
                 <p className="text-xs text-gray-500">Opening</p>

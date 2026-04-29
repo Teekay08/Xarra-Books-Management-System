@@ -211,11 +211,11 @@ export function EmployeeDashboard() {
       {/* Summary Cards */}
       {!noStaffProfile && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Active Tasks</p>
             <p className="mt-1 text-2xl font-bold text-blue-700">{activeTasks.length}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Hours Logged</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">{totalLogged.toFixed(1)}h</p>
             <p className="text-xs text-gray-400">of {totalAllocated.toFixed(1)}h allocated</p>
@@ -228,7 +228,7 @@ export function EmployeeDashboard() {
             <p className={`text-xs uppercase ${exhaustedTasks.length > 0 ? 'text-orange-600' : 'text-gray-500'}`}>Time Exhausted</p>
             <p className={`mt-1 text-2xl font-bold ${exhaustedTasks.length > 0 ? 'text-orange-700' : 'text-gray-900'}`}>{exhaustedTasks.length}</p>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="card p-4">
             <p className="text-xs text-gray-500 uppercase">Pending Extensions</p>
             <p className="mt-1 text-2xl font-bold text-yellow-600">{extensions.length}</p>
           </div>
@@ -242,7 +242,7 @@ export function EmployeeDashboard() {
         {tasksLoading && <p className="text-sm text-gray-400">Loading tasks...</p>}
 
         {!tasksLoading && tasks.length === 0 && !noStaffProfile && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+          <div className="card p-5 text-center text-sm text-gray-500">
             No tasks assigned to you yet. Your Project Manager will assign tasks when ready.
           </div>
         )}
@@ -317,7 +317,7 @@ export function EmployeeDashboard() {
       <div className="mb-8">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Time Logs</h3>
 
-        <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+        <div className="card overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -362,7 +362,7 @@ export function EmployeeDashboard() {
         {extensionsLoading && <p className="text-sm text-gray-400">Loading...</p>}
 
         {!extensionsLoading && extensions.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+          <div className="card p-5 text-center text-sm text-gray-500">
             No pending extension requests.
           </div>
         )}
@@ -370,7 +370,7 @@ export function EmployeeDashboard() {
         {!extensionsLoading && extensions.length > 0 && (
           <div className="space-y-3">
             {extensions.map((ext) => (
-              <div key={ext.id} className="rounded-lg border border-gray-200 bg-white p-4 flex items-start justify-between">
+              <div key={ext.id} className="card p-4 flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-900">
                     +{ext.requestedHours}h for "{ext.taskTitle}"
@@ -390,7 +390,7 @@ export function EmployeeDashboard() {
 
       {requestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md card p-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900">Request Additional Task</h3>
             <p className="mt-1 text-xs text-gray-500">Your PM will review and approve, reject, or ask for more info.</p>
 

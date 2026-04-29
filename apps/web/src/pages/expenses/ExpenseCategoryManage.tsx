@@ -58,7 +58,7 @@ export function ExpenseCategoryManage() {
       />
 
       {showForm && (
-        <form onSubmit={handleCreate} className="mb-6 p-4 rounded-lg border border-gray-200 bg-white max-w-md">
+        <form onSubmit={handleCreate} className="mb-6 p-4 card max-w-md">
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
@@ -76,7 +76,7 @@ export function ExpenseCategoryManage() {
         </form>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

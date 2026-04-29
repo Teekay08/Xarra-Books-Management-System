@@ -124,7 +124,7 @@ export function Bestsellers() {
 
           {/* Revenue / Units / Underperformers table */}
           {(tab === 'revenue' || tab === 'units' || tab === 'underperformers') && (
-            <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+            <div className="card overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -150,7 +150,7 @@ export function Bestsellers() {
 
           {/* Authors table */}
           {tab === 'authors' && (
-            <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+            <div className="card overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -178,7 +178,7 @@ export function Bestsellers() {
 
           {/* Profitability table */}
           {tab === 'profitability' && (
-            <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+            <div className="card overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>

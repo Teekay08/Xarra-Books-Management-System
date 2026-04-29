@@ -97,18 +97,18 @@ export function ResourcePlanning() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Total Staff</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">{totalStaff}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Overall Utilization</p>
           <p className={`mt-1 text-2xl font-bold ${utilizationColor(overallUtilization)}`}>{overallUtilization.toFixed(0)}%</p>
           <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
             <div className={`h-2 rounded-full ${utilizationBarColor(overallUtilization)}`} style={{ width: `${Math.min(100, overallUtilization)}%` }} />
           </div>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="card p-4">
           <p className="text-xs text-gray-500 uppercase">Monthly Capacity</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">{totalCapacityHours}h/mo</p>
           <p className="text-xs text-gray-400">{totalAllocatedHours.toFixed(1)}h/mo allocated</p>
@@ -145,7 +145,7 @@ export function ResourcePlanning() {
       <p className="mb-2 text-xs text-gray-500">Forecast: M0 = current month, M1-M2 = next 2 months (based on task due dates and remaining hours).</p>
 
       {/* Staff Table */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+      <div className="card overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
